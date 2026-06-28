@@ -9,10 +9,26 @@ Before implementation:
 
 - references for AART, RAPTOR, Odyssey, Quest/OpenXR limits, and VR black-hole
   precedent are indexed;
+- open arXiv PDFs for RAPTOR, BHAC, Davelaar VR, and AART are stored under
+  `references/pdfs/`;
+- BibTeX keys for literature and reviewed code repositories are stored in
+  `references/references.bib`;
+- reference code reviews for RAPTOR, AART, Odyssey, ipole, and grtrans are
+  stored under `references/code_reviews/`;
+- no third-party source code is copied into this repository;
 - shadow, critical curve, lensing ring, photon ring, higher-order image, ISCO,
   and disk inner edge are defined;
 - equations and conventions are documented;
 - first implementation exclusions are explicit.
+
+Phase 0 validation commands:
+
+```text
+git status --short --branch
+git diff --check
+git check-ignore -v references/pdfs/local_only/test.pdf
+git check-attr diff merge text -- references/pdfs/example.pdf
+```
 
 ## Phase 1 CPU Kerr Reference Solver
 

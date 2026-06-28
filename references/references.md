@@ -14,6 +14,8 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 
 - Source path:
 - PDF path:
+- Code review path:
+- BibTeX key:
 - Stable locator:
 - Search date:
 - Search terms:
@@ -28,7 +30,9 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 ### RAPTOR I - Time-dependent GRRT
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
-- PDF path: Not stored yet.
+- PDF path: `references/pdfs/2018-raptor-i-time-dependent-grrt.pdf`
+- Code review path: `references/code_reviews/2026-06-28-reference-code-baseline.md`
+- BibTeX key: `bronzwaer2018raptor`
 - Stable locator: https://arxiv.org/abs/1801.10452
 - Search date: 2026-06-28
 - Search terms: RAPTOR time-dependent GRRT benchmark
@@ -45,7 +49,9 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 ### Odyssey - GPU-based Kerr GRRT
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
-- PDF path: Not stored yet.
+- PDF path: Not stored; open original PDF not confirmed in Phase 0.
+- Code review path: `references/code_reviews/2026-06-28-reference-code-baseline.md`
+- BibTeX key: `pu2016odyssey`; code key `pu2026odysseycode`
 - Stable locator: https://github.com/hungyipu/Odyssey
 - Search date: 2026-06-28
 - Search terms: Odyssey GPU Kerr GRRT CUDA C++
@@ -61,7 +67,9 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 ### BHAC - Black Hole Accretion Code
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
-- PDF path: Not stored yet.
+- PDF path: `references/pdfs/2016-bhac-black-hole-accretion-code.pdf`
+- Code review path: Not reviewed in Phase 0; used as GRMHD paper baseline.
+- BibTeX key: `porth2017bhac`
 - Stable locator: https://arxiv.org/abs/1611.09720
 - Search date: 2026-06-28
 - Search terms: BHAC black hole accretion GRMHD
@@ -75,7 +83,9 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 ### AART - Adaptive Analytical Ray Tracing
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
-- PDF path: Not stored yet.
+- PDF path: `references/pdfs/2022-aart-adaptive-analytical-ray-tracing.pdf`
+- Code review path: `references/code_reviews/2026-06-28-reference-code-baseline.md`
+- BibTeX key: `cardenas2023aart`; code key `cardenas2026aartcode`
 - Stable locator: https://arxiv.org/abs/2211.07469
 - Search date: 2026-06-28
 - Search terms: AART Kerr photon ring adaptive analytical ray tracing
@@ -91,7 +101,9 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 ### Davelaar et al. - Black-hole VR Precedent
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
-- PDF path: Not stored yet.
+- PDF path: `references/pdfs/2018-davelaar-supermassive-black-holes-vr.pdf`
+- Code review path: Not applicable; paper precedent only.
+- BibTeX key: `davelaar2018vr`
 - Stable locator: https://arxiv.org/abs/1811.08369
 - Search date: 2026-06-28
 - Search terms: black hole virtual reality GRMHD RAPTOR Davelaar
@@ -109,6 +121,8 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
 - PDF path: Not applicable; official web documentation.
+- Code review path: Not applicable.
+- BibTeX key: Not applicable.
 - Stable locator: https://developers.meta.com/horizon/resources/device-optimization-comparison/
 - Search date: 2026-06-28
 - Search terms: Quest 3 optimization refresh rate frame budget
@@ -124,6 +138,8 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
 - PDF path: Not applicable; official web documentation.
+- Code review path: Not applicable.
+- BibTeX key: Not applicable.
 - Stable locator: https://developers.meta.com/horizon/documentation/native/android/mobile-passthrough-over-link/
 - Search date: 2026-06-28
 - Search terms: Meta passthrough over Link host PC
@@ -138,6 +154,8 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
 - PDF path: Not applicable; official web documentation.
+- Code review path: Not applicable.
+- BibTeX key: Not applicable.
 - Stable locator: https://docs.unity3d.com/Packages/com.unity.xr.meta-openxr%402.2/manual/features/camera.html
 - Search date: 2026-06-28
 - Search terms: Unity OpenXR Meta passthrough camera pixel data
@@ -154,6 +172,8 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
 - PDF path: Not applicable; official web documentation.
+- Code review path: Not applicable.
+- BibTeX key: Not applicable.
 - Stable locator: https://developers.meta.com/horizon/documentation/unity/unity-depthapi-overview/
 - Search date: 2026-06-28
 - Search terms: Meta Depth API Unity occlusion
@@ -164,3 +184,79 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
   compositing.
 - Project use: MR-1 depth-aware black-hole overlay.
 - Limitations / open questions: Validate quality and support on target device.
+
+### RAPTOR Public Code Repository
+
+- Source path: `references/source_notes/2026-06-28-phase0-download-log.md`
+- PDF path: Not applicable; code repository.
+- Code review path: `references/code_reviews/2026-06-28-reference-code-baseline.md`
+- BibTeX key: `bronzwaer2026raptorcode`
+- Stable locator: https://github.com/tbronzwaer/raptor
+- Search date: 2026-06-28
+- Search terms: RAPTOR GRRT code GitHub
+- Why added: Reference implementation for time-dependent GRRT structure and
+  dependencies.
+- Short summary: C implementation with metric, integrator, emission, and
+  radiative-transfer modules; default branch outputs image and spectrum data.
+- Relevant equations / assumptions / methods: Ray integration plus scalar GRRT;
+  polarization branch exists but has redistribution caveats.
+- Project use: Benchmark target after local simplified GRRT exists.
+- Limitations / open questions: Do not vendor code because default branch is
+  GPL-3.0 and polarization branch is not treated as redistributable.
+
+### AART Public Code Repository
+
+- Source path: `references/source_notes/2026-06-28-phase0-download-log.md`
+- PDF path: Not applicable; code repository.
+- Code review path: `references/code_reviews/2026-06-28-reference-code-baseline.md`
+- BibTeX key: `cardenas2026aartcode`
+- Stable locator: https://github.com/iAART/aart
+- Search date: 2026-06-28
+- Search terms: AART photon ring code GitHub
+- Why added: Reference for lensing-band construction and adaptive treatment near
+  photon-ring/critical-curve structure.
+- Short summary: Python implementation separating lensing bands, analytical ray
+  tracing, image construction, visibility amplitudes, redshift, and
+  polarization helpers.
+- Relevant equations / assumptions / methods: Kerr integrability, Bardeen screen
+  coordinates, nonuniform image-plane sampling.
+- Project use: Design reference for Phase 1/2 sampling and validation outputs.
+- Limitations / open questions: Use as conceptual benchmark; do not copy code.
+
+### ipole Public Code Repository
+
+- Source path: `references/source_notes/2026-06-28-phase0-download-log.md`
+- PDF path: Not applicable; code repository.
+- Code review path: `references/code_reviews/2026-06-28-reference-code-baseline.md`
+- BibTeX key: `moscibrodzka2018ipole`; code key `gammie2026ipolecode`
+- Stable locator: https://github.com/AFD-Illinois/ipole
+- Search date: 2026-06-28
+- Search terms: ipole polarized GRRT code GitHub
+- Why added: Later polarized-GRRT benchmark and trace-output design reference.
+- Short summary: C code for polarized covariant radiative transfer with HDF5
+  image and trace-output workflows.
+- Relevant equations / assumptions / methods: Polarized radiative transfer,
+  geodesic diagnostics, model-specific GRMHD imaging.
+- Project use: Later benchmark after scalar GRRT is validated; trace diagnostics
+  inspire Phase 1 selected-ray outputs.
+- Limitations / open questions: Not a Phase 1 dependency and not a
+  general-purpose imaging substitute.
+
+### grtrans Public Code Repository
+
+- Source path: `references/source_notes/2026-06-28-phase0-download-log.md`
+- PDF path: Not applicable; code repository.
+- Code review path: `references/code_reviews/2026-06-28-reference-code-baseline.md`
+- BibTeX key: `dexter2016grtrans`; code key `dexter2026grtranscode`
+- Stable locator: https://github.com/jadexter/grtrans
+- Search date: 2026-06-28
+- Search terms: grtrans polarized GRRT code GitHub
+- Why added: Later benchmark for model-rich polarized GRRT and scriptable
+  geodesic/radiative-transfer tests.
+- Short summary: Fortran/Python code covering camera coordinates, geodesic
+  integration, radiative transfer, multiple fluid models, and debug outputs.
+- Relevant equations / assumptions / methods: Kerr geodesics, Stokes-capable
+  outputs, thin disk/HARM/hotspot/fluid-model pathways.
+- Project use: Long-range benchmark for GRRT and diagnostic-output conventions.
+- Limitations / open questions: Too broad for the first CPU Kerr solver and not
+  vendored into this repository.

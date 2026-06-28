@@ -19,6 +19,32 @@ from here.
 
 ## Log
 
+### 2026-06-28 - Phase 0 literature and code baseline
+
+- Goal: Complete the Phase 0 literature/code baseline before starting the CPU
+  Kerr solver.
+- Changed files / components: `references/pdfs/*.pdf`,
+  `references/references.bib`, `references/references.md`,
+  `references/code_reviews/2026-06-28-reference-code-baseline.md`,
+  `references/source_notes/2026-06-28-phase0-download-log.md`,
+  `docs/validation_targets.md`, and `validation/README.md`.
+- Academic reason: Make the project auditable from source paper to validation
+  target before numerical implementation begins.
+- Physical correspondence: RAPTOR, AART, Odyssey, ipole, and grtrans were
+  reviewed as external baselines for ray tracing, GRRT, adaptive photon-ring
+  sampling, and later polarized-transfer diagnostics. No equations were changed
+  in this step.
+- Assumptions and conventions: Open arXiv PDFs are stored in `references/pdfs/`;
+  third-party code is not vendored; GPL/BSD/MIT license notes are recorded only
+  to guide future comparison boundaries.
+- Validation: Phase 0 is validated by repository navigation checks,
+  `git diff --check`, local-only PDF ignore checks, PDF binary attribute checks,
+  and confirming all indexed PDF paths exist.
+- References: See `references/references.md`, `references/references.bib`, and
+  `references/code_reviews/2026-06-28-reference-code-baseline.md`.
+- Open issues / next steps: Start Phase 1 with a CPU Schwarzschild/Kerr
+  reference solver and selected-ray diagnostic output.
+
 ### 2026-06-28 - PDF literature storage convention
 
 - Goal: Add a dedicated place for original literature PDFs while keeping the

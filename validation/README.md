@@ -1,0 +1,32 @@
+# Validation Entry Points
+
+This directory will hold reproducible validation notes and scripts as the
+renderer implementation appears.
+
+## Phase 0 Gate
+
+Phase 0 is documentation and source-baseline only. It is complete when:
+
+- open PDFs are stored under `references/pdfs/`;
+- citations are indexed in `references/references.bib`;
+- every kept reference is navigable through `references/references.md`;
+- reference code reviews are stored under `references/code_reviews/`;
+- no third-party source code has been vendored into this repository.
+
+## Phase 1 CPU Kerr Solver Gate
+
+The first implementation validation target will be the CPU Kerr/Schwarzschild
+reference solver. It must record:
+
+- null Hamiltonian residual per sampled ray;
+- drift of `E = -p_t`;
+- drift of `L_z = p_phi`;
+- Carter constant drift where applicable;
+- event class: horizon capture, sky escape, disk crossing, or invalid state;
+- Schwarzschild shadow critical impact parameter `b_c = 3 sqrt(3) M`.
+
+Initial tolerance target:
+
+```text
+abs(H) < 1e-8
+```

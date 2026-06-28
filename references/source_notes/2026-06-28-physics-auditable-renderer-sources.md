@@ -13,6 +13,8 @@ PDF originals, when stored, belong in `references/pdfs/` and must be linked from
 ## RAPTOR I
 
 - Stable locator: https://arxiv.org/abs/1801.10452
+- PDF path: `references/pdfs/2018-raptor-i-time-dependent-grrt.pdf`
+- BibTeX key: `bronzwaer2018raptor`
 - Why added: Baseline reference for time-dependent general relativistic
   radiative transfer.
 - Summary: RAPTOR is relevant as a benchmark family for ray integration plus
@@ -24,6 +26,8 @@ PDF originals, when stored, belong in `references/pdfs/` and must be linked from
 ## Odyssey
 
 - Stable locator: https://github.com/hungyipu/Odyssey
+- Code review path: `references/code_reviews/2026-06-28-reference-code-baseline.md`
+- BibTeX key: `pu2016odyssey`
 - Why added: Public GPU-based Kerr GRRT implementation relevant to real-time or
   near-real-time engineering choices.
 - Summary: Odyssey is a CUDA/C++-oriented GRRT codebase for Kerr ray tracing and
@@ -36,6 +40,8 @@ PDF originals, when stored, belong in `references/pdfs/` and must be linked from
 ## BHAC
 
 - Stable locator: https://arxiv.org/abs/1611.09720
+- PDF path: `references/pdfs/2016-bhac-black-hole-accretion-code.pdf`
+- BibTeX key: `porth2017bhac`
 - Why added: Reference for black-hole accretion GRMHD simulations and later
   snapshot-based workflows.
 - Summary: BHAC is relevant for multidimensional GRMHD simulation data that can
@@ -84,6 +90,9 @@ PDF originals, when stored, belong in `references/pdfs/` and must be linked from
 ## AART
 
 - Stable locator: https://arxiv.org/abs/2211.07469
+- PDF path: `references/pdfs/2022-aart-adaptive-analytical-ray-tracing.pdf`
+- Code review path: `references/code_reviews/2026-06-28-reference-code-baseline.md`
+- BibTeX key: `cardenas2023aart`
 - Why added: Reference for adaptive analytical ray tracing of Kerr photon rings.
 - Summary: Motivates nonuniform/adaptive sampling near the critical curve and
   high-order image regions.
@@ -94,6 +103,8 @@ PDF originals, when stored, belong in `references/pdfs/` and must be linked from
 ## Davelaar VR Black-Hole Work
 
 - Stable locator: https://arxiv.org/abs/1811.08369
+- PDF path: `references/pdfs/2018-davelaar-supermassive-black-holes-vr.pdf`
+- BibTeX key: `davelaar2018vr`
 - Why added: Prior example of GRMHD plus GRRT data used for black-hole VR.
 - Summary: Shows a viable offline/post-processed route from GRMHD simulations to
   immersive black-hole visualization.
