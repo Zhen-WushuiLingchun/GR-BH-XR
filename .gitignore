@@ -9,10 +9,17 @@ desktop.ini
 *.swp
 *.swo
 
+# Local agent/tool state
+.agents/
+.codex/
+
 # Local environment and secrets
 .env
 .env.*
 !.env.example
+
+# Local manuscript drafts
+paper_draft/
 
 # Python
 __pycache__/
