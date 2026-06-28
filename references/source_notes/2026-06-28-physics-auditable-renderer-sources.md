@@ -6,6 +6,10 @@ These notes index the initial sources used to shape the GR-BH-XR roadmap. They
 are not a substitute for reading the papers or official documentation before
 making detailed claims.
 
+PDF originals, when stored, belong in `references/pdfs/` and must be linked from
+`references/references.md`. Restricted or oversized PDFs belong in
+`references/pdfs/local_only/` and should be marked as local-only in the index.
+
 ## RAPTOR I
 
 - Stable locator: https://arxiv.org/abs/1801.10452

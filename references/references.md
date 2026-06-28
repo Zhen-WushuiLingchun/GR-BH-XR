@@ -4,11 +4,16 @@ This file is the required index for literature and source material stored in
 `references/`. Add or update an entry whenever a paper, source note, exported
 citation, dataset description, or literature-search result is added.
 
+Original PDFs should go under `references/pdfs/` when they are safe to keep in
+Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
+`references/pdfs/local_only/`, which is ignored by Git.
+
 ## Entry Template
 
 ### citation-key-or-short-title
 
 - Source path:
+- PDF path:
 - Stable locator:
 - Search date:
 - Search terms:
@@ -23,6 +28,7 @@ citation, dataset description, or literature-search result is added.
 ### RAPTOR I - Time-dependent GRRT
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
+- PDF path: Not stored yet.
 - Stable locator: https://arxiv.org/abs/1801.10452
 - Search date: 2026-06-28
 - Search terms: RAPTOR time-dependent GRRT benchmark
@@ -39,6 +45,7 @@ citation, dataset description, or literature-search result is added.
 ### Odyssey - GPU-based Kerr GRRT
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
+- PDF path: Not stored yet.
 - Stable locator: https://github.com/hungyipu/Odyssey
 - Search date: 2026-06-28
 - Search terms: Odyssey GPU Kerr GRRT CUDA C++
@@ -54,6 +61,7 @@ citation, dataset description, or literature-search result is added.
 ### BHAC - Black Hole Accretion Code
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
+- PDF path: Not stored yet.
 - Stable locator: https://arxiv.org/abs/1611.09720
 - Search date: 2026-06-28
 - Search terms: BHAC black hole accretion GRMHD
@@ -67,6 +75,7 @@ citation, dataset description, or literature-search result is added.
 ### AART - Adaptive Analytical Ray Tracing
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
+- PDF path: Not stored yet.
 - Stable locator: https://arxiv.org/abs/2211.07469
 - Search date: 2026-06-28
 - Search terms: AART Kerr photon ring adaptive analytical ray tracing
@@ -82,6 +91,7 @@ citation, dataset description, or literature-search result is added.
 ### Davelaar et al. - Black-hole VR Precedent
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
+- PDF path: Not stored yet.
 - Stable locator: https://arxiv.org/abs/1811.08369
 - Search date: 2026-06-28
 - Search terms: black hole virtual reality GRMHD RAPTOR Davelaar
@@ -98,6 +108,7 @@ citation, dataset description, or literature-search result is added.
 ### Meta Quest Device Optimization
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
+- PDF path: Not applicable; official web documentation.
 - Stable locator: https://developers.meta.com/horizon/resources/device-optimization-comparison/
 - Search date: 2026-06-28
 - Search terms: Quest 3 optimization refresh rate frame budget
@@ -112,6 +123,7 @@ citation, dataset description, or literature-search result is added.
 ### Meta Passthrough Over Link
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
+- PDF path: Not applicable; official web documentation.
 - Stable locator: https://developers.meta.com/horizon/documentation/native/android/mobile-passthrough-over-link/
 - Search date: 2026-06-28
 - Search terms: Meta passthrough over Link host PC
@@ -125,6 +137,7 @@ citation, dataset description, or literature-search result is added.
 ### Unity OpenXR Meta Camera / Passthrough
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
+- PDF path: Not applicable; official web documentation.
 - Stable locator: https://docs.unity3d.com/Packages/com.unity.xr.meta-openxr%402.2/manual/features/camera.html
 - Search date: 2026-06-28
 - Search terms: Unity OpenXR Meta passthrough camera pixel data
@@ -140,6 +153,7 @@ citation, dataset description, or literature-search result is added.
 ### Meta Depth API
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
+- PDF path: Not applicable; official web documentation.
 - Stable locator: https://developers.meta.com/horizon/documentation/unity/unity-depthapi-overview/
 - Search date: 2026-06-28
 - Search terms: Meta Depth API Unity occlusion

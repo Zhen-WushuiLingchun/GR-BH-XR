@@ -21,6 +21,9 @@ desktop.ini
 # Local manuscript drafts
 paper_draft/
 
+# Restricted or oversized local literature PDFs
+references/pdfs/local_only/
+
 # Generated research data and render outputs
 data/lens_maps/*
 !data/lens_maps/README.md

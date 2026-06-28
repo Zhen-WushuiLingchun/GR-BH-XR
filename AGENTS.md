@@ -23,6 +23,12 @@ work are later-stage extensions.
 ## Repository Layout
 
 - `references/`: Literature files, notes, and the central literature index.
+- `references/pdfs/`: Original paper PDFs that are safe to keep in the
+  repository.
+- `references/pdfs/local_only/`: Local-only PDFs that must not be pushed, such
+  as restricted-access or oversized files.
+- `references/source_notes/`: Short source-review notes and literature-search
+  notes.
 - `references/references.md`: Required index for every paper or source added to
   `references/`.
 - `docs/`: Development logs and technical notes explaining academic motivation,
@@ -43,20 +49,25 @@ technical decision:
 
 1. Put the source file, exported citation, or stable source note under
    `references/`.
-2. Update `references/references.md` in the same change.
-3. Keep each entry close to its source path and include:
+2. If an original paper PDF is useful and safe to keep in the repository, put it
+   under `references/pdfs/`. If the PDF is restricted, too large, or not safe to
+   redistribute, put it under `references/pdfs/local_only/` and do not commit it.
+3. Update `references/references.md` in the same change.
+4. Keep each entry close to its source path and include:
    - citation key or short title;
    - file path, DOI, URL, arXiv ID, or other stable locator;
+   - PDF path or local-only PDF status;
    - why the source was added;
    - a short content summary;
    - equations, physical assumptions, datasets, or implementation ideas relevant
      to this project;
    - open questions or limitations.
-4. Record the search date and search terms when the source was found through a
+5. Record the search date and search terms when the source was found through a
    literature search.
 
 Do not rely on an unindexed PDF or note. If it is useful enough to keep, it must
-be findable from `references/references.md`.
+be findable from `references/references.md`. Do not commit paywalled,
+license-unclear, or private PDFs unless redistribution is explicitly allowed.
 
 ## Development Log Workflow
 

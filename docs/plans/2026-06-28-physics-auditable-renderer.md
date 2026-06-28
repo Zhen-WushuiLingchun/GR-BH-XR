@@ -105,6 +105,7 @@ git commit -m "docs: define physics-auditable renderer plan"
 
 **Files:**
 - Modify: `references/references.md`
+- Create or maintain: `references/pdfs/README.md`
 - Create: `references/source_notes/YYYY-MM-DD-physics-auditable-renderer-sources.md`
 - Create or update: `docs/physical_scope.md`
 - Create or update: `docs/equations.md`
@@ -121,6 +122,11 @@ Record at least these source families:
 - Meta Quest 3 optimization and Passthrough over Link documentation.
 - Unity OpenXR Meta passthrough camera limitation.
 - Meta Depth API documentation.
+
+If a source has an original PDF that is open-access or safe to keep in Git,
+store it under `references/pdfs/` and add its path to
+`references/references.md`. If the PDF is restricted or too large, store it
+under `references/pdfs/local_only/` and mark the index entry as local-only.
 
 **Step 2: Define required vocabulary**
 

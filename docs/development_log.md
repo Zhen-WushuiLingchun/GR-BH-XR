@@ -19,6 +19,28 @@ from here.
 
 ## Log
 
+### 2026-06-28 - PDF literature storage convention
+
+- Goal: Add a dedicated place for original literature PDFs while keeping the
+  central reference index authoritative.
+- Changed files / components: `references/pdfs/README.md`, `AGENTS.md`,
+  `references/references.md`, `README.md`, `.gitignore`, `.gitattributes`,
+  `docs/plans/2026-06-28-physics-auditable-renderer.md`, and
+  `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`.
+- Academic reason: Make it easy to inspect original papers next to their
+  summaries and project-use notes.
+- Physical correspondence: No physics equations changed; this is a source
+  traceability improvement for future derivations and benchmark claims.
+- Assumptions and conventions: Open or safely redistributable PDFs may be stored
+  in `references/pdfs/`; restricted, license-unclear, temporary, or oversized
+  PDFs belong in ignored `references/pdfs/local_only/`.
+- Validation: Confirm `references/pdfs/local_only/` is ignored while
+  `references/pdfs/README.md` remains tracked.
+- References: Existing entries in `references/references.md` now include a
+  `PDF path` field.
+- Open issues / next steps: Download and index open-access PDFs for the initial
+  RAPTOR, AART, BHAC, and Davelaar papers when needed.
+
 ### 2026-06-28 - Physics-auditable renderer roadmap
 
 - Goal: Convert the project direction into a staged physics-auditable renderer

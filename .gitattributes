@@ -7,6 +7,7 @@
 *.ico binary
 *.mp4 binary
 *.mov binary
+*.pdf binary
 *.wav binary
 *.mp3 binary
 *.fbx binary
