@@ -1,0 +1,14 @@
+* text=auto
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mp4 binary
+*.mov binary
+*.wav binary
+*.mp3 binary
+*.fbx binary
+*.blend binary
+*.unitypackage binary
