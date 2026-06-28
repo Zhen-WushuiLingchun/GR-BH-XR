@@ -11,6 +11,8 @@ See `AGENTS.md` for repository workflow rules.
 - `references/pdfs/`: original literature PDFs safe to keep in Git.
 - `references/pdfs/local_only/`: local-only PDFs, ignored by Git.
 - `references/source_notes/`: short source notes and literature-search notes.
+- `references/code_reviews/`: third-party code and shader-project review notes;
+  these record design lessons but do not vendor source code.
 - `references/references.md`: required index for all kept references.
 - `docs/`: development logs and academic or physics-facing notes.
 - `docs/plans/`: dated implementation plans.

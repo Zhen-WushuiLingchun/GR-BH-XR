@@ -69,6 +69,18 @@ Do not rely on an unindexed PDF or note. If it is useful enough to keep, it must
 be findable from `references/references.md`. Do not commit paywalled,
 license-unclear, or private PDFs unless redistribution is explicitly allowed.
 
+Shader demos, blog posts, forum posts, and personal project repositories may be
+indexed when they are technically useful, but classify them as engineering or
+gray-literature references unless they are backed by a citable paper and
+independent validation. They may inform UI controls, cache layouts, debug
+buffers, and performance strategy; they must not replace equation checks,
+invariant tests, or peer-reviewed benchmark comparisons.
+
+When inspecting third-party code, record the repository URL, reviewed commit,
+license, relevant file/module structure, and design lessons. Do not vendor or
+copy third-party source code unless the project has an explicit legal and
+architectural decision to do so.
+
 ## Development Log Workflow
 
 Use `docs/development_log.md` for compact chronological entries. For larger
@@ -132,6 +144,9 @@ do not use it for academic claims.
   targets.
 - Before GRMHD: use existing snapshots and GRRT post-processing; do not start by
   implementing a GRMHD solver.
+- Before using GLSL/WebGL/Vulkan demo behavior for claims: classify whether the
+  behavior is a validated model, a documented approximation, or a visual
+  prototype, and trace any physics claim back to equations or benchmark papers.
 - Before BBH: separate visual toys, time-dependent vacuum metrics,
   phenomenological accretion, and full NR/GRMHD/GRRT.
 - Before neural acceleration: generate exact data first, then learn transfer

@@ -52,6 +52,7 @@ stable:
 
 - full GRMHD;
 - BBH numerical relativity;
+- Kerr-Newman charge as a validated physical model;
 - Quest-native GRRT;
 - neural networks that directly generate final black-hole images;
 - true passthrough-pixel lensing in MR unless camera-frame access is available.
@@ -70,6 +71,22 @@ For BBH visual toys, the UI and documentation must state:
 ```text
 Approximate visual model, not a solution of Einstein equations.
 ```
+
+## Real-Time Shader Reference Boundary
+
+Real-time GLSL/WebGL/Vulkan black-hole projects are useful engineering
+references for shader interfaces, precomputed ray maps, debug toggles, and
+frame-budget tradeoffs. They are not automatically physics references.
+
+Use these sources as follows:
+
+- citable papers with equations and tests may inform validation targets;
+- code repositories may inform architecture only after their license and commit
+  are recorded;
+- blog or column articles are gray literature and must be summarized, not
+  copied;
+- Kerr-Newman, white-hole, other-universe, and stylized jet/disk modes are
+  exploratory visuals until the project has independent validation for them.
 
 ## Required Vocabulary
 

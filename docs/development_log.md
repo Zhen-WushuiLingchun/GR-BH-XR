@@ -19,6 +19,32 @@ from here.
 
 ## Log
 
+### 2026-06-28 - Expanded GRRT, GRMHD, and GLSL reference baseline
+
+- Goal: Add deeper GRRT, relativistic-fluid, and real-time shader references
+  before implementation starts.
+- Changed files / components: `references/pdfs/*.pdf`,
+  `references/references.bib`, `references/references.md`,
+  `references/source_notes/2026-06-28-expanded-grrt-fluid-glsl-sources.md`,
+  `references/code_reviews/2026-06-28-glsl-and-realtime-projects.md`,
+  `docs/physical_scope.md`, `docs/validation_targets.md`, and `AGENTS.md`.
+- Academic reason: Separate paper-grade GRRT/GRMHD validation material from
+  shader-engineering examples and gray literature.
+- Physical correspondence: Added references for polarized GRRT, invariant
+  transfer formulation, HARM-family GRMHD, primitive recovery, radiation-GRMHD,
+  and real-time Schwarzschild shader precomputation. Kerr-Newman charge remains
+  outside the validated first-year Kerr scope.
+- Assumptions and conventions: Open arXiv PDFs are stored in `references/pdfs/`;
+  Zhihu content is summarized only; third-party code was inspected in temporary
+  clones and not copied.
+- Validation: Confirmed source metadata from arXiv/GitHub/opencli, then
+  requires repository consistency checks listed in `docs/validation_targets.md`.
+- References: See `references/references.md`,
+  `references/source_notes/2026-06-28-expanded-grrt-fluid-glsl-sources.md`, and
+  `references/code_reviews/2026-06-28-glsl-and-realtime-projects.md`.
+- Open issues / next steps: Start Phase 1 CPU Kerr solver with diagnostic
+  buffers before any GLSL acceleration.
+
 ### 2026-06-28 - Phase 0 literature and code baseline
 
 - Goal: Complete the Phase 0 literature/code baseline before starting the CPU
