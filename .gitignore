@@ -21,6 +21,24 @@ desktop.ini
 # Local manuscript drafts
 paper_draft/
 
+# Generated research data and render outputs
+data/lens_maps/*
+!data/lens_maps/README.md
+data/grmhd_snapshots/*
+!data/grmhd_snapshots/README.md
+data/cached_radiance_fields/*
+!data/cached_radiance_fields/README.md
+figures/*
+!figures/README.md
+outputs/
+captures/
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.exr
+*.hdr
+
 # Python
 __pycache__/
 *.py[cod]

@@ -9,6 +9,17 @@ GR-BH-XR is treated as an academic software project. Code, assets, notes, and
 experiments should preserve the connection between implementation choices,
 physics assumptions, and literature evidence.
 
+The project should be designed as a **physics-auditable renderer**, not a
+visual-only black-hole demo. Renderer output must remain traceable to physical
+quantities such as escape/capture state, image order, disk crossing location,
+redshift factor, time delay, optical depth, and observed intensity.
+
+The first-year target is a single-Kerr PCVR/MR system: background lensing,
+shadow, thin disk transfer function, redshift/Doppler terms,
+time-delay-aware disk variability, direct/secondary/higher-order images, and
+Quest 3 display through PCVR/MR overlay. BBH, full GRMHD, and neural surrogate
+work are later-stage extensions.
+
 ## Repository Layout
 
 - `references/`: Literature files, notes, and the central literature index.
@@ -16,6 +27,12 @@ physics assumptions, and literature evidence.
   `references/`.
 - `docs/`: Development logs and technical notes explaining academic motivation,
   physical correspondence, assumptions, validation, and unresolved issues.
+- `docs/plans/`: Dated implementation plans.
+- `docs/physical_scope.md`: Current scope, claims, deferred work, and
+  approximation labels.
+- `docs/equations.md`: Equations, coordinates, units, and conventions that code
+  must follow.
+- `docs/validation_targets.md`: Stage gates and validation targets.
 - `paper_draft/`: Local-only manuscript drafts. This directory must not be
   committed or pushed to GitHub.
 
@@ -62,6 +79,10 @@ Each meaningful development step should record:
 
 - State the coordinate system, sign convention, units, and normalization before
   implementing physics logic.
+- Default to geometric units (`G = c = 1`) and document any departure from that
+  convention.
+- Do not add a physics module without a documented validation path in
+  `docs/validation_targets.md`.
 - Keep numerical parameters traceable to a reference, derivation, or explicit
   project assumption.
 - Distinguish visual approximation, pedagogical approximation, and physically
@@ -69,6 +90,42 @@ Each meaningful development step should record:
 - When adding XR visualization behavior, document what physical quantity the
   visual element represents and what has been stylized for usability.
 - Avoid silent changes to equations, constants, or coordinate conventions.
+
+## Renderer Audit Requirements
+
+Do not treat an RGB image as the only product of a renderer. A physics-facing
+renderer stage should expose or record the relevant subset of:
+
+- escape/capture mask;
+- disk crossing or image order `m`;
+- crossing position `(r_m, phi_m)`;
+- redshift factor `g_m`;
+- time delay `Delta t_m`;
+- winding/orbit number `n_m`;
+- optical depth `tau_m`;
+- observed intensity `I_nu_o`;
+- diagnostic residuals such as Hamiltonian or conserved-quantity drift.
+
+If a prototype cannot expose these quantities, mark it as a visual prototype and
+do not use it for academic claims.
+
+## Stage Gates
+
+- Before disk work: validate the Kerr/Schwarzschild null-geodesic solver.
+- Before Quest work: produce a stable PC renderer output and define the headset
+  validation checks.
+- Before MR passthrough lensing claims: verify whether the chosen API exposes
+  camera-frame pixels. Otherwise limit claims to overlay, depth occlusion, or
+  approximate environment-texture lensing.
+- Before simplified GRRT: document emission/absorption conventions and benchmark
+  targets.
+- Before GRMHD: use existing snapshots and GRRT post-processing; do not start by
+  implementing a GRMHD solver.
+- Before BBH: separate visual toys, time-dependent vacuum metrics,
+  phenomenological accretion, and full NR/GRMHD/GRRT.
+- Before neural acceleration: generate exact data first, then learn transfer
+  functions or cached radiance fields. Do not use neural networks to directly
+  generate final black-hole imagery without audit buffers.
 
 ## Paper Draft Policy
 

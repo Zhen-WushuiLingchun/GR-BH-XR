@@ -1,0 +1,103 @@
+# Physical Scope
+
+GR-BH-XR is a physics-auditable renderer. Its purpose is to compute, cache,
+visualize, and inspect relativistic transfer quantities for black-hole scenes,
+not merely to produce visually plausible images.
+
+## Core Transfer Map
+
+The central object is the null-geodesic transfer map:
+
+```text
+(alpha, beta) ->
+  escape/capture,
+  r_m, phi_m,
+  g_m,
+  Delta t_m,
+  n_m,
+  tau_m,
+  I_nu_o
+```
+
+Where:
+
+- `(alpha, beta)` are observer-screen coordinates.
+- `m` is image order or disk-crossing order.
+- `g_m = nu_o / nu_e` is the redshift factor.
+- `Delta t_m` is the time delay.
+- `n_m` is winding or orbit number.
+- `tau_m` is optical depth.
+- `I_nu_o` is observed specific intensity.
+
+## First-Year Scope
+
+The first-year target is:
+
+```text
+single Kerr black hole
++ background lensing
++ shadow
++ thin disk transfer function
++ redshift/Doppler effects
++ time-delay-aware disk variability
++ direct, secondary, and higher-order images
++ Quest 3 PCVR/MR display
++ benchmark comparisons with AART, RAPTOR, and Odyssey where applicable
+```
+
+## Deferred Scope
+
+The following are deferred until the Kerr pipeline and validation path are
+stable:
+
+- full GRMHD;
+- BBH numerical relativity;
+- Quest-native GRRT;
+- neural networks that directly generate final black-hole images;
+- true passthrough-pixel lensing in MR unless camera-frame access is available.
+
+## Visual And Academic Claims
+
+Use these labels consistently:
+
+- `validated physics`: backed by equations, invariants, and benchmark checks.
+- `physics approximation`: documented approximation with known limitations.
+- `visual prototype`: interaction or rendering prototype not suitable for
+  academic claims.
+
+For BBH visual toys, the UI and documentation must state:
+
+```text
+Approximate visual model, not a solution of Einstein equations.
+```
+
+## Required Vocabulary
+
+- `shadow`: screen region whose rays are captured by the horizon.
+- `critical curve`: boundary on the observer screen separating capture and
+  escape in the idealized limit.
+- `lensing ring`: strongly lensed image structure near the critical curve.
+- `photon ring`: contribution associated with rays that orbit near the photon
+  region before reaching the observer.
+- `direct image`: disk or source image with the lowest crossing/order.
+- `secondary image`: next-order lensed image after additional bending.
+- `higher-order image`: images with larger disk-crossing or winding order.
+- `ISCO`: innermost stable circular orbit for the chosen Kerr spin.
+- `disk inner edge`: model-dependent disk cutoff, initially set to `r_ISCO(a)`
+  unless documented otherwise.
+
+## XR Scope
+
+Quest 3 is introduced first as a PCVR/MR viewer:
+
+```text
+PC GPU -> stereo textures -> Quest Link/Air Link -> head-pose feedback
+```
+
+MR is staged:
+
+- MR-1: passthrough background plus virtual black-hole layer plus Depth API
+  occlusion.
+- MR-2: approximate environment-texture or room-mesh lensing.
+- MR-3: true camera-frame lensing only when passthrough camera-frame access is
+  available.
