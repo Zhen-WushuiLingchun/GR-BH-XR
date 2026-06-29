@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gr-bh-xr"
+version = "0.1.0"
+description = "Physics-auditable black-hole XR reference tools"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "h5py",
+  "matplotlib",
+  "numpy",
+  "scipy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

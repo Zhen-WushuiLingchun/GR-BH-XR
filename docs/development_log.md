@@ -19,6 +19,34 @@ from here.
 
 ## Log
 
+### 2026-06-29 - Phase 1 Python CPU Kerr reference solver
+
+- Goal: Start Phase 1 with an auditable Python CPU reference tracer for
+  Schwarzschild/Kerr exterior null geodesics.
+- Changed files / components: `pyproject.toml`, `src/gr_bh_xr/`,
+  `tests/`, and `validation/schwarzschild_shadow/README.md`.
+- Academic reason: Establish a small, inspectable numerical baseline before any
+  GPU shader, disk-transfer, GRRT, or XR work.
+- Physical correspondence: Implements Boyer-Lindquist exterior inverse metric,
+  Hamiltonian null-ray evolution, Bardeen asymptotic screen constants, horizon
+  capture classification, sky escape classification, and diagnostics for
+  `H`, `E`, `L_z`, and Carter `Q`.
+- Assumptions and conventions: Geometric units with `M = 1` by default. Capture
+  is classified at `r <= r_+ + 0.3 M` because the Phase 1 Boyer-Lindquist solver
+  intentionally stops before the coordinate singularity; Kerr-Schild
+  horizon-penetrating integration is deferred.
+- Validation: `python -m pytest` passed with 7 tests. Schwarzschild shadow
+  validation with grid 129 estimated `b_c = 5.196157378143742` versus
+  `3 sqrt(3) M = 5.196152422706632`, absolute error
+  `4.9554371095439365e-06`.
+- References: Equation/source keys are listed in `docs/equations.md`; primary
+  analytic provenance is in
+  `references/source_notes/2026-06-29-foundational-analytic-references.md`.
+- Open issues / next steps: Replace finite-difference metric derivatives with
+  analytic derivatives if stricter near-horizon residuals are needed; add
+  Kerr-specific critical-curve comparisons against Gralla-Lupsasca/AART after
+  the Schwarzschild baseline is stable.
+
 ### 2026-06-29 - Foundational analytic references and Phase 0 fixes
 
 - Goal: Close the Phase 0 gap where GRRT/GRMHD codes and shaders were indexed but
