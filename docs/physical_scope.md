@@ -90,6 +90,10 @@ Use these sources as follows:
 
 ## Required Vocabulary
 
+The shadow / critical curve / lensing ring / photon ring distinction follows
+`gralla2019shadowsPhotonRings`; the Kerr higher-order image scaling follows
+`gralla2020lensingKerr` (see `references/references.bib`).
+
 - `shadow`: screen region whose rays are captured by the horizon.
 - `critical curve`: boundary on the observer screen separating capture and
   escape in the idealized limit.

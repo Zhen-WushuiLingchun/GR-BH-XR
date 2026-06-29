@@ -19,6 +19,47 @@ from here.
 
 ## Log
 
+### 2026-06-29 - Foundational analytic references and Phase 0 fixes
+
+- Goal: Close the Phase 0 gap where GRRT/GRMHD codes and shaders were indexed but
+  the primary analytic literature behind the documented equations was missing,
+  and fix three audit issues from the Phase 0 review.
+- Changed files / components: `references/references.bib`,
+  `references/references.md`,
+  `references/source_notes/2026-06-29-foundational-analytic-references.md`,
+  `references/pdfs/2019-gralla-holz-wald-shadows-photon-lensing-rings.pdf`,
+  `references/pdfs/2020-gralla-lupsasca-lensing-by-kerr.pdf`,
+  `references/pdfs/2020-gralla-lupsasca-null-geodesics-kerr.pdf`,
+  `references/pdfs/2016-odyssey-gpu-kerr-grrt.pdf`, `references/pdfs/README.md`,
+  `docs/equations.md`, `docs/physical_scope.md`, and
+  `docs/validation_targets.md`.
+- Academic reason: An auditable renderer needs provenance for its equations.
+  Added Carter 1968, Bardeen/Press/Teukolsky 1972, Bardeen 1973, Cunningham 1975,
+  Luminet 1979, Gralla-Holz-Wald 2019, and the two Gralla-Lupsasca 2020 papers,
+  then linked each equation block to its primary source.
+- Physical correspondence: Carter constant and separability, ISCO and LNRF,
+  Kerr null geodesics and screen coordinates, disk redshift transfer,
+  direct/secondary images, and photon-ring/lensing-ring structure are now traced
+  to primary sources rather than only to reference codes.
+- Assumptions and conventions: Open arXiv PDFs (Gralla x3, Odyssey) are stored in
+  `references/pdfs/`; pre-arXiv classics (Carter, BPT, Bardeen, Cunningham,
+  Luminet) have no open PDF and are indexed by DOI/bibcode only.
+- Validation: All four arXiv IDs confirmed against arXiv abstract pages before
+  download (titles/authors/journal match BibTeX); the two Gralla-Lupsasca papers
+  were disambiguated (1910.12873 lensing, 1910.12881 geodesics); each PDF checked
+  for a `%PDF` header; repository consistency checks rerun.
+- Fixes applied: (1) Odyssey open PDF stored and `pu2016odyssey` given an arXiv
+  eprint; (2) Wayback archived snapshots and access dates added for the Meta and
+  Unity web docs (device-optimization save still pending); (3) PDF year
+  convention documented in `references/pdfs/README.md` to resolve the KORAL
+  filename-vs-citation-year question (it follows the same arXiv-year pattern as
+  BHAC and is intentional).
+- References: See `references/references.md` and
+  `references/source_notes/2026-06-29-foundational-analytic-references.md`.
+- Open issues / next steps: Re-archive the Meta device-optimization page once the
+  Wayback save completes; begin Phase 1 CPU Kerr solver with the
+  Gralla-Lupsasca closed-form geodesics as an analytic cross-check.
+
 ### 2026-06-28 - Expanded GRRT, GRMHD, and GLSL reference baseline
 
 - Goal: Add deeper GRRT, relativistic-fluid, and real-time shader references

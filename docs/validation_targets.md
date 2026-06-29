@@ -15,6 +15,13 @@ Before implementation:
   HARM, primitive recovery, EHT GRMHD comparison, iharm3D, Athena++ radiation
   GRMHD, KORAL M1 radiation fluid dynamics, Bruneton real-time shader, and
   Kerr-Newman polarization watchlist are stored under `references/pdfs/`;
+- foundational analytic references behind the documented equations are indexed:
+  Carter 1968 (Carter constant), Bardeen/Press/Teukolsky 1972 (ISCO), Bardeen
+  1973 (Kerr null geodesics and screen coordinates), Cunningham 1975 (disk
+  redshift transfer), Luminet 1979 (direct/secondary disk images), and the
+  Gralla-Holz-Wald 2019 / Gralla-Lupsasca 2020 photon-ring papers, with open
+  PDFs stored where available and pre-arXiv classics indexed by DOI/bibcode;
+- every equation block in `docs/equations.md` cites a primary source;
 - BibTeX keys for literature and reviewed code repositories are stored in
   `references/references.bib`;
 - reference code reviews for RAPTOR, AART, Odyssey, ipole, and grtrans are

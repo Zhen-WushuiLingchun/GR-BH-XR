@@ -102,6 +102,11 @@ Each meaningful development step should record:
 
 - State the coordinate system, sign convention, units, and normalization before
   implementing physics logic.
+- Before developing a domain-specific script or solver, first read the relevant
+  indexed references under `references/` and identify the equation/source keys
+  the implementation follows. Implement against the paper conclusions and record
+  any deliberate approximation or deviation, so theory and code do not silently
+  diverge.
 - Default to geometric units (`G = c = 1`) and document any departure from that
   convention.
 - Do not add a physics module without a documented validation path in

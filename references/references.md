@@ -49,10 +49,11 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 ### Odyssey - GPU-based Kerr GRRT
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
-- PDF path: Not stored; open original PDF not confirmed in Phase 0.
+- PDF path: `references/pdfs/2016-odyssey-gpu-kerr-grrt.pdf`
 - Code review path: `references/code_reviews/2026-06-28-reference-code-baseline.md`
 - BibTeX key: `pu2016odyssey`; code key `pu2026odysseycode`
-- Stable locator: https://github.com/hungyipu/Odyssey
+- Stable locator: https://arxiv.org/abs/1601.02063 (paper);
+  https://github.com/hungyipu/Odyssey (code)
 - Search date: 2026-06-28
 - Search terms: Odyssey GPU Kerr GRRT CUDA C++
 - Why added: Public GPU-based GRRT code relevant to implementation strategy.
@@ -124,6 +125,9 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 - Code review path: Not applicable.
 - BibTeX key: Not applicable.
 - Stable locator: https://developers.meta.com/horizon/resources/device-optimization-comparison/
+- Archived snapshot: Pending; Wayback save requested 2026-06-29 but no snapshot
+  confirmed yet. Re-archive before any release milestone.
+- Accessed: 2026-06-28
 - Search date: 2026-06-28
 - Search terms: Quest 3 optimization refresh rate frame budget
 - Why added: Establishes headset performance constraints.
@@ -141,6 +145,8 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 - Code review path: Not applicable.
 - BibTeX key: Not applicable.
 - Stable locator: https://developers.meta.com/horizon/documentation/native/android/mobile-passthrough-over-link/
+- Archived snapshot: http://web.archive.org/web/20260523153034/https://developers.meta.com/horizon/documentation/native/android/mobile-passthrough-over-link/
+- Accessed: 2026-06-28
 - Search date: 2026-06-28
 - Search terms: Meta passthrough over Link host PC
 - Why added: Supports PC-hosted Quest MR iteration.
@@ -157,6 +163,8 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 - Code review path: Not applicable.
 - BibTeX key: Not applicable.
 - Stable locator: https://docs.unity3d.com/Packages/com.unity.xr.meta-openxr%402.2/manual/features/camera.html
+- Archived snapshot: http://web.archive.org/web/20260227043113/https://docs.unity3d.com/Packages/com.unity.xr.meta-openxr@2.2/manual/features/camera.html
+- Accessed: 2026-06-28
 - Search date: 2026-06-28
 - Search terms: Unity OpenXR Meta passthrough camera pixel data
 - Why added: Defines MR passthrough pixel-access limits.
@@ -175,6 +183,8 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 - Code review path: Not applicable.
 - BibTeX key: Not applicable.
 - Stable locator: https://developers.meta.com/horizon/documentation/unity/unity-depthapi-overview/
+- Archived snapshot: http://web.archive.org/web/20260616003018/https://developers.meta.com/horizon/documentation/unity/unity-depthapi-overview/
+- Accessed: 2026-06-28
 - Search date: 2026-06-28
 - Search terms: Meta Depth API Unity occlusion
 - Why added: Basis for MR depth occlusion.
@@ -539,3 +549,159 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
   relativistic effect toggles, quality/performance modes.
 - Project use: Interaction and artifact-disclosure reference.
 - Limitations / open questions: Visual demo; not a Kerr or GRRT benchmark.
+
+## Foundational Analytic References
+
+These are the primary sources behind the equations in `docs/equations.md` and the
+vocabulary in `docs/physical_scope.md`. Pre-arXiv classics have no open-access
+PDF; they are indexed by DOI/bibcode and a personal copy may be placed under the
+ignored `references/pdfs/local_only/`.
+
+### Carter 1968 - Kerr Separability And Carter Constant
+
+- Source path: `references/source_notes/2026-06-29-foundational-analytic-references.md`
+- PDF path: Not stored; pre-arXiv classic, no open-access PDF (see DOI).
+- Code review path: Not applicable; paper reference.
+- BibTeX key: `carter1968kerr`
+- Stable locator: https://doi.org/10.1103/PhysRev.174.1559
+- Search date: 2026-06-29
+- Search terms: Carter 1968 global structure Kerr family Carter constant
+- Why added: Primary source for separability of Kerr geodesics and the Carter
+  constant `Q` that `docs/validation_targets.md` requires tracking.
+- Short summary: Establishes the fourth integral of motion (Carter constant) and
+  global structure of the Kerr family.
+- Relevant equations / assumptions / methods: Hamilton-Jacobi separation, Carter
+  constant `Q`, conserved `E` and `L_z`.
+- Project use: Provenance for conserved-quantity validation in Phase 1.
+- Limitations / open questions: None for citation; analytic foundation only.
+
+### Bardeen Press Teukolsky 1972 - ISCO And LNRF
+
+- Source path: `references/source_notes/2026-06-29-foundational-analytic-references.md`
+- PDF path: Not stored; pre-arXiv classic, no open-access PDF (see DOI).
+- Code review path: Not applicable; paper reference.
+- BibTeX key: `bardeen1972rotatingBlackHoles`
+- Stable locator: https://doi.org/10.1086/151796
+- Search date: 2026-06-29
+- Search terms: Bardeen Press Teukolsky 1972 rotating black holes ISCO LNRF
+- Why added: Primary source for the innermost stable circular orbit `r_ISCO(a)`
+  used as the default disk inner edge.
+- Short summary: Derives locally nonrotating frames, energy extraction, and
+  circular-orbit / ISCO relations for Kerr.
+- Relevant equations / assumptions / methods: `r_ISCO(a)`, locally nonrotating
+  frame (LNRF), marginally stable orbit conditions.
+- Project use: Provenance for `r_in = r_ISCO(a)` in `docs/equations.md`.
+- Limitations / open questions: None for citation.
+
+### Bardeen 1973 - Kerr Null Geodesics And Screen Coordinates
+
+- Source path: `references/source_notes/2026-06-29-foundational-analytic-references.md`
+- PDF path: Not stored; Les Houches lecture notes, no open-access PDF.
+- Code review path: Not applicable; book chapter reference.
+- BibTeX key: `bardeen1973kerrGeodesics`
+- Stable locator: Black Holes (Les Houches 1972), Gordon and Breach, pp. 215-239
+- Search date: 2026-06-29
+- Search terms: Bardeen 1973 timelike null geodesics Kerr metric impact parameters
+- Why added: Primary source for the observer-screen impact parameters and the
+  `(alpha, beta)` to initial-momentum mapping.
+- Short summary: Classic derivation of timelike and null geodesics in Kerr,
+  including the apparent-position impact parameters seen by a distant observer.
+- Relevant equations / assumptions / methods: Kerr null geodesics, screen impact
+  parameters, photon-region structure.
+- Project use: Provenance for screen-camera mapping in `docs/equations.md`.
+- Limitations / open questions: Book chapter; cite by page range.
+
+### Cunningham 1975 - Kerr Disk Redshift Transfer
+
+- Source path: `references/source_notes/2026-06-29-foundational-analytic-references.md`
+- PDF path: Not stored; pre-arXiv classic, no open-access PDF (see DOI).
+- Code review path: Not applicable; paper reference.
+- BibTeX key: `cunningham1975kerrDiskSpectrum`
+- Stable locator: https://doi.org/10.1086/154033
+- Search date: 2026-06-29
+- Search terms: Cunningham 1975 redshift focusing accretion disk Kerr black hole
+- Why added: Primary source for the disk redshift factor `g` and the transfer
+  function used in `docs/equations.md`.
+- Short summary: Computes redshift and focusing effects on the spectrum of a Kerr
+  accretion disk, defining the relativistic transfer function.
+- Relevant equations / assumptions / methods: Redshift factor `g`, transfer
+  function, flux conservation `I_nu / nu^3` invariance.
+- Project use: Provenance for the redshift and intensity transform in Phase 4.
+- Limitations / open questions: None for citation.
+
+### Luminet 1979 - First Thin-Disk Black-Hole Image
+
+- Source path: `references/source_notes/2026-06-29-foundational-analytic-references.md`
+- PDF path: Not stored; pre-arXiv classic, no open-access PDF (see ADS bibcode).
+- Code review path: Not applicable; paper reference.
+- BibTeX key: `luminet1979blackHoleImage`
+- Stable locator: https://ui.adsabs.harvard.edu/abs/1979A&A....75..228L/abstract
+- Search date: 2026-06-29
+- Search terms: Luminet 1979 image spherical black hole thin accretion disk
+- Why added: Primary source for direct and secondary disk images and the thin-disk
+  appearance the renderer targets.
+- Short summary: First simulated optical appearance of a Schwarzschild thin
+  accretion disk, including direct and secondary (higher-order) images.
+- Relevant equations / assumptions / methods: Isoradial curves, direct/secondary
+  image construction, flux asymmetry from Doppler beaming.
+- Project use: Provenance and visual sanity check for direct/secondary images.
+- Limitations / open questions: Schwarzschild only; no open-access PDF.
+
+### Gralla Holz Wald 2019 - Shadows, Photon Rings, Lensing Rings
+
+- Source path: `references/source_notes/2026-06-29-foundational-analytic-references.md`
+- PDF path: `references/pdfs/2019-gralla-holz-wald-shadows-photon-lensing-rings.pdf`
+- Code review path: Not applicable; paper reference.
+- BibTeX key: `gralla2019shadowsPhotonRings`
+- Stable locator: https://arxiv.org/abs/1906.00873
+- Search date: 2026-06-29
+- Search terms: Gralla Holz Wald black hole shadows photon rings lensing rings
+- Why added: Primary source for the shadow / critical curve / lensing ring /
+  photon ring vocabulary used in `docs/physical_scope.md`.
+- Short summary: Distinguishes the shadow, lensing ring, and photon ring as
+  separate observable features and their dependence on emission profile.
+- Relevant equations / assumptions / methods: Photon-orbit analysis, image-order
+  decomposition, emission-dependent ring brightness.
+- Project use: Provenance for the photon-ring/lensing-ring definitions and a
+  qualitative validation target for higher-order images.
+- Limitations / open questions: Schwarzschild-focused exposition; Kerr extension
+  via the Gralla-Lupsasca papers.
+
+### Gralla Lupsasca 2020 - Lensing By Kerr Black Holes
+
+- Source path: `references/source_notes/2026-06-29-foundational-analytic-references.md`
+- PDF path: `references/pdfs/2020-gralla-lupsasca-lensing-by-kerr.pdf`
+- Code review path: Not applicable; paper reference.
+- BibTeX key: `gralla2020lensingKerr`
+- Stable locator: https://arxiv.org/abs/1910.12873
+- Search date: 2026-06-29
+- Search terms: Gralla Lupsasca lensing by Kerr black holes photon ring
+- Why added: Analytic theory of Kerr lensing and the demagnification / rotation /
+  time-delay parameters of successive photon-ring images; theory AART builds on.
+- Short summary: Derives the exponential demagnification, rotation, and time
+  delay of higher-order images near the Kerr photon ring.
+- Relevant equations / assumptions / methods: Lyapunov exponents of nearly bound
+  photon orbits, image-order scaling parameters.
+- Project use: Provenance for adaptive critical-curve sampling and higher-order
+  image validation.
+- Limitations / open questions: Analytic limit; numerical comparison deferred to
+  Phase 2/4.
+
+### Gralla Lupsasca 2020 - Null Geodesics Of The Kerr Exterior
+
+- Source path: `references/source_notes/2026-06-29-foundational-analytic-references.md`
+- PDF path: `references/pdfs/2020-gralla-lupsasca-null-geodesics-kerr.pdf`
+- Code review path: Not applicable; paper reference.
+- BibTeX key: `gralla2020nullGeodesicsKerr`
+- Stable locator: https://arxiv.org/abs/1910.12881
+- Search date: 2026-06-29
+- Search terms: Gralla Lupsasca null geodesics Kerr exterior analytic
+- Why added: Self-contained modern analytic treatment of Kerr null geodesics in
+  terms of elliptic integrals; reference for the Phase 1 solver and cross-checks.
+- Short summary: Provides closed-form null-geodesic solutions for the Kerr
+  exterior using Boyer-Lindquist coordinates and conserved quantities.
+- Relevant equations / assumptions / methods: Elliptic-integral geodesic
+  solutions, conserved `E`, `L_z`, Carter `Q`, radial/angular potentials.
+- Project use: Analytic cross-check target for the numerical Kerr integrator.
+- Limitations / open questions: Boyer-Lindquist exterior; horizon-penetrating
+  checks still use Kerr-Schild as in `docs/equations.md`.

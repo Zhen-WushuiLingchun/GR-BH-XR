@@ -18,6 +18,15 @@ Examples:
 2022-aart-kerr-photon-rings.pdf
 ```
 
+### Year Convention
+
+`YYYY` in the file name is the **preprint/arXiv year** of the stored PDF. The
+BibTeX `year` field is the **journal publication year**, which may differ by one
+year (for example `2016-bhac-...` for arXiv 2016 with journal year 2017, and
+`2012-koral-...` for arXiv 2012 with journal year 2013). This is intentional and
+not an inconsistency: the file name tracks the document that was downloaded,
+while the citation tracks the published version.
+
 ## Index Requirement
 
 Every PDF kept here must be indexed in `references/references.md` with:

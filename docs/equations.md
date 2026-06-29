@@ -3,6 +3,23 @@
 This file records equations and conventions that implementation work must keep
 traceable.
 
+## Primary Sources
+
+Each equation block below cites the primary analytic source it follows. BibTeX
+keys resolve in `references/references.bib`; provenance notes are in
+`references/source_notes/2026-06-29-foundational-analytic-references.md`.
+
+- Kerr null geodesics and `(alpha, beta)` screen mapping: `bardeen1973kerrGeodesics`,
+  `gralla2020nullGeodesicsKerr`.
+- Carter constant and separability: `carter1968kerr`.
+- ISCO and locally nonrotating frame: `bardeen1972rotatingBlackHoles`.
+- Disk redshift / transfer function: `cunningham1975kerrDiskSpectrum`.
+- Direct / secondary disk images: `luminet1979blackHoleImage`.
+- Shadow / lensing ring / photon ring and higher-order image scaling:
+  `gralla2019shadowsPhotonRings`, `gralla2020lensingKerr`.
+- Simplified and polarized GRRT: `younsi2012grrt`, `bronzwaer2018raptor`,
+  `bronzwaer2020raptorii`.
+
 ## Coordinate And Unit Conventions
 
 Default conventions until superseded by a more detailed derivation:
@@ -32,7 +49,9 @@ dx^mu / dlambda = partial H / partial p_mu
 dp_mu / dlambda = - partial H / partial x^mu
 ```
 
-Required tracked invariants:
+Required tracked invariants (`Q` from `carter1968kerr`; screen mapping and
+geodesic structure from `bardeen1973kerrGeodesics` and
+`gralla2020nullGeodesicsKerr`):
 
 ```text
 g^{mu nu} p_mu p_nu = 0
@@ -49,7 +68,10 @@ b_c = 3 sqrt(3) M
 
 ## Thin Disk Surface Transfer
 
-Initial optically thick thin-disk surface:
+Initial optically thick thin-disk surface (`r_ISCO(a)` from
+`bardeen1972rotatingBlackHoles`; redshift/transfer function from
+`cunningham1975kerrDiskSpectrum`; direct/secondary image structure from
+`luminet1979blackHoleImage`):
 
 ```text
 theta = pi / 2
