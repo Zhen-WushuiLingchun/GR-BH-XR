@@ -60,10 +60,22 @@ Required checks:
 b_c = 3 sqrt(3) M
 ```
 
+- Kerr critical-curve comparison against spherical photon orbit formulae from
+  `gralla2020nullGeodesicsKerr` / `bardeen1973kerrGeodesics` for at least
+  `a = 0.5`, `i = 60 deg` and `a = 0.9`, `i = 60 deg`;
+
 Initial reference tolerance target:
 
 ```text
 abs(H) < 1e-8
+```
+
+Kerr critical-curve validation target:
+
+```text
+max_abs_error < 0.05 M
+rms_error < 0.02 M
+invalid event count = 0
 ```
 
 The tolerance may be revised only with a documented numerical reason.

@@ -19,6 +19,32 @@ from here.
 
 ## Log
 
+### 2026-06-29 - Kerr critical curve validation
+
+- Goal: Validate the Phase 1 Kerr capture/escape boundary against the analytic
+  critical curve before adding lens-map persistence or finite-radius tetrads.
+- Changed files / components: `src/gr_bh_xr/critical_curve.py`,
+  `src/gr_bh_xr/validate_kerr_critical_curve.py`, tests, and
+  `validation/kerr_critical_curve/README.md`.
+- Academic reason: A Schwarzschild shadow test validates only the `a = 0`
+  degeneracy. The Kerr solver needs an analytic photon-shell / critical-curve
+  comparison to support claims that Kerr ray tracing is physically aligned.
+- Physical correspondence: Implements spherical photon orbit constants
+  `(lambda_tilde, eta_tilde)`, the Bardeen screen map, visible critical-curve
+  branches, and radial capture/escape bisection against the analytic curve.
+- Assumptions and conventions: The validator uses `horizon_eps = 0.02 M` so
+  high-spin prograde comparisons are not biased by the safer general tracing
+  default `r_+ + 0.3 M`.
+- Validation: `python -m pytest` passed with 11 tests. Default runs produced
+  `a = 0.5`, `i = 60 deg`: `max_abs_error = 0.003645603127708341 M`,
+  `rms_error = 0.000739284655592394 M`, invalid events `0`; and `a = 0.9`,
+  `i = 60 deg`: `max_abs_error = 0.002705205141551481 M`,
+  `rms_error = 0.00040112169064067534 M`, invalid events `0`.
+- References: `gralla2020nullGeodesicsKerr`, `gralla2020lensingKerr`, and
+  `bardeen1973kerrGeodesics`.
+- Open issues / next steps: Persist full lens maps and add finite-radius
+  observer tetrads after the critical-curve gate is stable.
+
 ### 2026-06-29 - Phase 1 Python CPU Kerr reference solver
 
 - Goal: Start Phase 1 with an auditable Python CPU reference tracer for
