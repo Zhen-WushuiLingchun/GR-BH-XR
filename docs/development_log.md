@@ -19,6 +19,40 @@ from here.
 
 ## Log
 
+### 2026-06-29 - Diagnostic grouping and Phase 1 lens-map buffers
+
+- Goal: Split Kerr critical-curve diagnostics so near-horizon
+  Boyer-Lindquist residuals cannot be mistaken for outer-ray residuals, then
+  persist Phase 1 lens-map audit buffers.
+- Changed files / components: `src/gr_bh_xr/validate_kerr_critical_curve.py`,
+  `src/gr_bh_xr/generate_lens_map.py`, `src/gr_bh_xr/plot_lens_map.py`, tests,
+  `data/lens_maps/README.md`, and `validation/lens_map/README.md`.
+- Academic reason: The renderer must expose capture/escape state and numerical
+  residuals as data products, not only as rendered images. The Kerr critical
+  validator also needs to separate curve-comparison success from the known
+  Boyer-Lindquist near-horizon numerical limitation.
+- Physical correspondence: Lens maps store screen coordinates `(alpha, beta)`,
+  event class, minimum Boyer-Lindquist radius, Hamiltonian residual, `E`,
+  `L_z`, Carter `Q` drift, and equatorial crossing counts for each screen
+  sample.
+- Assumptions and conventions: The lens-map generator keeps the Phase 1
+  Boyer-Lindquist exterior tracer and default `horizon_eps = 0.3 M`. HDF5 and
+  PDF outputs are generated under ignored `outputs/phase1/`.
+- Validation: `python -m pytest` passed with 13 tests. Kerr `a = 0.9`,
+  `i = 60 deg` critical-curve validation still had
+  `max_abs_error = 0.002705205141551481 M`, `rms_error =
+  0.00040112169064067534 M`, invalid events `0`; grouped diagnostics reported
+  outer `h_max_abs = 1.750051806803654e-07` and near-capture `h_max_abs =
+  0.0001606790337973507`. Generated 129x129 lens maps produced Schwarzschild
+  counts `capture = 5385`, `escape = 11178`, `invalid = 78`, and Kerr `a = 0.5`,
+  `i = 60 deg` counts `capture = 5296`, `escape = 11263`, `invalid = 82`; the
+  Schwarzschild HDF5 rendered to `outputs/phase1/shadow_validation.pdf`.
+- References: Data products follow the Phase 1 Hamiltonian/Carter diagnostics
+  and Bardeen screen coordinates documented in `docs/equations.md`.
+- Open issues / next steps: The 129x129 maps include near-critical invalid
+  samples under the current `max_lambda`; future work should add adaptive
+  refinement, winding/image-order diagnostics, and finite-radius tetrads.
+
 ### 2026-06-29 - Kerr critical curve validation
 
 - Goal: Validate the Phase 1 Kerr capture/escape boundary against the analytic

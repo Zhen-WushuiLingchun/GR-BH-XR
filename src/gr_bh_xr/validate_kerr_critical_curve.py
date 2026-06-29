@@ -13,6 +13,7 @@ import numpy as np
 
 from .critical_curve import critical_curve_polygon, curve_center, ray_polygon_intersection_radius
 from .geodesic import trace_ray
+from .metric import horizon_radius
 from .types import CameraConfig, MetricParams, RayDiagnostics, TraceConfig
 
 
@@ -98,6 +99,26 @@ def _bracket_boundary(
     return low_radius, high_radius, low_diag, high_diag
 
 
+def _summarize_diagnostics(diags: list[RayDiagnostics]) -> dict[str, float | int | None]:
+    if not diags:
+        return {
+            "count": 0,
+            "h_max_abs": None,
+            "e_drift_abs": None,
+            "lz_drift_abs": None,
+            "q_drift_abs": None,
+            "min_r": None,
+        }
+    return {
+        "count": len(diags),
+        "h_max_abs": float(max(diag.h_max_abs for diag in diags)),
+        "e_drift_abs": float(max(diag.e_drift_abs for diag in diags)),
+        "lz_drift_abs": float(max(diag.lz_drift_abs for diag in diags)),
+        "q_drift_abs": float(max(diag.q_drift_abs for diag in diags)),
+        "min_r": float(min(diag.min_r for diag in diags)),
+    }
+
+
 def validate_kerr_critical_curve(
     *,
     params: MetricParams,
@@ -170,6 +191,9 @@ def validate_kerr_critical_curve(
         "invalid": sum(1 for diag in all_diags if diag.event == "invalid"),
         "disk_crossing": sum(1 for diag in all_diags if diag.event == "disk_crossing"),
     }
+    near_capture_radius = horizon_radius(params) + 0.1 * params.M
+    near_capture_diags = [diag for diag in all_diags if diag.min_r <= near_capture_radius]
+    outer_diags = [diag for diag in all_diags if diag.min_r > near_capture_radius]
     return {
         "metric": dataclasses.asdict(params),
         "theta_obs": theta_obs,
@@ -189,6 +213,11 @@ def validate_kerr_critical_curve(
             "lz_drift_abs": float(max(diag.lz_drift_abs for diag in all_diags)),
             "q_drift_abs": float(max(diag.q_drift_abs for diag in all_diags)),
             "min_r": float(min(diag.min_r for diag in all_diags)),
+        },
+        "diagnostic_groups": {
+            "near_capture_radius": float(near_capture_radius),
+            "outer": _summarize_diagnostics(outer_diags),
+            "near_capture": _summarize_diagnostics(near_capture_diags),
         },
         "samples": samples,
     }

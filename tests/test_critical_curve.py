@@ -58,5 +58,16 @@ def test_kerr_critical_curve_validation_smoke():
 
     assert result["max_abs_error"] < 0.15
     assert result["event_counts"]["invalid"] == 0
-    for key in ("max_abs_error", "rms_error", "median_abs_error", "event_counts", "worst_diagnostics"):
+    for key in (
+        "max_abs_error",
+        "rms_error",
+        "median_abs_error",
+        "event_counts",
+        "worst_diagnostics",
+        "diagnostic_groups",
+    ):
         assert key in result
+    assert "outer" in result["diagnostic_groups"]
+    assert "near_capture" in result["diagnostic_groups"]
+    assert result["diagnostic_groups"]["outer"]["count"] > 0
+    assert result["diagnostic_groups"]["near_capture"]["count"] > 0

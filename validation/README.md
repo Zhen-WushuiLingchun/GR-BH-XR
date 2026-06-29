@@ -30,3 +30,12 @@ Initial tolerance target:
 ```text
 abs(H) < 1e-8
 ```
+
+Tracked Phase 1 validation entry points:
+
+- `schwarzschild_shadow/README.md`: Schwarzschild critical impact parameter
+  `b_c = 3 sqrt(3) M`.
+- `kerr_critical_curve/README.md`: Kerr analytic critical-curve comparison for
+  finite spin and inclination.
+- `lens_map/README.md`: HDF5 persistence of per-pixel diagnostic buffers and
+  basic validation figures.

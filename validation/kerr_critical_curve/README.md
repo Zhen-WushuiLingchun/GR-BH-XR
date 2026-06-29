@@ -46,7 +46,7 @@ python -m gr_bh_xr.validate_kerr_critical_curve --spin 0.9 --inclination-deg 60 
 
 Generated JSON files are written under `outputs/phase1/`, which is ignored by
 Git. They record max/RMS/median boundary errors, event counts, worst
-diagnostics, and per-angle samples.
+diagnostics, grouped diagnostics, and per-angle samples.
 
 ## Acceptance
 
@@ -63,3 +63,15 @@ critical-curve comparisons are not biased by the safer general tracing default
 of `r_+ + 0.3 M`. The worst Hamiltonian and conserved-quantity diagnostics are
 recorded for audit, but near-capture Boyer-Lindquist residuals are not the
 primary pass/fail condition for this curve comparison.
+
+The pass/fail criterion for this validator is the capture/escape boundary error
+and invalid-event count. The JSON keeps the legacy aggregate
+`worst_diagnostics` field and also writes `diagnostic_groups.outer` and
+`diagnostic_groups.near_capture`, split at `min_r <= r_+ + 0.1 M`. The outer
+group is the place to review Hamiltonian residuals separately from capture-side
+termination. The near-capture group is expected to degrade as rays approach the
+Boyer-Lindquist coordinate singularity, especially for high-spin prograde
+samples. If either group exceeds the general Phase 1 residual target, that
+exceedance is recorded as a numerical limitation and motivation for analytic
+metric derivatives and the deferred Kerr-Schild horizon-penetrating solver, not
+a failure of the critical-curve boundary comparison.

@@ -78,6 +78,20 @@ rms_error < 0.02 M
 invalid event count = 0
 ```
 
+Kerr critical-curve JSON must split diagnostics into `outer` and
+`near_capture` groups so near-horizon Boyer-Lindquist residual degradation is
+not confused with the outer-ray Hamiltonian target.
+
+Lens-map persistence target:
+
+- HDF5 output records `alpha`, `beta`, `event_code`, `min_r`, `h_max_abs`,
+  `e_drift_abs`, `lz_drift_abs`, `q_drift_abs`, and `disk_crossings`;
+- event-code mapping is stored in HDF5 attributes;
+- default Schwarzschild `alpha_max = beta_max = 8M` map includes both capture
+  and escape samples;
+- a validation figure can be generated from the HDF5 file without retracing
+  rays.
+
 The tolerance may be revised only with a documented numerical reason.
 
 ## Phase 2 GPU Kerr Lensing
