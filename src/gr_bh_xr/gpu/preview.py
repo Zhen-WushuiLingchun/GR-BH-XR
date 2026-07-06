@@ -26,6 +26,22 @@ class PreviewState:
 
 
 VIEW_NAMES = ("event", "min_r", "h_residual", "q_drift")
+PREVIEW_ENVELOPE_MIN_INCLINATION_DEG = 20.0
+PREVIEW_ENVELOPE_MAX_INCLINATION_DEG = 160.0
+PREVIEW_ENVELOPE_MAX_ABS_SPIN = 0.95
+
+
+def preview_envelope_warning(spin: float, inclination_deg: float) -> str:
+    """Return a title-bar warning for known f32 fixed-step preview limits."""
+    outside_inclination = not (
+        PREVIEW_ENVELOPE_MIN_INCLINATION_DEG
+        <= inclination_deg
+        <= PREVIEW_ENVELOPE_MAX_INCLINATION_DEG
+    )
+    outside_spin = abs(spin) > PREVIEW_ENVELOPE_MAX_ABS_SPIN
+    if outside_inclination or outside_spin:
+        return " | WARNING: outside f32 preview envelope"
+    return ""
 
 
 def build_config(
@@ -199,9 +215,10 @@ def main() -> None:
 
 
 def _title(state: PreviewState) -> str:
+    warning = preview_envelope_warning(state.spin, state.inclination_deg)
     return (
         f"GR-BH-XR GPU preview | a={state.spin:.2f} | i={state.inclination_deg:.1f} | "
-        f"view={VIEW_NAMES[state.view_index]}"
+        f"view={VIEW_NAMES[state.view_index]}{warning}"
     )
 
 

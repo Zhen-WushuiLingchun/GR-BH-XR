@@ -19,6 +19,33 @@ from here.
 
 ## Log
 
+### 2026-07-06 - GPU preview operating envelope
+
+- Goal: Make the interactive GPU preview explicit about known f32 fixed-step
+  limits found during near-polar high-spin exploration.
+- Changed files / components: `src/gr_bh_xr/gpu/preview.py`,
+  `validation/gpu_kerr_lensing/README.md`, GPU tests, and this log.
+- Academic reason: A physics-auditable renderer should label numerical
+  operating limits instead of letting a visually dramatic artifact be mistaken
+  for a new physical feature or a silent renderer bug.
+- Physical correspondence: No equations or shader integration rules changed.
+  The default preview now warns outside the documented envelope
+  `20 deg <= i <= 160 deg`, `|a| <= 0.95`. In the reproduced non-gating
+  near-polar case `a = 0.95`, `i = 5 deg`, the observed red solver failures,
+  magenta polar-step overshoots, and near-critical misclassification band are
+  attributed to the Bardeen polar screen degeneracy, Boyer-Lindquist axis
+  terms, and f32 fixed-step growth on winding rays.
+- Assumptions and conventions: Preview warnings do not clamp user-controlled
+  parameters and do not hide invalid pixels. Stronger near-polar claims remain
+  deferred to an axis-regular or Kerr-Schild tracer.
+- Validation: Added a regression test for title-bar warning behavior; full
+  test results are recorded with the corresponding commit.
+- References: Same Task 4 GPU validation notes and Phase 1 Bardeen/Kerr
+  screen-coordinate sources.
+- Open issues / next steps: Continue Unity Editor desktop validation using the
+  in-envelope static packages; reserve near-polar high-spin preview artifacts
+  as documented non-gating stress cases.
+
 ### 2026-07-06 - Task 5 desktop validation package prep
 
 - Goal: Prepare the Unity Editor desktop-validation inputs after the texture

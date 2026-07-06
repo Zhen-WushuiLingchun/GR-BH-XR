@@ -100,6 +100,27 @@ cutoff, or at coordinate-axis singularities. The HDF5 buffers expose these
 limits rather than hiding them. Thin-disk transfer, redshift, time delay,
 GRRT, adaptive sampling, and headset runtime integration are deferred.
 
+The default-step interactive preview is validated for ordinary Kerr inspection,
+not for every screen coordinate chart limit. Its documented f32 operating
+envelope is approximately `20 deg <= i <= 160 deg` and `|a| <= 0.95`. Outside
+that envelope the preview title adds a warning but does not clamp parameters or
+hide bad pixels. This is intentional: the event/debug textures should show the
+prototype's numerical failure modes honestly.
+
+A non-gating near-polar stress case was reproduced at Kerr `a = 0.95`,
+`i = 5 deg`, `grid = 256`, and the default preview step budget. It produced
+three expected artifact classes: 99 red `solver_failure` pixels on the shadow
+edge (`min_r ~= 1.6M` to `3.7M`), 53 magenta `polar_step_overshoot` pixels, and
+a near-critical black/blue misclassification band where CPU arbitration of a
+small ring sample found 2/40 event mismatches. The same `a = 0.95` spin at
+`i = 60 deg` produced only 4 invalid pixels, so this is a near-polar
+Boyer-Lindquist/f32 fixed-step boundary. The causes are the Bardeen screen map
+degenerating as `1 / sin(theta_obs)`, the polar-axis `1 / sin(theta)^2`
+coordinate terms, and fixed-step f32 growth on multi-winding near-critical
+rays. Smaller steps, such as `h = 0.025` with `16000` steps, can reduce the
+visible artifacts but are not a coordinate-level fix; a future Kerr-Schild or
+axis-regular tracer is the physical route for stronger near-polar claims.
+
 The default GPU affine-parameter budget is `steps * step_size = 8000 * 0.05 =
 400`, while the CPU validation reference uses `max_lambda = 1200`. On the
 reviewed 65x65 validation cases this did not hide any event disagreement, but

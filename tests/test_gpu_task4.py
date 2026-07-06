@@ -10,6 +10,7 @@ from gr_bh_xr.generate_lens_map import EVENT_CODES, FAILURE_CODES
 from gr_bh_xr.geodesic import trace_ray
 from gr_bh_xr.gpu.backend import backend_info, select_vulkan_adapter
 from gr_bh_xr.gpu.generate_lens_map import generate_gpu_lens_map
+from gr_bh_xr.gpu.preview import preview_envelope_warning
 from gr_bh_xr.gpu.trace import GpuTraceConfig, trace_screen_points
 from gr_bh_xr.gpu.validate import validate_cpu_vs_gpu
 from gr_bh_xr.types import CameraConfig, MetricParams, TraceConfig
@@ -32,6 +33,12 @@ def test_gpu_backend_finds_vulkan_adapter():
     assert info.requested_backend == "vulkan"
     assert info.backend_type.lower() == "vulkan"
     assert info.adapter_name
+
+
+def test_gpu_preview_warns_outside_documented_envelope():
+    assert preview_envelope_warning(0.5, 60.0) == ""
+    assert "outside f32 preview envelope" in preview_envelope_warning(0.95, 5.0)
+    assert "outside f32 preview envelope" in preview_envelope_warning(0.99, 60.0)
 
 
 def test_gpu_schwarzschild_lens_map_schema_and_events(tmp_path):
