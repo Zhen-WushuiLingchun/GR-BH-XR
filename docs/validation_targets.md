@@ -170,6 +170,22 @@ near-polar substepping and reserves `polar_step_overshoot = 5`; the reviewed
 
 ## Phase 3 Quest PCVR
 
+Task 5 begins with a static Unity texture bridge. Before any headset claim,
+the bridge must define the coordinate contract from HDF5 screen buffers to
+Unity textures:
+
+- raw texture pixel order is documented as `x -> alpha`, `y -> beta`, with
+  `UV(0,0) -> (alpha_min, beta_min)`;
+- black-hole Cartesian axes are documented with `+Z_BH` as the spin axis and
+  the observer at Boyer-Lindquist `phi = 0`, `theta = inclination_deg`;
+- Unity basis vectors are stored in exported metadata, with `forward_BH` from
+  camera to black hole, `up_BH` as the projected spin axis, and `right_BH` as
+  the positive-`alpha` direction;
+- Unity consumes `event_rgba8` plus `escape_dir_unity_rgba32f`, not a visual
+  RGB-only render;
+- the exporter is tested on synthetic HDF5 input so byte sizes, valid masks,
+  and basis mapping cannot silently flip or mirror.
+
 Required checks:
 
 - stereo disparity is correct;

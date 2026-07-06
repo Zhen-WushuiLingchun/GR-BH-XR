@@ -19,6 +19,40 @@ from here.
 
 ## Log
 
+### 2026-07-06 - Task 5 Unity static texture bridge
+
+- Goal: Start Task 5 with a Unity/OpenXR-facing static texture bridge and lock
+  the coordinate convention before headset work.
+- Changed files / components: `src/gr_bh_xr/xr/export_unity_textures.py`,
+  `xr/unity_frontend/`, `tests/test_xr_export.py`, `tests/test_sky.py`,
+  `validation/quest_pcvr/README.md`, and validation documentation.
+- Academic reason: The PCVR renderer must consume auditable transfer buffers
+  rather than an ambiguous RGB-only image. The coordinate convention is part of
+  the physics contract because a silent mirror or vertical flip would make a
+  visually plausible but physically wrong lens map.
+- Physical correspondence: The exporter preserves the HDF5 screen order
+  `x -> alpha`, `y -> beta`, maps `UV(0,0)` to `(alpha_min, beta_min)`, and
+  stores both BH-Cartesian and Unity-space escape direction textures. BH axes
+  use `+Z_BH` as the Kerr spin axis and the observer at `phi = 0`,
+  `theta = inclination_deg`. Unity `+Z` points from the camera to the black
+  hole, Unity `+Y` is the projected spin axis, and Unity `+X` is positive
+  `alpha`.
+- Assumptions and conventions: Unity consumes raw `.bytes` textures:
+  `event_rgba8` as `RGBA32` and `escape_dir_unity_rgba32f` as `RGBAFloat`.
+  Geodesics remain generated offline by the Python CPU/GPU tools; Unity does
+  not integrate rays.
+- Validation: Added tests for the BH-to-Unity basis, raw texture byte counts,
+  metadata fields, and a scalar-vs-vectorized escape-direction cross-check so
+  the inlined vectorized inverse-metric terms in `sky.py` cannot drift from the
+  scalar metric path.
+- References: Same Phase 1 Bardeen/Kerr geodesic sources and Task 4 transfer
+  buffers. This is an engineering bridge over validated buffers, not a new
+  physical model.
+- Open issues / next steps: Import the package into a Unity OpenXR PCVR
+  project, connect the shader to a cubemap, then record the Task 5 runtime
+  protocol: frame pacing, stereo behavior, head-motion stability, angular size,
+  and latency.
+
 ### 2026-07-06 - Task 4 momentum escape-direction correction
 
 - Goal: Correct the escape-direction transfer buffer before Task 5 consumes it

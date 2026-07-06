@@ -1,0 +1,10 @@
+{
+  "name": "com.grbhxr.lensing",
+  "version": "0.1.0",
+  "displayName": "GR-BH-XR Lensing",
+  "description": "Static texture bridge for physics-auditable Kerr lens maps.",
+  "unity": "2022.3",
+  "author": {
+    "name": "GR-BH-XR"
+  }
+}

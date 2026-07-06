@@ -44,3 +44,10 @@ Tracked Phase 1 validation entry points:
   basic validation figures.
 - `ray_examples/README.md`: illustrative capture, near-critical, and escape ray
   paths for visual sanity checking.
+
+## Phase 3 Quest PCVR Gate
+
+Tracked Task 5 validation entry points:
+
+- `quest_pcvr/README.md`: Unity/OpenXR static texture bridge, coordinate
+  convention checks, and headset validation protocol placeholders.
