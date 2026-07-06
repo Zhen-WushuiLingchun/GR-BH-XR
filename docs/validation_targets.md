@@ -234,6 +234,8 @@ Current CPU transfer v2 target:
 - Keplerian redshift `g = E / (u^t (E - Omega L_z))` is stored for each valid
   disk crossing and follows `cunningham1975kerrDiskSpectrum`;
 - Schwarzschild checks include `r_ISCO = 6M` and `g(L_z=0) = sqrt(1 - 3M/r)`;
+- the first Luminet-style diagnostic is an equal-radius transfer plot that
+  separates direct (`m = 0`) and secondary (`m = 1`) Schwarzschild disk images;
 - emission profile, observed intensity, optical depth, and GPU/Unity texture
   integration remain deferred until the CPU transfer buffers pass review.
 

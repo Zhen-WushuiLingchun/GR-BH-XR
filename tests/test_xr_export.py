@@ -1,5 +1,6 @@
 import json
 import math
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -12,6 +13,9 @@ from gr_bh_xr.xr.export_unity_textures import (
     export_unity_texture_package,
     unity_basis_from_inclination,
 )
+
+
+UNITY_RUNTIME_DIR = Path(__file__).resolve().parents[1] / "xr" / "unity_frontend" / "Runtime"
 
 
 def test_unity_basis_maps_positive_alpha_to_unity_right():
@@ -260,6 +264,19 @@ def test_weak_deflection_export_has_correct_unity_screen_handedness(tmp_path):
     assert unity_raw[row_visual_down, col_pos, 1] < 0.0
     assert unity_raw[row_visual_up, col_neg, 0] < 0.0
     assert unity_raw[row_visual_up, col_neg, 1] > 0.0
+
+
+def test_unity_preview_shader_samples_cubemap_in_world_space():
+    shader = (UNITY_RUNTIME_DIR / "BlackHoleLensStaticPreview.shader").read_text(encoding="utf8")
+
+    assert "unity_ObjectToWorld" in shader
+    assert "texCUBE(_SkyboxCubemap, worldDir)" in shader
+
+
+def test_unity_lens_map_loader_keeps_raw_textures_linear():
+    source = (UNITY_RUNTIME_DIR / "BlackHoleLensMap.cs").read_text(encoding="utf8")
+
+    assert "new Texture2D(width, height, format, mipChain: false, linear: true)" in source
 
 
 def _unity_to_bh(

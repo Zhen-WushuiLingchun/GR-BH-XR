@@ -65,14 +65,19 @@ For the first PCVR pass:
 6. Assign a test cubemap to `_SkyboxCubemap`.
 
 The preview shader samples the Unity-space direction texture for escaped rays
-and falls back to `event_rgba8` for capture or invalid pixels.
+and falls back to `event_rgba8` for capture or invalid pixels. The sampled
+direction is transformed by the lens-screen object's world rotation before
+the cubemap lookup, so the texture package can be placed on a rotated screen
+or used during headset motion without silently rotating the background sky.
 During display resampling, direction vectors are bilinearly interpolated and
 renormalized. If interpolation cancels to a near-zero vector, the exporter marks
 that texel invalid instead of writing a direction that would normalize to NaN.
 
 `BlackHoleLensMap` loads the event texture with point sampling so categorical
 capture/failure colors are not blurred. The escape-direction texture uses
-bilinear sampling for smooth cubemap lookup between escaped rays.
+bilinear sampling for smooth cubemap lookup between escaped rays. Both raw
+textures are loaded with `linear: true`; the event colors are categorical debug
+values and must not be altered by sRGB decoding.
 
 ## Coordinate Convention
 
@@ -126,6 +131,11 @@ With the observer at `phi = 0`, `right_BH` is the positive-`alpha` screen
 direction. For `i = 60 deg`, this makes `right_BH = (0, -1, 0)`. This explicit
 choice prevents silent left-right mirror errors when the texture is consumed in
 Unity.
+
+Square exported screen windows, such as `alpha,beta in [-8M, 8M]`, should be
+displayed on a square quad unless the HDF5 source was generated with matching
+non-square screen bounds. Stretching a square lens map to a 16:9 display turns
+the shadow into an artificial ellipse and is not a physics result.
 
 ## Current Scope
 

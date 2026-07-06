@@ -48,7 +48,8 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 {
                     return eventColor;
                 }
-                return texCUBE(_SkyboxCubemap, normalize(dir.xyz));
+                float3 worldDir = normalize(mul((float3x3)unity_ObjectToWorld, dir.xyz));
+                return texCUBE(_SkyboxCubemap, worldDir);
             }
             ENDCG
         }

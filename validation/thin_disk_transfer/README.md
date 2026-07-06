@@ -35,6 +35,20 @@ python -m gr_bh_xr.generate_disk_transfer --spin 0 --inclination-deg 60 --grid 6
 
 Generated HDF5 outputs are ignored by Git.
 
+For the first Luminet-style equal-radius diagnostic, use a high-inclination
+Schwarzschild map and render direct/secondary `r_m(alpha,beta)` curves:
+
+```text
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.generate_disk_transfer --spin 0 --inclination-deg 80 --grid 65 --alpha-max 30 --beta-max 30 --r-out 30 --max-order 2 --out outputs/task6/disk_transfer_luminet_i80.h5
+python -m gr_bh_xr.plot_disk_transfer --input outputs/task6/disk_transfer_luminet_i80.h5 --out outputs/task6/luminet_equal_radius_i80.pdf
+```
+
+This figure is a geometric transfer diagnostic: it shows direct (`m = 0`) and
+secondary (`m = 1`) equal-radius curves plus the direct-image redshift buffer.
+It is not yet a Luminet intensity image because emissivity, optical depth, and
+observed intensity are still deferred.
+
 ## HDF5 Schema
 
 Schema: `gr-bh-xr.task6.thin_disk_transfer.v2`.
@@ -61,6 +75,9 @@ Attributes record `M`, `a`, `inclination_deg`, `r_obs`, screen bounds,
   at least one valid direct disk crossing.
 - Stored disk radii satisfy `r_in <= r_m <= r_out` and stored `g_m` values are
   finite and positive.
+- A Luminet-style equal-radius diagnostic can be produced with separate
+  direct and secondary panels from the same HDF5 transfer file.
 
-Next validation target: reproduce a Luminet-style direct/secondary thin-disk
-image or equal-radius curve diagnostic before GPU/Unity texture integration.
+Next validation target: add emissivity and observed-intensity buffers, then
+compare a rendered high-inclination Schwarzschild disk image against the
+qualitative Luminet 1979 direct/secondary morphology.

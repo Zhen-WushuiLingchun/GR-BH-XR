@@ -6,6 +6,7 @@ import numpy as np
 from gr_bh_xr.disk import isco_radius, redshift_factor
 from gr_bh_xr.generate_disk_transfer import SCHEMA, generate_disk_transfer
 from gr_bh_xr.geodesic import trace_ray
+from gr_bh_xr.plot_disk_transfer import plot_disk_transfer
 from gr_bh_xr.types import CameraConfig, MetricParams, TraceConfig
 
 
@@ -145,3 +146,33 @@ def test_generate_disk_transfer_preserves_true_equatorial_crossing_order(tmp_pat
         assert np.isnan(handle["disk_r_m"][0, 0, 0])
         assert np.isfinite(handle["disk_r_m"][1, 0, 0])
         assert handle["disk_crossing_count"][0, 0] == 1
+
+
+def test_plot_disk_transfer_renders_luminet_style_pdf(tmp_path):
+    h5_path = tmp_path / "disk_transfer_plot.h5"
+    pdf_path = tmp_path / "disk_transfer_plot.pdf"
+
+    generate_disk_transfer(
+        params=MetricParams(M=1.0, a=0.0),
+        inclination_deg=60.0,
+        grid=17,
+        alpha_max=12.0,
+        beta_max=12.0,
+        r_obs=80.0,
+        max_lambda=1000.0,
+        horizon_eps=0.3,
+        max_step=2.0,
+        r_out=30.0,
+        max_order=2,
+        out=h5_path,
+        command="pytest disk plot",
+        verbose=False,
+    )
+
+    summary = plot_disk_transfer(input_path=h5_path, out=pdf_path, contour_count=5)
+
+    assert pdf_path.exists()
+    assert pdf_path.stat().st_size > 0
+    assert summary["schema"] == SCHEMA
+    assert summary["valid_by_order"][0] > 0
+    assert len(summary["valid_by_order"]) == 2

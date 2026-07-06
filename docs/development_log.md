@@ -19,6 +19,34 @@ from here.
 
 ## Log
 
+### 2026-07-06 - Unity cubemap direction and Luminet equal-radius gate
+
+- Goal: Fix the Unity static-preview coordinate consumption path and add the
+  first Luminet-style thin-disk geometry validation figure.
+- Changed files / components: Unity preview shader/docs/tests,
+  `plot_disk_transfer`, disk-transfer tests, Quest validation notes, and
+  thin-disk validation documentation.
+- Academic reason: The headset/Unity bridge must not introduce display-only
+  coordinate rotations or aspect-ratio distortions, and Task 6 needs a
+  direct/secondary disk-image diagnostic before adding emissivity or intensity.
+- Physical correspondence: Escaped-ray directions stored in Unity local screen
+  coordinates are transformed by the lens-screen object-to-world rotation
+  before cubemap sampling. The disk-transfer plot reads `r_m(alpha,beta)` and
+  `g_m` from schema v2 and draws separate `m = 0` direct and `m = 1` secondary
+  equal-radius curves.
+- Assumptions and conventions: Square `alpha/beta` maps must be displayed on
+  square quads unless the source HDF5 was generated with matching non-square
+  bounds. The Luminet-style plot is a geometric transfer diagnostic, not yet a
+  full observed-intensity image.
+- Validation: Added tests that the Unity shader uses object-to-world cubemap
+  sampling, that raw texture loading stays linear, and that the disk-transfer
+  plotting CLI writes a PDF from CPU transfer buffers.
+- References: `luminet1979blackHoleImage`, `cunningham1975kerrDiskSpectrum`,
+  and the existing Task 5 Unity texture-contract references.
+- Open issues / next steps: Bind a real sky cubemap in the Unity desktop gate,
+  then add disk emissivity / observed intensity buffers for a full Luminet
+  morphology comparison.
+
 ### 2026-07-06 - Task 6 thin-disk crossing semantics v2
 
 - Goal: Fix thin-disk transfer crossing semantics found during review before
