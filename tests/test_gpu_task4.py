@@ -63,7 +63,7 @@ def test_gpu_schwarzschild_lens_map_schema_and_events(tmp_path):
     assert summary["event_counts"]["escape"] > 0
     assert summary["failure_counts"]["solver_failure"] == 0
     with h5py.File(out, "r") as handle:
-        assert handle.attrs["schema"] == "gr-bh-xr.phase2.gpu_lens_map.v2"
+        assert handle.attrs["schema"] == "gr-bh-xr.phase2.gpu_lens_map.v3"
         assert handle.attrs["backend"] == "wgpu"
         assert handle.attrs["requested_backend"] == "vulkan"
         assert handle.attrs["precision"] == "f32"
@@ -85,6 +85,12 @@ def test_gpu_schwarzschild_lens_map_schema_and_events(tmp_path):
             "gpu_escape_dir_x",
             "gpu_escape_dir_y",
             "gpu_escape_dir_z",
+            "gpu_disk_r_m",
+            "gpu_disk_phi_m",
+            "gpu_disk_sin_phi_m",
+            "gpu_disk_cos_phi_m",
+            "gpu_disk_t_m",
+            "gpu_disk_g_m",
             "event_rgba8",
             "debug_rgba8",
         ):
@@ -92,10 +98,50 @@ def test_gpu_schwarzschild_lens_map_schema_and_events(tmp_path):
         assert handle["gpu_event_code"].shape == (17, 17)
         assert handle["gpu_refinement_level"].shape == (17, 17)
         assert handle["event_rgba8"].shape == (17, 17, 4)
+        assert handle["gpu_disk_r_m"].shape == (2, 17, 17)
         assert handle["gpu_failure_code"].attrs["code_polar_step_overshoot"] == 5
         escape_mask = handle["gpu_event_code"][...] == EVENT_CODES["escape"]
         assert np.all(np.isfinite(handle["gpu_escape_theta"][...][escape_mask]))
         assert np.all(np.isfinite(handle["gpu_escape_phi"][...][escape_mask]))
+
+
+def test_gpu_lens_map_records_first_two_disk_transfer_layers(tmp_path):
+    _require_vulkan_adapter()
+    out = tmp_path / "gpu_lensmap_disk_transfer.h5"
+
+    summary = generate_gpu_lens_map(
+        params=MetricParams(M=1.0, a=0.0),
+        inclination_deg=80.0,
+        grid=17,
+        alpha_max=12.0,
+        beta_max=12.0,
+        r_obs=80.0,
+        step_size=0.05,
+        steps=12000,
+        horizon_eps=0.3,
+        out=out,
+        command="pytest gpu disk transfer",
+    )
+    assert sum(summary["disk_valid_by_order"]) > 0
+
+    with h5py.File(out, "r") as handle:
+        assert handle.attrs["disk_r_in"] == pytest.approx(6.0)
+        assert handle.attrs["disk_r_out"] == pytest.approx(30.0)
+        disk_r = handle["gpu_disk_r_m"][...]
+        disk_g = handle["gpu_disk_g_m"][...]
+        finite = np.isfinite(disk_r)
+        assert np.count_nonzero(finite) > 0
+        assert np.nanmin(disk_r) >= 6.0
+        assert np.nanmax(disk_r) <= 30.0
+        assert np.all(np.isfinite(disk_g[finite]))
+        assert np.nanmin(disk_g) > 0.0
+        sin_phi = handle["gpu_disk_sin_phi_m"][...]
+        cos_phi = handle["gpu_disk_cos_phi_m"][...]
+        np.testing.assert_allclose(
+            sin_phi[finite] * sin_phi[finite] + cos_phi[finite] * cos_phi[finite],
+            1.0,
+            atol=2.0e-6,
+        )
 
 
 def test_gpu_cpu_validator_writes_compare_hdf5_and_summary(tmp_path):

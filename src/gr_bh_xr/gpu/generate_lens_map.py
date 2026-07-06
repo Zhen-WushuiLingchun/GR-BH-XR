@@ -78,6 +78,30 @@ def write_gpu_lens_map(out: Path | str, lens_map: GpuLensMap, command: str = "")
             "gpu_escape_dir_z", data=lens_map.escape_dir_z, compression="gzip", shuffle=True
         )
         handle.create_dataset(
+            "gpu_disk_r_m", data=lens_map.disk_r_m, compression="gzip", shuffle=True
+        )
+        handle.create_dataset(
+            "gpu_disk_phi_m", data=lens_map.disk_phi_m, compression="gzip", shuffle=True
+        )
+        handle.create_dataset(
+            "gpu_disk_sin_phi_m",
+            data=lens_map.disk_sin_phi_m,
+            compression="gzip",
+            shuffle=True,
+        )
+        handle.create_dataset(
+            "gpu_disk_cos_phi_m",
+            data=lens_map.disk_cos_phi_m,
+            compression="gzip",
+            shuffle=True,
+        )
+        handle.create_dataset(
+            "gpu_disk_t_m", data=lens_map.disk_t_m, compression="gzip", shuffle=True
+        )
+        handle.create_dataset(
+            "gpu_disk_g_m", data=lens_map.disk_g_m, compression="gzip", shuffle=True
+        )
+        handle.create_dataset(
             "event_rgba8", data=lens_map.event_rgba8, compression="gzip", shuffle=True
         )
         handle.create_dataset(
@@ -130,6 +154,10 @@ def generate_gpu_lens_map(
         "critical_refine_band": critical_refine_band,
         "critical_refine_factor": critical_refine_factor,
         "refined_pixels": int(np.count_nonzero(lens_map.refinement_level > 1)),
+        "disk_valid_by_order": [
+            int(np.count_nonzero(np.isfinite(lens_map.disk_r_m[order])))
+            for order in range(lens_map.disk_r_m.shape[0])
+        ],
         "event_counts": lens_map.event_counts,
         "failure_counts": lens_map.failure_counts,
         "h_max_abs": float(np.max(finite_h)) if finite_h.size else None,

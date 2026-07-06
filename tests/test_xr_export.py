@@ -47,7 +47,7 @@ def test_export_unity_texture_package_writes_raw_buffers_and_metadata(tmp_path):
     forward = basis.forward_bh.astype(np.float32)
 
     with h5py.File(source, "w") as handle:
-        handle.attrs["schema"] = "gr-bh-xr.phase2.gpu_lens_map.v2"
+        handle.attrs["schema"] = "gr-bh-xr.phase2.gpu_lens_map.v3"
         handle.attrs["inclination_deg"] = 60.0
         handle.attrs["a"] = 0.5
         handle.attrs["M"] = 1.0
@@ -105,7 +105,7 @@ def test_export_unity_texture_package_can_write_display_resampled_target_size(tm
     forward = basis.forward_bh.astype(np.float32)
 
     with h5py.File(source, "w") as handle:
-        handle.attrs["schema"] = "gr-bh-xr.phase2.gpu_lens_map.v2"
+        handle.attrs["schema"] = "gr-bh-xr.phase2.gpu_lens_map.v3"
         handle.attrs["inclination_deg"] = 60.0
         handle.create_dataset("alpha", data=np.linspace(-1.0, 1.0, width))
         handle.create_dataset("beta", data=np.linspace(-1.0, 1.0, height))
@@ -158,7 +158,7 @@ def test_display_resample_marks_cancelled_direction_as_invalid(tmp_path):
     target_size = 3
 
     with h5py.File(source, "w") as handle:
-        handle.attrs["schema"] = "gr-bh-xr.phase2.gpu_lens_map.v2"
+        handle.attrs["schema"] = "gr-bh-xr.phase2.gpu_lens_map.v3"
         handle.attrs["inclination_deg"] = 90.0
         handle.create_dataset("alpha", data=np.asarray([-1.0, 1.0]))
         handle.create_dataset("beta", data=np.asarray([-1.0, 1.0]))
@@ -212,7 +212,7 @@ def test_export_flips_solver_beta_rows_so_texture_top_is_visual_up(tmp_path):
     dirs[2, :, :] = dir_bottom_bh
 
     with h5py.File(source, "w") as handle:
-        handle.attrs["schema"] = "gr-bh-xr.phase2.gpu_lens_map.v2"
+        handle.attrs["schema"] = "gr-bh-xr.phase2.gpu_lens_map.v3"
         handle.attrs["inclination_deg"] = 60.0
         handle.create_dataset("alpha", data=alpha)
         handle.create_dataset("beta", data=beta)

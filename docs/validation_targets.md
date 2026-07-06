@@ -130,10 +130,14 @@ Required Task 4 checks:
 
 - WGPU selects a Vulkan adapter, preferring the NVIDIA discrete GPU when
   available;
-- GPU HDF5 output uses schema `gr-bh-xr.phase2.gpu_lens_map.v2` and records
+- GPU HDF5 output uses schema `gr-bh-xr.phase2.gpu_lens_map.v3` and records
   `alpha`, `beta`, `gpu_event_code`, `gpu_failure_code`, `gpu_min_r`,
   `gpu_h_max_abs`, `gpu_q_drift_abs`, `gpu_steps`, `event_rgba8`, and
   `debug_rgba8`;
+- GPU HDF5 output also records the first two true equatorial crossing layers
+  as `gpu_disk_r_m`, `gpu_disk_phi_m`, `gpu_disk_sin_phi_m`,
+  `gpu_disk_cos_phi_m`, `gpu_disk_t_m`, and `gpu_disk_g_m`; these are transfer
+  buffers and do not change the capture/escape event classification gate;
 - CPU-vs-GPU comparison files also record `cpu_event_code`,
   `cpu_failure_code`, `cpu_min_r`, and the masks used to exclude CPU failures,
   the near-critical screen band, and near-capture Boyer-Lindquist samples;

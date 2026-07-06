@@ -19,6 +19,42 @@ from here.
 
 ## Log
 
+### 2026-07-07 - GPU thin-disk transfer hooks v3
+
+- Goal: Start the Task 6 GPU-side disk-transfer path by adding first-crossing
+  buffers to the existing Vulkan/WGPU lens-map shader without changing the
+  Task 4 capture/escape validation gate.
+- Changed files / components: GPU trace shader, GPU HDF5 writer, GPU schema
+  version, GPU tests, GPU validation documentation, and validation targets.
+- Academic reason: Real-time disk rendering should consume auditable transfer
+  quantities rather than infer disk appearance from RGB. The first Unity disk
+  shader needs `(r_m, phi_m, g_m, Delta t_m)`-style buffers before it can
+  advect emissivity patterns or apply redshift weights.
+- Physical correspondence: The f32 RK4 shader now records the first two true
+  equatorial crossings by crossing order, filtered to `r_ISCO(a) <= r <=
+  r_out`. It stores `gpu_disk_r_m`, `gpu_disk_phi_m`,
+  `gpu_disk_sin_phi_m`, `gpu_disk_cos_phi_m`, `gpu_disk_t_m`, and
+  `gpu_disk_g_m`. The redshift uses the same Cunningham-style Keplerian
+  emitter form as the CPU disk helper, evaluated at the interpolated crossing.
+- Assumptions and conventions: This is a geometric transfer-buffer extension,
+  not a full observed-intensity model. Event classification remains
+  capture/escape/invalid; disk crossings do not stop the ray and do not enter
+  the Task 4 event-agreement gate. The GPU values are f32 and will need CPU
+  band validation before display-grade disk claims.
+- Validation: Added a GPU smoke test that writes schema
+  `gr-bh-xr.phase2.gpu_lens_map.v3`, confirms the disk datasets have shape
+  `(2, grid, grid)`, and checks finite disk hits are inside the Schwarzschild
+  `[r_ISCO, r_out]` annulus with positive `g_m` and unit
+  `sin(phi)^2 + cos(phi)^2`. A 33 by 33 Schwarzschild `i = 80 deg` CLI smoke
+  run wrote `outputs/task6/gpu_disk_transfer_smoke_33.h5` with
+  `disk_valid_by_order = [667, 110]`, `capture = 140`, `escape = 924`, and
+  only the expected 25 Boyer-Lindquist axis invalid samples.
+- References: `bardeen1972rotatingBlackHoles` for ISCO and
+  `cunningham1975kerrDiskSpectrum` for the Keplerian redshift convention.
+- Open issues / next steps: Add CPU-vs-GPU disk-transfer comparison masks,
+  then export display textures for `r_m`, `phi_m`/`sin,cos`, `g_m`, and
+  `Delta t_m` for Unity audit and visual disk modes.
+
 ### 2026-07-07 - Unity basis refresh and static-Kerr boundary
 
 - Goal: Close the remaining Task 5 Unity P2 items and record the physical

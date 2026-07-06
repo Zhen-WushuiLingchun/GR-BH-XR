@@ -10,6 +10,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from gr_bh_xr.critical_curve import critical_curve_polygon
+from gr_bh_xr.disk import isco_radius
 from gr_bh_xr.gpu import SCHEMA_VERSION
 from gr_bh_xr.gpu.backend import backend_info, create_vulkan_device, require_wgpu
 from gr_bh_xr.gpu.codes import SCHEMA_EVENT_CODES, SCHEMA_FAILURE_CODES
@@ -19,7 +20,8 @@ from gr_bh_xr.types import MetricParams, TraceConfig
 
 
 _TRACE_CONTEXT = None
-F32_OUTPUTS_PER_PIXEL = 9
+GPU_DISK_MAX_ORDER = 2
+F32_OUTPUTS_PER_PIXEL = 9 + 4 * GPU_DISK_MAX_ORDER
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,8 @@ class GpuTraceConfig:
     polar_lz_substep_tol: float = 5.0e-2
     polar_substep_theta: float = 2.0e-1
     polar_substeps: int = 8
+    disk_r_out: float = 30.0
+    disk_max_order: int = GPU_DISK_MAX_ORDER
 
     def __post_init__(self) -> None:
         if self.grid < 2:
@@ -60,6 +64,10 @@ class GpuTraceConfig:
             raise ValueError("polar_substep_theta must be non-negative.")
         if self.polar_substeps < 1:
             raise ValueError("polar_substeps must be at least one.")
+        if self.disk_r_out <= 0.0:
+            raise ValueError("disk_r_out must be positive.")
+        if not (1 <= self.disk_max_order <= GPU_DISK_MAX_ORDER):
+            raise ValueError(f"disk_max_order must be in [1, {GPU_DISK_MAX_ORDER}].")
 
     @property
     def theta_obs(self) -> float:
@@ -98,6 +106,10 @@ class GpuTraceConfig:
             "polar_lz_substep_tol": self.polar_lz_substep_tol,
             "polar_substep_theta": self.polar_substep_theta,
             "polar_substeps": self.polar_substeps,
+            "disk_r_in": isco_radius(self.params),
+            "disk_r_out": self.disk_r_out,
+            "disk_max_order": self.disk_max_order,
+            "disk_transfer_note": "GPU f32 first two true equatorial crossings; non-hit texels are NaN",
             "coordinate_system": "Boyer-Lindquist exterior",
             "units": "G = c = M = 1 unless attrs[M] differs",
         }
@@ -123,6 +135,12 @@ class GpuLensMap:
     escape_dir_x: np.ndarray
     escape_dir_y: np.ndarray
     escape_dir_z: np.ndarray
+    disk_r_m: np.ndarray
+    disk_phi_m: np.ndarray
+    disk_sin_phi_m: np.ndarray
+    disk_cos_phi_m: np.ndarray
+    disk_t_m: np.ndarray
+    disk_g_m: np.ndarray
     event_rgba8: np.ndarray
     debug_rgba8: np.ndarray
 
@@ -160,6 +178,17 @@ def trace_lens_map(config: GpuTraceConfig) -> GpuLensMap:
     final_p_r = result["final_p_r"].reshape(shape).astype(np.float32)
     final_p_theta = result["final_p_theta"].reshape(shape).astype(np.float32)
     final_p_phi = result["final_p_phi"].reshape(shape).astype(np.float32)
+    disk_r_m = result["disk_r_m"].T.reshape((GPU_DISK_MAX_ORDER, *shape)).astype(np.float32)
+    disk_phi_m = result["disk_phi_m"].T.reshape((GPU_DISK_MAX_ORDER, *shape)).astype(np.float32)
+    disk_t_m = result["disk_t_m"].T.reshape((GPU_DISK_MAX_ORDER, *shape)).astype(np.float32)
+    disk_g_m = result["disk_g_m"].T.reshape((GPU_DISK_MAX_ORDER, *shape)).astype(np.float32)
+    valid_disk = disk_r_m > 0.0
+    disk_r_m = np.where(valid_disk, disk_r_m, np.nan).astype(np.float32)
+    disk_phi_m = np.where(valid_disk, disk_phi_m, np.nan).astype(np.float32)
+    disk_t_m = np.where(valid_disk, disk_t_m, np.nan).astype(np.float32)
+    disk_g_m = np.where(valid_disk & (disk_g_m > 0.0), disk_g_m, np.nan).astype(np.float32)
+    disk_sin_phi_m = np.sin(disk_phi_m).astype(np.float32)
+    disk_cos_phi_m = np.cos(disk_phi_m).astype(np.float32)
     escape_theta, escape_phi, escape_dir_x, escape_dir_y, escape_dir_z = escape_direction_arrays(
         params=config.params,
         event_code=event_code,
@@ -197,6 +226,12 @@ def trace_lens_map(config: GpuTraceConfig) -> GpuLensMap:
         escape_dir_x=escape_dir_x,
         escape_dir_y=escape_dir_y,
         escape_dir_z=escape_dir_z,
+        disk_r_m=disk_r_m,
+        disk_phi_m=disk_phi_m,
+        disk_sin_phi_m=disk_sin_phi_m,
+        disk_cos_phi_m=disk_cos_phi_m,
+        disk_t_m=disk_t_m,
+        disk_g_m=disk_g_m,
         event_rgba8=event_rgba8,
         debug_rgba8=debug_rgba8,
     )
@@ -279,6 +314,10 @@ def _trace_screen_points(config: GpuTraceConfig, alpha: np.ndarray, beta: np.nda
         "final_p_r": out_f32[:, 6],
         "final_p_theta": out_f32[:, 7],
         "final_p_phi": out_f32[:, 8],
+        "disk_r_m": np.stack([out_f32[:, 9], out_f32[:, 13]], axis=1),
+        "disk_phi_m": np.stack([out_f32[:, 10], out_f32[:, 14]], axis=1),
+        "disk_t_m": np.stack([out_f32[:, 11], out_f32[:, 15]], axis=1),
+        "disk_g_m": np.stack([out_f32[:, 12], out_f32[:, 16]], axis=1),
     }
 
 
@@ -297,6 +336,10 @@ def _empty_trace_result(info: dict[str, Any]) -> dict[str, Any]:
         "final_p_r": np.empty(0, dtype=np.float32),
         "final_p_theta": np.empty(0, dtype=np.float32),
         "final_p_phi": np.empty(0, dtype=np.float32),
+        "disk_r_m": np.empty((0, GPU_DISK_MAX_ORDER), dtype=np.float32),
+        "disk_phi_m": np.empty((0, GPU_DISK_MAX_ORDER), dtype=np.float32),
+        "disk_t_m": np.empty((0, GPU_DISK_MAX_ORDER), dtype=np.float32),
+        "disk_g_m": np.empty((0, GPU_DISK_MAX_ORDER), dtype=np.float32),
     }
 
 
@@ -396,6 +439,9 @@ def _shader_params(config: GpuTraceConfig) -> np.ndarray:
             config.polar_lz_substep_tol,
             config.polar_substep_theta,
             float(config.polar_substeps),
+            isco_radius(config.params),
+            config.disk_r_out,
+            float(config.disk_max_order),
         ],
         dtype=np.float32,
     )
@@ -449,6 +495,8 @@ const FAILURE_UNCLASSIFIED_MAX_LAMBDA: i32 = 2;
 const FAILURE_SOLVER_FAILURE: i32 = 3;
 const FAILURE_AXIS_COORDINATE_SINGULARITY: i32 = 4;
 const FAILURE_POLAR_STEP_OVERSHOOT: i32 = 5;
+const F32_OUTPUTS_PER_PIXEL_WGSL: u32 = 17u;
+const EQUATOR_THETA: f32 = 1.5707963267948966;
 
 @group(0) @binding(0) var<storage, read> params: array<f32>;
 @group(0) @binding(1) var<storage, read_write> out_i32: array<i32>;
@@ -519,6 +567,47 @@ fn carter_q(s: State) -> f32 {
     let e = -s.pt;
     let lz = s.pph;
     return s.pth * s.pth + c * c * (lz * lz / s2 - a * a * e * e);
+}
+
+fn disk_omega(r: f32) -> f32 {
+    let m = params[0];
+    let a = params[1];
+    var orbit_sign = 1.0;
+    if (a < 0.0) {
+        orbit_sign = -1.0;
+    }
+    let sqrt_m = sqrt(m);
+    return orbit_sign * sqrt_m / (pow(r, 1.5) + orbit_sign * a * sqrt_m);
+}
+
+fn disk_redshift(r: f32, pph: f32) -> f32 {
+    let m = params[0];
+    let a = params[1];
+    let a2 = a * a;
+    let th = EQUATOR_THETA;
+    let sig = sigma(r, th, a);
+    let dlt = delta(r, m, a);
+    let s2 = 1.0;
+    let rp = r * r + a2;
+    let shell = rp * rp - a2 * dlt * s2;
+    let gtt_inv = -shell / (sig * dlt);
+    let gtphi_inv = -2.0 * m * a * r / (sig * dlt);
+    let gphiphi_inv = (dlt - a2 * s2) / (sig * dlt * s2);
+    let det_inv = gtt_inv * gphiphi_inv - gtphi_inv * gtphi_inv;
+    let g_tt = gphiphi_inv / det_inv;
+    let g_tphi = -gtphi_inv / det_inv;
+    let g_phiphi = gtt_inv / det_inv;
+    let omega = disk_omega(r);
+    let norm = -(g_tt + 2.0 * omega * g_tphi + omega * omega * g_phiphi);
+    if (norm <= 0.0 || is_bad(norm)) {
+        return -1.0;
+    }
+    let u_t = 1.0 / sqrt(norm);
+    let denom = u_t * (1.0 - omega * pph);
+    if (denom <= 0.0 || is_bad(denom)) {
+        return -1.0;
+    }
+    return 1.0 / denom;
 }
 
 fn rhs(s: State) -> State {
@@ -681,6 +770,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let pi = params[14];
     let capture_r = params[16] + params[8];
     let escape_r = params[9];
+    let disk_r_in = params[20];
+    let disk_r_out = params[21];
+    let disk_max_order = u32(params[22]);
     var s = initial_state(alpha, beta);
     var event = EVENT_INVALID;
     var failure = FAILURE_UNCLASSIFIED_MAX_LAMBDA;
@@ -692,6 +784,15 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var qmin = q0;
     var qmax = q0;
     var min_pole = min(s.th, pi - s.th);
+    var disk_order = 0u;
+    var disk_r0 = -1.0;
+    var disk_phi0 = -1.0;
+    var disk_t0 = -1.0;
+    var disk_g0 = -1.0;
+    var disk_r1 = -1.0;
+    var disk_phi1 = -1.0;
+    var disk_t1 = -1.0;
+    var disk_g1 = -1.0;
     if (state_is_bad(s)) {
         failure = FAILURE_SOLVER_FAILURE;
     } else {
@@ -699,6 +800,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             let substeps = substep_count(s);
             let dh = h / f32(substeps);
             for (var sub = 0u; sub < substeps; sub = sub + 1u) {
+                let prev = s;
+                let prev_disk_offset = prev.th - 0.5 * pi;
                 s = rk4_step(s, dh);
                 step_count = step_count + 1u;
                 if (state_is_bad(s) || s.r <= 0.0) {
@@ -724,6 +827,32 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 let qv = carter_q(s);
                 qmin = min(qmin, qv);
                 qmax = max(qmax, qv);
+                let disk_offset = s.th - 0.5 * pi;
+                let crosses_disk = (
+                    (prev_disk_offset < -1.0e-7 && disk_offset >= 0.0)
+                    || (prev_disk_offset > 1.0e-7 && disk_offset <= 0.0)
+                );
+                if (crosses_disk) {
+                    let frac = clamp(abs(prev_disk_offset) / max(abs(prev_disk_offset - disk_offset), 1.0e-12), 0.0, 1.0);
+                    let rc = prev.r + frac * (s.r - prev.r);
+                    if (disk_order < disk_max_order && rc >= disk_r_in && rc <= disk_r_out) {
+                        let phc = prev.ph + frac * (s.ph - prev.ph);
+                        let tc = prev.t + frac * (s.t - prev.t);
+                        let gc = disk_redshift(rc, s.pph);
+                        if (disk_order == 0u) {
+                            disk_r0 = rc;
+                            disk_phi0 = phc;
+                            disk_t0 = tc;
+                            disk_g0 = gc;
+                        } else if (disk_order == 1u) {
+                            disk_r1 = rc;
+                            disk_phi1 = phc;
+                            disk_t1 = tc;
+                            disk_g1 = gc;
+                        }
+                    }
+                    disk_order = disk_order + 1u;
+                }
                 if (s.r <= capture_r) {
                     event = EVENT_CAPTURE;
                     failure = FAILURE_NONE;
@@ -749,7 +878,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
     }
     let ibase = idx * 3u;
-    let fbase = idx * 9u;
+    let fbase = idx * F32_OUTPUTS_PER_PIXEL_WGSL;
     out_i32[ibase + 0u] = event;
     out_i32[ibase + 1u] = failure;
     out_i32[ibase + 2u] = i32(step_count);
@@ -762,5 +891,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     out_f32[fbase + 6u] = s.pr;
     out_f32[fbase + 7u] = s.pth;
     out_f32[fbase + 8u] = s.pph;
+    out_f32[fbase + 9u] = disk_r0;
+    out_f32[fbase + 10u] = disk_phi0;
+    out_f32[fbase + 11u] = disk_t0;
+    out_f32[fbase + 12u] = disk_g0;
+    out_f32[fbase + 13u] = disk_r1;
+    out_f32[fbase + 14u] = disk_phi1;
+    out_f32[fbase + 15u] = disk_t1;
+    out_f32[fbase + 16u] = disk_g1;
 }
 """

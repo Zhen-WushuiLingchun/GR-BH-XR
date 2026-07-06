@@ -24,7 +24,7 @@ HDF5 schema without opening a window.
 
 ## HDF5 Schema
 
-Generated GPU maps use schema `gr-bh-xr.phase2.gpu_lens_map.v2`.
+Generated GPU maps use schema `gr-bh-xr.phase2.gpu_lens_map.v3`.
 
 - axes: `alpha`, `beta`
 - GPU buffers: `gpu_event_code`, `gpu_failure_code`, `gpu_min_r`,
@@ -33,6 +33,9 @@ Generated GPU maps use schema `gr-bh-xr.phase2.gpu_lens_map.v2`.
   `gpu_subpixel_invalid_fraction`
 - escaped-ray momentum direction buffers: `gpu_escape_theta`,
   `gpu_escape_phi`, and `gpu_escape_dir_{x,y,z}`
+- first two true equatorial crossing transfer layers:
+  `gpu_disk_r_m`, `gpu_disk_phi_m`, `gpu_disk_sin_phi_m`,
+  `gpu_disk_cos_phi_m`, `gpu_disk_t_m`, and `gpu_disk_g_m`
 - texture buffers: `event_rgba8`, `debug_rgba8`
 - comparison-only CPU buffers: `cpu_event_code`, `cpu_failure_code`,
   `cpu_min_r`, `cpu_escape_theta`, `cpu_escape_phi`, and
@@ -97,8 +100,10 @@ level and subpixel fractions.
 The shader uses f32 arithmetic and fixed-step RK4. It is not expected to match
 the CPU solver near the critical curve, near the Boyer-Lindquist horizon
 cutoff, or at coordinate-axis singularities. The HDF5 buffers expose these
-limits rather than hiding them. Thin-disk transfer, redshift, time delay,
-GRRT, adaptive sampling, and headset runtime integration are deferred.
+limits rather than hiding them. The v3 disk-crossing buffers are the first
+geometric transfer hooks for Task 6 and do not alter the capture/escape event
+gate. Full disk emissivity, observed intensity, optical depth, GRRT, adaptive
+sampling, and headset runtime integration remain deferred.
 
 The default-step interactive preview is validated for ordinary Kerr inspection,
 not for every screen coordinate chart limit. Its documented f32 operating
