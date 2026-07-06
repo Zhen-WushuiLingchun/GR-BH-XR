@@ -19,6 +19,34 @@ from here.
 
 ## Log
 
+### 2026-07-06 - Task 5 VR texture resolution path
+
+- Goal: Separate low-resolution interactive debug preview from headset-facing
+  Unity texture packages after preview artifacts and VR blur were observed.
+- Changed files / components: `src/gr_bh_xr/xr/export_unity_textures.py`,
+  `xr/unity_frontend/`, XR export tests, and Quest validation documentation.
+- Academic reason: A 256x256 debug texture is useful for failure
+  classification, but it is not a headset-resolution product. Conversely,
+  display upsampling must not be mislabeled as higher physical ray-tracing
+  resolution.
+- Physical correspondence: No geodesic equations changed. The exporter can now
+  write a larger display texture with `--target-size`, recording both source
+  and exported dimensions and marking whether the package is native trace
+  resolution. Event/capture/failure colors remain categorical; escaped
+  direction textures are normalized after display resampling.
+- Assumptions and conventions: A 4096x4096 display texture is the minimum
+  recommended PCVR inspection target, but native 4096x4096 physical tracing is
+  deferred to a tiled/offline generator. Unity loads event textures with point
+  filtering and escape-direction textures with bilinear filtering.
+- Validation: Added a synthetic target-size export test that verifies raw byte
+  counts, metadata, and unit-length resampled Unity directions.
+- References: Same Task 4/5 transfer-map convention; this is a packaging and
+  display-resolution change, not a new physics model.
+- Open issues / next steps: Generate and inspect 4K display packages for
+  in-envelope Kerr/Schwarzschild cases. Do not use near-polar high-spin preview
+  artifacts as Quest validation samples until an axis-regular or Kerr-Schild
+  tracer exists.
+
 ### 2026-07-06 - GPU preview operating envelope
 
 - Goal: Make the interactive GPU preview explicit about known f32 fixed-step

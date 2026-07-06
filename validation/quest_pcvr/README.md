@@ -25,6 +25,19 @@ python -m gr_bh_xr.gpu.generate_lens_map --spin 0.9 --inclination-deg 60 --grid 
 python -m gr_bh_xr.xr.export_unity_textures --input outputs/task5/gpu_lensmap_kerr_a0.9_i60_256.h5 --out-dir outputs/task5/unity_lensmap_kerr_a0.9_i60_256
 ```
 
+For VR headset inspection, generate a 4096x4096 display package from the same
+validated HDF5 source:
+
+```powershell
+python -m gr_bh_xr.xr.export_unity_textures --input outputs/task5/gpu_lensmap_kerr_a0.9_i60_256.h5 --out-dir outputs/task5/unity_lensmap_kerr_a0.9_i60_4k_display --target-size 4096
+```
+
+This 4K package is intended to prevent obvious headset pixelation. It is not a
+native 4096x4096 geodesic trace; `lens_map_metadata.json` records
+`nativeTraceResolution = false` when `--target-size` resamples a lower-source
+grid. Native 4K tracing needs a later tiled/offline generator and is required
+before making claims about 4K physical transfer-map resolution.
+
 The generated package directories are intentionally under ignored `outputs/`.
 They should be copied into a Unity project for desktop validation.
 
@@ -32,6 +45,8 @@ Acceptance for this gate:
 
 - `lens_map_metadata.json` records the source schema, dimensions, screen
   bounds, and Unity basis vectors.
+- If `--target-size` was used, `lens_map_metadata.json` records both source and
+  export dimensions and marks the package as display-resampled.
 - `event_rgba8.bytes` has exactly `width * height * 4` bytes.
 - `escape_dir_unity_rgba32f.bytes` has exactly `width * height * 16` bytes and
   stores `(x_unity, y_unity, z_unity, valid_escape)`.

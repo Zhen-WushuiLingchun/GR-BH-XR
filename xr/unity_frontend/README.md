@@ -14,6 +14,18 @@ python -m gr_bh_xr.gpu.generate_lens_map --spin 0.5 --inclination-deg 60 --grid 
 python -m gr_bh_xr.xr.export_unity_textures --input outputs/phase2/gpu_lensmap_kerr_a0.5_i60.h5 --out-dir outputs/task5/unity_lensmap_kerr_a0.5_i60
 ```
 
+For a headset-facing desktop/PCVR check, export at least a 4096x4096 display
+texture:
+
+```powershell
+python -m gr_bh_xr.xr.export_unity_textures --input outputs/phase2/gpu_lensmap_kerr_a0.5_i60.h5 --out-dir outputs/task5/unity_lensmap_kerr_a0.5_i60_4k --target-size 4096
+```
+
+`--target-size` is a display resample. It reduces visible texture pixelation in
+VR, but it does not add physical ray-tracing resolution beyond the source HDF5
+grid. The metadata records both source and exported dimensions; use native
+high-resolution traced maps for physics-resolution claims.
+
 The exporter writes:
 
 - `event_rgba8.bytes`: raw `RGBA32` event/debug texture.
@@ -51,6 +63,10 @@ For the first PCVR pass:
 
 The preview shader samples the Unity-space direction texture for escaped rays
 and falls back to `event_rgba8` for capture or invalid pixels.
+
+`BlackHoleLensMap` loads the event texture with point sampling so categorical
+capture/failure colors are not blurred. The escape-direction texture uses
+bilinear sampling for smooth cubemap lookup between escaped rays.
 
 ## Coordinate Convention
 

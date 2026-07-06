@@ -14,7 +14,7 @@ import h5py
 import numpy as np
 
 
-PACKAGE_SCHEMA = "gr-bh-xr.task5.unity_texture_package.v1"
+PACKAGE_SCHEMA = "gr-bh-xr.task5.unity_texture_package.v2"
 
 
 @dataclass(frozen=True)
@@ -49,7 +49,11 @@ def unity_basis_from_inclination(inclination_deg: float) -> UnityBasis:
 
 
 def export_unity_texture_package(
-    *, input_path: Path | str, out_dir: Path | str, command: str = ""
+    *,
+    input_path: Path | str,
+    out_dir: Path | str,
+    command: str = "",
+    target_size: int | None = None,
 ) -> dict[str, Any]:
     """Export event and escape-direction textures plus coordinate metadata."""
 
@@ -73,19 +77,31 @@ def export_unity_texture_package(
         source_attrs = {key: _json_value(value) for key, value in handle.attrs.items()}
         inclination_deg = float(handle.attrs["inclination_deg"])
 
-    height, width = event_rgba8.shape[:2]
+    source_height, source_width = event_rgba8.shape[:2]
+    height, width = source_height, source_width
     if event_rgba8.shape != (height, width, 4):
         raise ValueError("event_rgba8 must be an HxWx4 buffer.")
     if dir_bh.shape != (height, width, 3):
         raise ValueError("escape direction buffers must match event texture dimensions.")
     if alpha.shape != (width,) or beta.shape != (height,):
         raise ValueError("alpha/beta axes do not match texture dimensions.")
+    if target_size is not None:
+        if target_size < 2:
+            raise ValueError("target_size must be at least 2 when provided.")
+        height = int(target_size)
+        width = int(target_size)
 
     basis = unity_basis_from_inclination(inclination_deg)
     valid = (event_code == 1) & np.all(np.isfinite(dir_bh), axis=-1)
     dir_bh_rgba = _pack_direction_rgba(dir_bh, valid)
     dir_unity = _bh_to_unity(dir_bh, valid, basis)
     dir_unity_rgba = _pack_direction_rgba(dir_unity, valid)
+    if (height, width) != (source_height, source_width):
+        event_rgba8 = _resize_nearest(event_rgba8, height, width)
+        event_code = _resize_nearest(event_code, height, width)
+        dir_bh_rgba = _resize_direction_rgba(dir_bh_rgba, height, width)
+        dir_unity_rgba = _resize_direction_rgba(dir_unity_rgba, height, width)
+    escape_pixels = int(np.count_nonzero(event_code == 1))
     export_event_rgba8 = np.flipud(event_rgba8)
     export_dir_bh_rgba = np.flipud(dir_bh_rgba)
     export_dir_unity_rgba = np.flipud(dir_unity_rgba)
@@ -109,12 +125,14 @@ def export_unity_texture_package(
         beta=beta,
         width=width,
         height=height,
+        source_width=source_width,
+        source_height=source_height,
         basis=basis,
         event_path=event_path.name,
         dir_bh_path=dir_bh_path.name,
         dir_unity_path=dir_unity_path.name,
         preview_path=preview_path.name,
-        escape_pixels=int(np.count_nonzero(valid)),
+        escape_pixels=escape_pixels,
     )
     metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf8")
 
@@ -123,7 +141,9 @@ def export_unity_texture_package(
         "schema": PACKAGE_SCHEMA,
         "width": width,
         "height": height,
-        "escape_pixels": int(np.count_nonzero(valid)),
+        "source_width": source_width,
+        "source_height": source_height,
+        "escape_pixels": escape_pixels,
         "files": {
             "event_rgba8": str(event_path),
             "escape_dir_bh_rgba32f": str(dir_bh_path),
@@ -163,6 +183,50 @@ def _pack_direction_rgba(direction: np.ndarray, valid: np.ndarray) -> np.ndarray
     return rgba
 
 
+def _resize_nearest(values: np.ndarray, target_height: int, target_width: int) -> np.ndarray:
+    source_height, source_width = values.shape[:2]
+    if (source_height, source_width) == (target_height, target_width):
+        return values
+    rows = np.rint(np.linspace(0, source_height - 1, target_height)).astype(np.int64)
+    cols = np.rint(np.linspace(0, source_width - 1, target_width)).astype(np.int64)
+    return values[rows[:, np.newaxis], cols]
+
+
+def _resize_linear(values: np.ndarray, target_height: int, target_width: int) -> np.ndarray:
+    source_height, source_width = values.shape[:2]
+    if (source_height, source_width) == (target_height, target_width):
+        return values
+    src_y = np.linspace(0.0, source_height - 1, target_height)
+    y0 = np.floor(src_y).astype(np.int64)
+    y1 = np.clip(y0 + 1, 0, source_height - 1)
+    wy = (src_y - y0).astype(np.float32)
+    rows = (1.0 - wy)[:, np.newaxis, np.newaxis] * values[y0] + wy[
+        :, np.newaxis, np.newaxis
+    ] * values[y1]
+    src_x = np.linspace(0.0, source_width - 1, target_width)
+    x0 = np.floor(src_x).astype(np.int64)
+    x1 = np.clip(x0 + 1, 0, source_width - 1)
+    wx = (src_x - x0).astype(np.float32)
+    return (1.0 - wx)[np.newaxis, :, np.newaxis] * rows[:, x0] + wx[
+        np.newaxis, :, np.newaxis
+    ] * rows[:, x1]
+
+
+def _resize_direction_rgba(
+    direction_rgba: np.ndarray, target_height: int, target_width: int
+) -> np.ndarray:
+    resized = _resize_linear(direction_rgba.astype(np.float32), target_height, target_width)
+    valid = resized[..., 3] > 0.5
+    norm = np.linalg.norm(resized[..., :3], axis=-1)
+    good = valid & np.isfinite(norm) & (norm > 0.0)
+    rgb = resized[..., :3].copy()
+    resized[..., :3] = 0.0
+    resized[..., 3] = valid.astype(np.float32)
+    rgb_out = resized[..., :3]
+    rgb_out[good] = rgb[good] / norm[good, np.newaxis]
+    return resized.astype(np.float32, copy=False)
+
+
 def _metadata(
     *,
     source_path: Path,
@@ -172,6 +236,8 @@ def _metadata(
     beta: np.ndarray,
     width: int,
     height: int,
+    source_width: int,
+    source_height: int,
     basis: UnityBasis,
     event_path: str,
     dir_bh_path: str,
@@ -187,6 +253,23 @@ def _metadata(
         "width": width,
         "height": height,
         "escapePixels": escape_pixels,
+        "resolution": {
+            "sourceWidth": source_width,
+            "sourceHeight": source_height,
+            "exportWidth": width,
+            "exportHeight": height,
+            "nativeTraceResolution": source_width == width and source_height == height,
+            "resampling": (
+                "none"
+                if source_width == width and source_height == height
+                else "display resample: nearest event texture, bilinear normalized direction texture"
+            ),
+            "physicsNote": (
+                "If nativeTraceResolution is false, the exported texture is display-resampled "
+                "from the source lens map and must not be used as evidence of higher physical "
+                "ray-tracing resolution."
+            ),
+        },
         "screenConvention": {
             "alphaColumnOrder": "x=0 is alpha_min; x=width-1 is alpha_max",
             "betaRowOrder": "exported y=0 is beta_max; exported y=height-1 is beta_min",
@@ -270,6 +353,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, required=True, dest="input_path")
     parser.add_argument("--out-dir", type=Path, required=True)
+    parser.add_argument(
+        "--target-size",
+        type=int,
+        default=None,
+        help=(
+            "Optional square export resolution, e.g. 4096 for a 4K display texture. "
+            "This resamples the source lens map for display and does not add physical trace resolution."
+        ),
+    )
     return parser
 
 
@@ -279,6 +371,7 @@ def main() -> None:
         input_path=args.input_path,
         out_dir=args.out_dir,
         command=" ".join(sys.argv),
+        target_size=args.target_size,
     )
     print(json.dumps(summary, indent=2, sort_keys=True))
 

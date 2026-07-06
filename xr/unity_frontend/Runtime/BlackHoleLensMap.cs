@@ -11,9 +11,22 @@ namespace GRBHXR
         public int width;
         public int height;
         public int escapePixels;
+        public ResolutionMetadata resolution;
         public ScreenConvention screenConvention;
         public ScreenBounds screen;
         public UnityBasis unityBasisInBhCoordinates;
+    }
+
+    [Serializable]
+    public sealed class ResolutionMetadata
+    {
+        public int sourceWidth;
+        public int sourceHeight;
+        public int exportWidth;
+        public int exportHeight;
+        public bool nativeTraceResolution;
+        public string resampling;
+        public string physicsNote;
     }
 
     [Serializable]
@@ -79,7 +92,8 @@ namespace GRBHXR
                 Metadata.height,
                 TextureFormat.RGBA32,
                 expectedBytesPerPixel: 4,
-                name: "GR-BH-XR event_rgba8"
+                name: "GR-BH-XR event_rgba8",
+                filterMode: FilterMode.Point
             );
             EscapeDirectionTexture = LoadRawTexture(
                 escapeDirectionUnityRgba32fBytes,
@@ -87,7 +101,8 @@ namespace GRBHXR
                 Metadata.height,
                 TextureFormat.RGBAFloat,
                 expectedBytesPerPixel: 16,
-                name: "GR-BH-XR escape_dir_unity_rgba32f"
+                name: "GR-BH-XR escape_dir_unity_rgba32f",
+                filterMode: FilterMode.Bilinear
             );
         }
 
@@ -111,7 +126,8 @@ namespace GRBHXR
             int height,
             TextureFormat format,
             int expectedBytesPerPixel,
-            string name
+            string name,
+            FilterMode filterMode
         )
         {
             if (bytes == null)
@@ -131,7 +147,7 @@ namespace GRBHXR
             {
                 name = name,
                 wrapMode = TextureWrapMode.Clamp,
-                filterMode = FilterMode.Bilinear
+                filterMode = filterMode
             };
             texture.LoadRawTextureData(bytes.bytes);
             texture.Apply(updateMipmaps: false, makeNoLongerReadable: true);
