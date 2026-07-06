@@ -17,6 +17,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
+gpu = [
+  "rendercanvas>=2.6.3",
+  "wgpu>=0.31.1",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -119,13 +119,45 @@ The tolerance may be revised only with a documented numerical reason.
 
 ## Phase 2 GPU Kerr Lensing
 
-Required checks:
+Task 4 starts Phase 2 with a WGPU Vulkan compute prototype. The CPU DOP853
+solver remains the scientific reference; the GPU path is a real-time f32
+fixed-step RK4 baseline for capture/escape/debug texture generation.
 
-- CPU-vs-GPU agreement on fixed camera/spin/inclination cases;
-- capture mask agreement near the Schwarzschild shadow;
-- visible diagnostic buffers for ray order, capture mask, redshift map, and time
-  delay map when those quantities exist;
-- adaptive sampling or refinement near the critical curve.
+Required Task 4 checks:
+
+- WGPU selects a Vulkan adapter, preferring the NVIDIA discrete GPU when
+  available;
+- GPU HDF5 output uses schema `gr-bh-xr.phase2.gpu_lens_map.v1` and records
+  `alpha`, `beta`, `gpu_event_code`, `gpu_failure_code`, `gpu_min_r`,
+  `gpu_h_max_abs`, `gpu_q_drift_abs`, `gpu_steps`, `event_rgba8`, and
+  `debug_rgba8`;
+- CPU-vs-GPU comparison files also record `cpu_event_code`,
+  `cpu_failure_code`, `cpu_min_r`, and the masks used to exclude CPU failures,
+  the near-critical screen band, and near-capture Boyer-Lindquist samples;
+- stable-region CPU-vs-GPU event agreement is at least `98%` for
+  Schwarzschild and Kerr `a = 0.5`, `i = 60 deg`;
+- Schwarzschild GPU capture fraction differs from the same-grid CPU capture
+  fraction by less than `0.03`;
+- GPU failure counts are zero outside documented CPU-failure, critical-band,
+  and near-capture exclusions;
+- CPU-vs-GPU comparison output records both the stable-region event agreement
+  used for the gate and a full-grid event-agreement field used to detect
+  cancelling capture/escape count errors;
+- generated HDF5/debug texture artifacts stay under ignored `outputs/phase2/`.
+
+Task 4 explicitly does not validate thin-disk transfer, redshift, time delay,
+GRRT, Quest/OpenXR runtime integration, adaptive RK, or Kerr-Schild
+horizon/axis continuation. Large `gpu_h_max_abs` values near capture or failure
+pixels are audit metadata for the f32 fixed-step shader, not a replacement for
+the Phase 1 CPU Hamiltonian gate.
+
+At 256x256, small-`|L_z|` near-polar rays can expose fixed-step f32 artifacts:
+if the even grid samples columns close to but not exactly on `alpha = 0`, RK4
+may step over the narrow polar centrifugal barrier and report
+`solver_failure`, or use the shorter GPU affine-parameter budget and report
+`unclassified_max_lambda`. Treat this as a documented GPU prototype limitation
+until a polar-specific failure code, substepping, or adaptive refinement is
+implemented.
 
 ## Phase 3 Quest PCVR
 

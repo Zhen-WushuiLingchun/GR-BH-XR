@@ -19,6 +19,69 @@ from here.
 
 ## Log
 
+### 2026-07-06 - Task 4 WGPU Vulkan GPU lensing prototype
+
+- Goal: Start Task 4 with a Vulkan-backed WGPU compute baseline for GPU Kerr
+  capture/escape lens maps and XR-oriented debug textures.
+- Changed files / components: `pyproject.toml`, `src/gr_bh_xr/gpu/`, GPU tests,
+  `validation/gpu_kerr_lensing/README.md`, `renderer/vulkan_compute/README.md`,
+  and this validation-target documentation.
+- Academic reason: Move from the closed Phase 1 CPU reference solver to a
+  real-time GPU path while keeping every GPU output comparable against CPU
+  event/failure buffers and exclusion masks.
+- Physical correspondence: The WGSL shader follows the Phase 1
+  Boyer-Lindquist exterior inverse metric, analytic inverse-metric derivatives,
+  Bardeen screen constants, capture/escape classification, and axis-coordinate
+  invalid semantics. The GPU integrator is f32 fixed-step RK4, not the CPU
+  DOP853 reference.
+- Assumptions and conventions: WGPU is used as the Vulkan implementation layer
+  because the local machine has Vulkan adapters but no SPIR-V compiler or
+  validation toolchain. Task 4 does not include thin-disk transfer, redshift,
+  time delay, GRRT, Quest/OpenXR runtime integration, adaptive RK, or
+  Kerr-Schild continuation.
+- Validation: `python -m pytest` passed with 20 tests. `python -m
+  gr_bh_xr.gpu.check_backend` selected the NVIDIA GeForce RTX 5080 Laptop GPU
+  with WGPU backend type `Vulkan`. CPU-vs-GPU 65x65 validation reported
+  Schwarzschild stable agreement `1.0`, capture-fraction difference `0.0`,
+  and GPU failures outside exclusions `0`; Kerr `a = 0.5`, `i = 60 deg`
+  reported stable agreement `1.0`, capture-fraction difference `0.0`, and GPU
+  failures outside exclusions `0`. 129x129 GPU lens maps reproduced the Phase 1
+  CPU event counts for Schwarzschild (`capture = 5385`, `escape = 11178`,
+  `invalid = 78`) and Kerr `a = 0.5`, `i = 60 deg` (`capture = 5296`,
+  `escape = 11263`, `invalid = 82`). A noninteractive preview snapshot was
+  written with `python -m gr_bh_xr.gpu.preview --save-and-exit`.
+- References: GPU design remains tied to the Phase 1 analytic sources in
+  `docs/equations.md`; WGPU/Vulkan implementation notes are recorded under
+  `renderer/vulkan_compute/README.md`.
+- Open issues / next steps: Task 4 still needs interactive preview review on
+  the user-visible desktop and later CPU-vs-GPU checks for texture import into a
+  Unity/OpenXR path. Future GPU work should add adaptive refinement, winding or
+  image-order diagnostics, and eventually a coordinate treatment that does not
+  terminate at Boyer-Lindquist axis/horizon limitations.
+
+### 2026-07-06 - Task 4 review follow-up
+
+- Goal: Tighten the GPU validation audit fields before pushing the first Task 4
+  commit.
+- Changed files / components: `src/gr_bh_xr/gpu/validate.py`, GPU tests,
+  `validation/gpu_kerr_lensing/README.md`, and validation documentation.
+- Academic reason: Stable-region agreement excludes near-capture and
+  critical-band samples by design. A separate full-grid event agreement field
+  prevents capture/escape count differences from accidentally cancelling in the
+  summary.
+- Physical correspondence: No shader physics changed. The added documentation
+  records a 256x256 fixed-step f32 polar artifact for small-`|L_z|` rays near
+  the Boyer-Lindquist axis, where the GPU can step across a narrow centrifugal
+  barrier or exhaust its shorter affine-parameter budget.
+- Validation: Post-review 65x65 Schwarzschild and Kerr `a = 0.5`, `i = 60 deg`
+  checks had full-grid event agreement `1.0`; the 256x256 Kerr example exposed
+  25 `solver_failure` and 4 `unclassified_max_lambda` near-polar pixels that
+  are now documented as prototype limitations.
+- References: Same Phase 1 equations and Task 4 WGPU/Vulkan notes.
+- Open issues / next steps: Add a dedicated polar failure code or near-pole
+  substepping, then implement near-critical adaptive refinement before making
+  stronger high-resolution GPU claims.
+
 ### 2026-07-06 - Phase 1 closeout review
 
 - Goal: Record that Phase 1 CPU Kerr reference solver work has passed external
