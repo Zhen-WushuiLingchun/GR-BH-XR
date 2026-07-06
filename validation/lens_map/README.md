@@ -25,8 +25,10 @@ Generated HDF5 and PDF outputs are intentionally written under
 - The HDF5 file contains screen axes, event codes, per-pixel minimum radius,
   Hamiltonian residuals, conserved-quantity drift diagnostics, and disk-crossing
   counts.
-- Escaped rays record sky direction buffers `escape_theta`, `escape_phi`, and
-  `escape_dir_{x,y,z}` for later background lensing/cubemap sampling.
+- Escaped rays record momentum-derived sky direction buffers `escape_theta`,
+  `escape_phi`, and `escape_dir_{x,y,z}` for later background
+  lensing/cubemap sampling. The direction is computed from `u^mu = g^{mu nu}
+  p_nu` at the escape sphere, not from the finite-radius escape position.
 - The HDF5 file records `failure_code`, separating trace exceptions, solver
   failures, rays that reached `max_lambda` without a classified event, and
   Boyer-Lindquist polar-axis coordinate singularities. The shared codebook also

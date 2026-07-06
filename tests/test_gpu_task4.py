@@ -56,7 +56,7 @@ def test_gpu_schwarzschild_lens_map_schema_and_events(tmp_path):
     assert summary["event_counts"]["escape"] > 0
     assert summary["failure_counts"]["solver_failure"] == 0
     with h5py.File(out, "r") as handle:
-        assert handle.attrs["schema"] == "gr-bh-xr.phase2.gpu_lens_map.v1"
+        assert handle.attrs["schema"] == "gr-bh-xr.phase2.gpu_lens_map.v2"
         assert handle.attrs["backend"] == "wgpu"
         assert handle.attrs["requested_backend"] == "vulkan"
         assert handle.attrs["precision"] == "f32"

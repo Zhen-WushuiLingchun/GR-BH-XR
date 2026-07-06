@@ -14,7 +14,7 @@ python -m gr_bh_xr.generate_lens_map --spin 0 --inclination-deg 90 --grid 129 --
 python -m gr_bh_xr.generate_lens_map --spin 0.5 --inclination-deg 60 --grid 129 --alpha-max 8 --beta-max 8 --out outputs/phase1/lensmap_kerr_a0.5_i60.h5
 ```
 
-The file uses schema `gr-bh-xr.phase1.lens_map.v4`.
+The file uses schema `gr-bh-xr.phase1.lens_map.v5`.
 
 Datasets:
 
@@ -39,10 +39,12 @@ Datasets:
 - `disk_crossings`: number of equatorial-plane crossings observed in the traced
   state samples.
 - `escape_theta`, `escape_phi`: asymptotic sky direction angles for escaped
-  rays, with NaNs for non-escape pixels.
-- `escape_dir_x`, `escape_dir_y`, `escape_dir_z`: unit Cartesian sky direction
-  for escaped rays, suitable for later cubemap or skybox lookup after choosing
-  a renderer coordinate convention.
+  rays, with NaNs for non-escape pixels. These are computed from the
+  contravariant ray momentum at the escape sphere, not from the ray position on
+  that sphere.
+- `escape_dir_x`, `escape_dir_y`, `escape_dir_z`: momentum-derived unit
+  Cartesian sky direction for escaped rays, suitable for later cubemap or
+  skybox lookup after choosing a renderer coordinate convention.
 
 File attributes:
 
@@ -61,8 +63,10 @@ and `q_drift_abs`.
 ## Current Scope
 
 Phase 1 lens maps expose the physical/debug buffers needed to audit the
-capture/escape shadow geometry and the escape-direction map needed for
-background lensing. They do not yet include thin-disk transfer quantities such
+capture/escape shadow geometry and the momentum escape-direction map needed
+for background lensing. Position angles on a finite escape sphere are not used
+as the transfer direction because they carry an `O(b / r_escape)` impact-
+parameter bias. The maps do not yet include thin-disk transfer quantities such
 as crossing location `(r_m, phi_m)`, image order `m`, redshift factor `g_m`,
 time delay `Delta t_m`, optical depth, or observed intensity.
 

@@ -52,7 +52,7 @@ def test_generate_lens_map_writes_required_hdf5_buffers(tmp_path):
         assert handle["alpha"].shape == (17,)
         assert handle["beta"].shape == (17,)
         assert handle["event_code"].shape == (17, 17)
-        assert handle.attrs["schema"] == "gr-bh-xr.phase1.lens_map.v4"
+        assert handle.attrs["schema"] == "gr-bh-xr.phase1.lens_map.v5"
         assert handle.attrs["M"] == 1.0
         assert handle.attrs["a"] == 0.0
         assert handle.attrs["grid"] == 17

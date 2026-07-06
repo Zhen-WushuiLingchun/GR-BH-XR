@@ -19,6 +19,7 @@ from gr_bh_xr.types import MetricParams, TraceConfig
 
 
 _TRACE_CONTEXT = None
+F32_OUTPUTS_PER_PIXEL = 9
 
 
 @dataclass(frozen=True)
@@ -153,12 +154,22 @@ def trace_lens_map(config: GpuTraceConfig) -> GpuLensMap:
     min_r = result["min_r"].reshape(shape).astype(np.float32)
     h_max_abs = result["h_max_abs"].reshape(shape).astype(np.float32)
     q_drift_abs = result["q_drift_abs"].reshape(shape).astype(np.float32)
+    final_r = result["final_r"].reshape(shape).astype(np.float32)
     final_theta = result["final_theta"].reshape(shape).astype(np.float32)
     final_phi = result["final_phi"].reshape(shape).astype(np.float32)
+    final_p_r = result["final_p_r"].reshape(shape).astype(np.float32)
+    final_p_theta = result["final_p_theta"].reshape(shape).astype(np.float32)
+    final_p_phi = result["final_p_phi"].reshape(shape).astype(np.float32)
     escape_theta, escape_phi, escape_dir_x, escape_dir_y, escape_dir_z = escape_direction_arrays(
+        params=config.params,
         event_code=event_code,
+        r=final_r,
         theta=final_theta,
         phi=final_phi,
+        p_t=-1.0,
+        p_r=final_p_r,
+        p_theta=final_p_theta,
+        p_phi=final_p_phi,
         escape_code=SCHEMA_EVENT_CODES["escape"],
     )
     refinement_level, subpixel_capture_fraction, subpixel_invalid_fraction = _refine_critical_band(
@@ -223,7 +234,7 @@ def _trace_screen_points(config: GpuTraceConfig, alpha: np.ndarray, beta: np.nda
     )
     out_f32_buffer = device.create_buffer(
         label="gr-bh-xr gpu f32 outputs",
-        size=int(n_pixels * 5 * np.dtype(np.float32).itemsize),
+        size=int(n_pixels * F32_OUTPUTS_PER_PIXEL * np.dtype(np.float32).itemsize),
         usage=wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_SRC,
     )
     screen_buffer = device.create_buffer_with_data(
@@ -253,7 +264,7 @@ def _trace_screen_points(config: GpuTraceConfig, alpha: np.ndarray, beta: np.nda
     out_i32 = np.frombuffer(device.queue.read_buffer(out_i32_buffer), dtype=np.int32).copy()
     out_f32 = np.frombuffer(device.queue.read_buffer(out_f32_buffer), dtype=np.float32).copy()
     out_i32 = out_i32.reshape((n_pixels, 3))
-    out_f32 = out_f32.reshape((n_pixels, 5))
+    out_f32 = out_f32.reshape((n_pixels, F32_OUTPUTS_PER_PIXEL))
     return {
         "backend": info,
         "event_code": out_i32[:, 0],
@@ -262,8 +273,12 @@ def _trace_screen_points(config: GpuTraceConfig, alpha: np.ndarray, beta: np.nda
         "min_r": out_f32[:, 0],
         "h_max_abs": out_f32[:, 1],
         "q_drift_abs": out_f32[:, 2],
-        "final_theta": out_f32[:, 3],
-        "final_phi": out_f32[:, 4],
+        "final_r": out_f32[:, 3],
+        "final_theta": out_f32[:, 4],
+        "final_phi": out_f32[:, 5],
+        "final_p_r": out_f32[:, 6],
+        "final_p_theta": out_f32[:, 7],
+        "final_p_phi": out_f32[:, 8],
     }
 
 
@@ -276,8 +291,12 @@ def _empty_trace_result(info: dict[str, Any]) -> dict[str, Any]:
         "min_r": np.empty(0, dtype=np.float32),
         "h_max_abs": np.empty(0, dtype=np.float32),
         "q_drift_abs": np.empty(0, dtype=np.float32),
+        "final_r": np.empty(0, dtype=np.float32),
         "final_theta": np.empty(0, dtype=np.float32),
         "final_phi": np.empty(0, dtype=np.float32),
+        "final_p_r": np.empty(0, dtype=np.float32),
+        "final_p_theta": np.empty(0, dtype=np.float32),
+        "final_p_phi": np.empty(0, dtype=np.float32),
     }
 
 
@@ -730,14 +749,18 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
     }
     let ibase = idx * 3u;
-    let fbase = idx * 5u;
+    let fbase = idx * 9u;
     out_i32[ibase + 0u] = event;
     out_i32[ibase + 1u] = failure;
     out_i32[ibase + 2u] = i32(step_count);
     out_f32[fbase + 0u] = min_r;
     out_f32[fbase + 1u] = h_max;
     out_f32[fbase + 2u] = qmax - qmin;
-    out_f32[fbase + 3u] = s.th;
-    out_f32[fbase + 4u] = s.ph;
+    out_f32[fbase + 3u] = s.r;
+    out_f32[fbase + 4u] = s.th;
+    out_f32[fbase + 5u] = s.ph;
+    out_f32[fbase + 6u] = s.pr;
+    out_f32[fbase + 7u] = s.pth;
+    out_f32[fbase + 8u] = s.pph;
 }
 """

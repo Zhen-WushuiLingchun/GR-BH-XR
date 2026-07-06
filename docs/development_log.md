@@ -19,6 +19,41 @@ from here.
 
 ## Log
 
+### 2026-07-06 - Task 4 momentum escape-direction correction
+
+- Goal: Correct the escape-direction transfer buffer before Task 5 consumes it
+  for background cubemap sampling.
+- Changed files / components: `src/gr_bh_xr/sky.py`,
+  `src/gr_bh_xr/geodesic.py`, `src/gr_bh_xr/gpu/trace.py`, CPU/GPU HDF5 schema
+  versions, tests, and validation documentation.
+- Academic reason: A transfer map must represent the asymptotic propagation
+  direction, not only the finite-radius point where a ray intersects the escape
+  sphere. Using position angles would introduce an `O(b / r_escape)` systematic
+  bias that is large enough to matter for Task 5 background lensing.
+- Physical correspondence: Escaped rays now compute `u^mu = g^{mu nu} p_nu` at
+  the escape sphere and project `(u^r, r u^theta, r sin(theta) u^phi)` onto the
+  local spherical orthonormal basis before converting to Cartesian
+  `escape_dir_{x,y,z}` and angles `(escape_theta, escape_phi)`. Non-escape
+  pixels remain NaN.
+- Assumptions and conventions: The GPU shader still integrates in f32
+  fixed-step RK4, but it now returns the final escape state and covariant
+  momenta to Python so the CPU and GPU paths share the same f64 direction
+  conversion in `sky.py`.
+- Validation: `python -m pytest` passed with 22 tests. A Schwarzschild
+  `alpha = 8`, equatorial CPU ray changed escape radius from `200M` to `400M`
+  with momentum-direction angular drift `2.25e-7 rad`; the same test is now a
+  regression gate at `< 1e-5 rad`. CPU-vs-GPU 65x65 validation retained
+  full-grid/stable event agreement `1.0` and capture-fraction difference `0.0`
+  for Schwarzschild and Kerr `a = 0.5`, `i = 60 deg`. Momentum-direction errors
+  were Schwarzschild max `6.3618e-4 rad`, RMS `3.3274e-5 rad`, median
+  `3.7357e-6 rad`; Kerr max `0.0029179 rad`, RMS `8.5875e-5 rad`, median
+  `3.8686e-6 rad`.
+- References: Same Phase 1 Bardeen screen-coordinate and Kerr geodesic sources;
+  this fixes transfer-buffer semantics rather than changing the metric model.
+- Open issues / next steps: Task 5 can now consume `gpu_escape_dir_{x,y,z}` for
+  static cubemap/skybox lookup. Renderer-side cubemap axis conventions and
+  Unity/OpenXR texture import remain the next integration layer.
+
 ### 2026-07-06 - Task 4 WGPU Vulkan GPU lensing prototype
 
 - Goal: Start Task 4 with a Vulkan-backed WGPU compute baseline for GPU Kerr
@@ -130,8 +165,9 @@ from here.
   a unit Cartesian direction vector. Non-escape pixels are NaN. The GPU
   validator compares CPU and GPU escaped-ray direction vectors on the same
   stable mask used for event agreement.
-- Assumptions and conventions: Directions are Boyer-Lindquist asymptotic sky
-  directions at the configured escape radius. Renderer-specific cubemap axes
+- Assumptions and conventions: This entry introduced the direction-buffer
+  contract. The later momentum-correction entry above supersedes the initial
+  finite-radius position-angle interpretation. Renderer-specific cubemap axes
   remain a Task 5 convention layer.
 - Validation: Kerr `a = 0.5`, `i = 60 deg`, 65x65 CPU-vs-GPU validation kept
   full-grid/stable event agreement `1.0` and capture-fraction difference `0.0`;

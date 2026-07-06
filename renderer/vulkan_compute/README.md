@@ -27,8 +27,10 @@ The Python wrapper caches the WGPU adapter/device/pipeline for repeated map
 generation inside a process, and uses the current `set_bind_group` call
 signature. The same compute pipeline traces both center screen samples and
 subpixel samples in the critical-curve refinement band.
-Escaped rays also emit sky direction buffers for later background cubemap
-sampling; Task 5 should consume those buffers instead of only the capture mask.
+Escaped rays also emit momentum-derived sky direction buffers for later
+background cubemap sampling; Task 5 should consume those buffers instead of
+only the capture mask. The direction is computed from endpoint momentum rather
+than escape-sphere position to avoid finite-radius angular bias.
 
 Deferred work:
 

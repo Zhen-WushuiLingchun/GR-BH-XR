@@ -75,7 +75,7 @@ def _write_lens_map(
 ) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(out, "w") as handle:
-        handle.attrs["schema"] = "gr-bh-xr.phase1.lens_map.v4"
+        handle.attrs["schema"] = "gr-bh-xr.phase1.lens_map.v5"
         handle.attrs["M"] = params.M
         handle.attrs["a"] = params.a
         handle.attrs["inclination_deg"] = inclination_deg

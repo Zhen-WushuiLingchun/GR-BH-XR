@@ -45,3 +45,26 @@ def test_axis_coordinate_singularity_is_structured_invalid_reason():
     assert diagnostics.failure_reason == "axis_coordinate_singularity"
     assert diagnostics.lambda_end > 0.0
     assert diagnostics.min_r < 50.0
+
+
+def test_escape_direction_uses_momentum_not_escape_sphere_position():
+    params = MetricParams(M=1.0, a=0.0)
+    camera = CameraConfig(r_obs=100.0, theta_obs=math.pi / 2.0, alpha=8.0, beta=0.0)
+    near = trace_ray(
+        params,
+        camera,
+        TraceConfig(max_lambda=2000.0, r_escape=200.0, max_step=1.0, rtol=1.0e-10, atol=1.0e-12),
+    )
+    far = trace_ray(
+        params,
+        camera,
+        TraceConfig(max_lambda=2000.0, r_escape=400.0, max_step=1.0, rtol=1.0e-10, atol=1.0e-12),
+    )
+
+    assert near.event == "escape"
+    assert far.event == "escape"
+    near_dir = (near.escape_dir_x, near.escape_dir_y, near.escape_dir_z)
+    far_dir = (far.escape_dir_x, far.escape_dir_y, far.escape_dir_z)
+    dot = sum(a * b for a, b in zip(near_dir, far_dir))
+    angular_error = math.acos(max(-1.0, min(1.0, dot)))
+    assert angular_error < 1.0e-5

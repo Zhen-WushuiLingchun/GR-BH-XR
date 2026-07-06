@@ -127,7 +127,7 @@ Required Task 4 checks:
 
 - WGPU selects a Vulkan adapter, preferring the NVIDIA discrete GPU when
   available;
-- GPU HDF5 output uses schema `gr-bh-xr.phase2.gpu_lens_map.v1` and records
+- GPU HDF5 output uses schema `gr-bh-xr.phase2.gpu_lens_map.v2` and records
   `alpha`, `beta`, `gpu_event_code`, `gpu_failure_code`, `gpu_min_r`,
   `gpu_h_max_abs`, `gpu_q_drift_abs`, `gpu_steps`, `event_rgba8`, and
   `debug_rgba8`;
@@ -143,8 +143,12 @@ Required Task 4 checks:
 - CPU-vs-GPU comparison output records both the stable-region event agreement
   used for the gate and a full-grid event-agreement field used to detect
   cancelling capture/escape count errors;
-- escaped rays record asymptotic sky direction buffers, and the GPU validator
-  compares CPU-vs-GPU unit direction vectors on stable escaped pixels;
+- escaped rays record momentum-derived asymptotic sky direction buffers, not
+  escape-sphere position angles, and the GPU validator compares CPU-vs-GPU unit
+  direction vectors on stable escaped pixels;
+- the CPU escape-direction definition is regression-tested by comparing the
+  same Schwarzschild escape ray at `r_escape = 200M` and `400M`, requiring
+  angular drift below `1e-5 rad`;
 - generated HDF5/debug texture artifacts stay under ignored `outputs/phase2/`.
 - the analytic critical-curve band is marked by a refinement buffer and
   supersampled into subpixel capture/invalid fractions for downstream texture

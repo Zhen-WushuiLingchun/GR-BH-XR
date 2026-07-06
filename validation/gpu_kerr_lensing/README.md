@@ -24,15 +24,15 @@ HDF5 schema without opening a window.
 
 ## HDF5 Schema
 
-Generated GPU maps use schema `gr-bh-xr.phase2.gpu_lens_map.v1`.
+Generated GPU maps use schema `gr-bh-xr.phase2.gpu_lens_map.v2`.
 
 - axes: `alpha`, `beta`
 - GPU buffers: `gpu_event_code`, `gpu_failure_code`, `gpu_min_r`,
   `gpu_h_max_abs`, `gpu_q_drift_abs`, `gpu_steps`,
   `gpu_refinement_level`, `gpu_subpixel_capture_fraction`, and
   `gpu_subpixel_invalid_fraction`
-- escaped-ray direction buffers: `gpu_escape_theta`, `gpu_escape_phi`, and
-  `gpu_escape_dir_{x,y,z}`
+- escaped-ray momentum direction buffers: `gpu_escape_theta`,
+  `gpu_escape_phi`, and `gpu_escape_dir_{x,y,z}`
 - texture buffers: `event_rgba8`, `debug_rgba8`
 - comparison-only CPU buffers: `cpu_event_code`, `cpu_failure_code`,
   `cpu_min_r`, `cpu_escape_theta`, `cpu_escape_phi`, and
@@ -75,11 +75,16 @@ CPU/GPU capture fractions, full-grid event agreement of `100%`, and zero GPU
 failures outside exclusions.
 
 Escaped rays now carry an asymptotic sky direction map for background
-lensing/cubemap lookup. The CPU-vs-GPU validator compares the unit direction
-vectors on stable escaped pixels and records max/RMS/median angular error in
-radians. On the reviewed Kerr `a=0.5`, `i=60 deg`, 65x65 case, the direction
-comparison used 2746 escaped stable pixels with max error `0.00292 rad`, RMS
-`1.69e-4 rad`, and median `4.05e-5 rad`.
+lensing/cubemap lookup. The direction is computed from the endpoint momentum
+`u^mu = g^{mu nu} p_nu` at the escape sphere, not from the finite-radius
+position angle on that sphere. This avoids the `O(b / r_escape)` bias of using
+escape-sphere position as a sky direction. The CPU-vs-GPU validator compares
+the unit direction vectors on stable escaped pixels and records max/RMS/median
+angular error in radians. On the reviewed Kerr `a=0.5`, `i=60 deg`, 65x65 case,
+the direction comparison used 2746 escaped stable pixels with max error
+`0.0029179 rad`, RMS `8.59e-5 rad`, and median `3.87e-6 rad`. The companion
+Schwarzschild 65x65 case used 2722 escaped stable pixels with max error
+`6.36e-4 rad`, RMS `3.33e-5 rad`, and median `3.74e-6 rad`.
 
 The default GPU map generator and validator now supersample the analytic
 critical-curve band with `critical_refine_band = 0.25 M` and
