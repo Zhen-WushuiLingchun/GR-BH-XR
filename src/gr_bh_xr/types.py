@@ -96,6 +96,12 @@ class RayDiagnostics:
     image_order: int
     q_initial: float
     q_final: float
+    disk_crossing_lambda: tuple[float, ...] = ()
+    disk_crossing_t: tuple[float, ...] = ()
+    disk_crossing_r: tuple[float, ...] = ()
+    disk_crossing_phi: tuple[float, ...] = ()
+    disk_crossing_p_t: tuple[float, ...] = ()
+    disk_crossing_p_phi: tuple[float, ...] = ()
     escape_theta: float = np.nan
     escape_phi: float = np.nan
     escape_dir_x: float = np.nan

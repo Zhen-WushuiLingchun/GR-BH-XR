@@ -46,6 +46,8 @@ Tracked Phase 1 validation entry points:
   paths for visual sanity checking.
 - `photon_ring_zoom/README.md`: Task 6 pre-transfer lensing-band zoom using
   azimuthal winding and image-order proxy buffers.
+- `thin_disk_transfer/README.md`: Task 6 CPU equatorial thin-disk crossing and
+  redshift transfer buffers.
 
 ## Phase 3 Quest PCVR Gate
 

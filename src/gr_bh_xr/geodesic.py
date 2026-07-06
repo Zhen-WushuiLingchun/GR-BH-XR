@@ -53,6 +53,8 @@ def _diagnostics(
     message: str,
     disk_crossings: int,
     failure_reason: FailureReason = "none",
+    disk_crossing_lambda: np.ndarray | None = None,
+    disk_crossing_states: np.ndarray | None = None,
 ) -> RayDiagnostics:
     xs = y_values[:, :4]
     ps = y_values[:, 4:]
@@ -69,6 +71,24 @@ def _diagnostics(
     delta_phi = float(xs[-1, 3] - xs[0, 3])
     azimuthal_winding = abs(delta_phi) / (2.0 * math.pi)
     image_order = max(0, int(math.floor(2.0 * azimuthal_winding + 1.0e-12)))
+    crossing_lam_tuple: tuple[float, ...] = ()
+    crossing_t_tuple: tuple[float, ...] = ()
+    crossing_r_tuple: tuple[float, ...] = ()
+    crossing_phi_tuple: tuple[float, ...] = ()
+    crossing_p_t_tuple: tuple[float, ...] = ()
+    crossing_p_phi_tuple: tuple[float, ...] = ()
+    if (
+        disk_crossing_lambda is not None
+        and disk_crossing_states is not None
+        and disk_crossing_lambda.size
+        and disk_crossing_states.ndim == 2
+    ):
+        crossing_lam_tuple = tuple(float(value) for value in disk_crossing_lambda)
+        crossing_t_tuple = tuple(float(value) for value in disk_crossing_states[:, 0])
+        crossing_r_tuple = tuple(float(value) for value in disk_crossing_states[:, 1])
+        crossing_phi_tuple = tuple(float(value) for value in disk_crossing_states[:, 3])
+        crossing_p_t_tuple = tuple(float(value) for value in disk_crossing_states[:, 4])
+        crossing_p_phi_tuple = tuple(float(value) for value in disk_crossing_states[:, 7])
     escape_theta, escape_phi, escape_dir_x, escape_dir_y, escape_dir_z = escape_direction_or_nan(
         params, event, xs[-1], ps[-1]
     )
@@ -87,6 +107,12 @@ def _diagnostics(
         image_order=int(image_order),
         q_initial=float(q_values[0]),
         q_final=float(q_values[-1]),
+        disk_crossing_lambda=crossing_lam_tuple,
+        disk_crossing_t=crossing_t_tuple,
+        disk_crossing_r=crossing_r_tuple,
+        disk_crossing_phi=crossing_phi_tuple,
+        disk_crossing_p_t=crossing_p_t_tuple,
+        disk_crossing_p_phi=crossing_p_phi_tuple,
         escape_theta=escape_theta,
         escape_phi=escape_phi,
         escape_dir_x=escape_dir_x,
@@ -140,19 +166,17 @@ def trace_ray(
     escape_event.direction = 1.0  # type: ignore[attr-defined]
 
     events = [capture_event, escape_event]
-    disk_event_index: int | None = None
     axis_event_index: int | None = None
-    if cfg.stop_on_disk:
 
-        def disk_event(lam: float, y: np.ndarray) -> float:
-            if lam < 1.0e-6:
-                return 1.0
-            return float(y[2] - math.pi / 2.0)
+    def disk_event(lam: float, y: np.ndarray) -> float:
+        if lam < 1.0e-6:
+            return 1.0
+        return float(y[2] - math.pi / 2.0)
 
-        disk_event.terminal = True  # type: ignore[attr-defined]
-        disk_event.direction = 0.0  # type: ignore[attr-defined]
-        disk_event_index = len(events)
-        events.append(disk_event)
+    disk_event.terminal = bool(cfg.stop_on_disk)  # type: ignore[attr-defined]
+    disk_event.direction = 0.0  # type: ignore[attr-defined]
+    disk_event_index = len(events)
+    events.append(disk_event)
 
     use_axis_event = abs(y0[7]) <= cfg.axis_lz_tol
     if use_axis_event:
@@ -196,7 +220,9 @@ def trace_ray(
         )
 
     y_values = sol.y.T
-    disk_crossings = _count_disk_crossings(y_values[:, 2])
+    disk_crossing_lambda = sol.t_events[disk_event_index]
+    disk_crossing_states = sol.y_events[disk_event_index]
+    disk_crossings = int(disk_crossing_lambda.size)
     event = "invalid"
     failure_reason: FailureReason = "none"
     message = sol.message
@@ -205,7 +231,7 @@ def trace_ray(
             event = "capture"
         elif len(sol.t_events) > 1 and sol.t_events[1].size:
             event = "escape"
-        elif disk_event_index is not None and sol.t_events[disk_event_index].size:
+        elif cfg.stop_on_disk and disk_crossing_lambda.size:
             event = "disk_crossing"
         elif axis_event_index is not None and sol.t_events[axis_event_index].size:
             failure_reason = "axis_coordinate_singularity"
@@ -223,4 +249,6 @@ def trace_ray(
         message,
         disk_crossings,
         failure_reason,
+        disk_crossing_lambda=disk_crossing_lambda,
+        disk_crossing_states=disk_crossing_states,
     )

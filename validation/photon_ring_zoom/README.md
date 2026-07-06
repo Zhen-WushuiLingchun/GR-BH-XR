@@ -19,6 +19,16 @@ photon-ring inspection. It is not the final thin-disk crossing order `m`.
 Task 6 disk transfer will later record per-crossing `(r_m, phi_m, g_m,
 Delta t_m, n_m)`.
 
+This proxy uses the net Boyer-Lindquist azimuth change
+`Delta phi = phi_end - phi_start`. It is quantitatively clean for the
+Schwarzschild equatorial zoom used here, but it should not be used as a Kerr
+subring index. In Kerr, frame dragging can make prograde near-shell
+`Delta phi` diverge and retrograde rays can have non-monotonic `phi`, so the
+net value can undercount total winding. The Gralla-Holz-Wald subring index is
+instead tied to polar half-orbits / equatorial crossings; the formal Task 6
+disk order `m` is therefore based on disk-crossing records, not this
+azimuthal proxy.
+
 The expected qualitative behavior follows
 `gralla2019shadowsPhotonRings` and `gralla2020lensingKerr`: higher-order image
 bands are exponentially compressed toward the critical curve. In a full

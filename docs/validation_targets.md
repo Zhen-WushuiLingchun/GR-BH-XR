@@ -222,6 +222,18 @@ Required checks:
   case;
 - time-delay sampling is tested with a simple time-dependent disk feature.
 
+Current CPU transfer v1 target:
+
+- HDF5 schema `gr-bh-xr.task6.thin_disk_transfer.v1` records
+  `disk_r_m`, `disk_phi_m`, `disk_t_m`, and `disk_g_m` with shape
+  `(max_order, grid, grid)`;
+- `r_in = r_ISCO(a)` follows `bardeen1972rotatingBlackHoles`;
+- Keplerian redshift `g = E / (u^t (E - Omega L_z))` is stored for each valid
+  disk crossing and follows `cunningham1975kerrDiskSpectrum`;
+- Schwarzschild checks include `r_ISCO = 6M` and `g(L_z=0) = sqrt(1 - 3M/r)`;
+- emission profile, observed intensity, optical depth, and GPU/Unity texture
+  integration remain deferred until the CPU transfer buffers pass review.
+
 ## Phase 5 MR Overlay
 
 Required checks:

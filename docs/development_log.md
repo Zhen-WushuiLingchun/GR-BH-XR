@@ -19,6 +19,35 @@ from here.
 
 ## Log
 
+### 2026-07-06 - Task 6 CPU thin-disk transfer v1
+
+- Goal: Start the formal thin-disk transfer-function path while Unity Editor
+  setup is pending.
+- Changed files / components: `src/gr_bh_xr/disk.py`,
+  `src/gr_bh_xr/generate_disk_transfer.py`, `trace_ray` disk-crossing records,
+  tests, and validation documentation.
+- Academic reason: The next physics milestone after background lensing is the
+  Cunningham/Luminet thin-disk transfer map: per-crossing disk radius, azimuth,
+  time, and redshift must be auditable before any bright disk image is rendered.
+- Physical correspondence: The CPU transfer v1 records equatorial disk
+  crossings inside `r_ISCO(a) <= r_m <= r_out`, using `r_ISCO(a)` from
+  Bardeen/Press/Teukolsky and a Keplerian emitter redshift
+  `g = E / (u^t (E - Omega L_z))` following the Cunningham transfer-function
+  convention. The disk is geometrically thin, equatorial, and co-rotating with
+  the black-hole spin by default.
+- Assumptions and conventions: The camera remains asymptotic, so the observer
+  frequency is `E = -p_t`. The schema stores `disk_r_m`, `disk_phi_m`,
+  `disk_t_m`, and `disk_g_m`; emissivity, optical depth, observed intensity,
+  and GPU/Unity integration are deferred.
+- Validation: Added unit tests for Schwarzschild `r_ISCO = 6M`, the
+  `g(L_z = 0) = sqrt(1 - 3M/r)` redshift limit, per-ray crossing records, and
+  a small HDF5 disk-transfer map with finite positive `g_m` values.
+- References: `bardeen1972rotatingBlackHoles`,
+  `cunningham1975kerrDiskSpectrum`, and `luminet1979blackHoleImage`.
+- Open issues / next steps: Reproduce a Luminet-style direct/secondary
+  thin-disk diagnostic, then expose selected disk-transfer channels to the GPU
+  and Unity texture contract.
+
 ### 2026-07-06 - Task 6 photon-ring zoom pre-transfer diagnostic
 
 - Goal: Start the Task 6 physics track with a cheap visualization of
