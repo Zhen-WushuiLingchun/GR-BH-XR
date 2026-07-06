@@ -25,6 +25,9 @@ No temporary Unity project or lightweight copy is used for this gate.
   does not rely on scale-bearing object matrices for physics directions:
   `BlackHoleLensMap` writes explicit pure rotation basis vectors
   `_LensWorldRight`, `_LensWorldUp`, and `_LensWorldForward`.
+- Runtime basis refresh: `BlackHoleLensMaterialBinder` refreshes those basis
+  vectors in `LateUpdate` by default, so a later recenter or anchor rotation
+  does not leave stale material vectors.
 - Camera clear flags: `Skybox`
 - Camera vertical FOV: `2 atan(8 / 100) = 9.1478 deg`
 
@@ -119,6 +122,13 @@ The screenshot was sampled at escaped pixels and compared with the expected
 10-degree band from `escape_dir_unity_rgba32f.bytes`. The PNG was decoded from
 sRGB back to linear before reading the encoded band. The correct screenshot row
 mapping is `u = x`, `v = 1 - y`, matching the exported texture convention.
+The comparison is versioned as:
+
+```powershell
+$env:PYTHONPATH='src'
+python validation/quest_pcvr/scripts/compare_protractor_gate.py --package-dir F:\UnityProjects\GRBHXR_PCVR_Gate\GRBHXR_PCVR_Gate\Assets\GRBHXR\LensMaps\Kerr_a09_i60_1024_to_4k_display --screenshot F:\学习和研究\GR-BH-XR\outputs\task5\unity_gate\unity_gate_protractor_square_1024.png --samples 61 --json
+```
+
 Two hypotheses were tested on a 61 by 61 screen lattice:
 
 ```text

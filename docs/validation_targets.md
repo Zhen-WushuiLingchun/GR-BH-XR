@@ -190,12 +190,23 @@ Unity textures:
   the positive-`alpha` direction;
 - Unity consumes `event_rgba8` plus `escape_dir_unity_rgba32f`, not a visual
   RGB-only render;
+- Unity shaders use explicit lens-screen world basis vectors for physical
+  directions and must not use scale-bearing object matrices for escaped-ray
+  cubemap lookup or angular-window ray projection;
+- runtime recentering or anchor rotation must refresh the lens-screen basis,
+  either by reapplying the material binding or by a per-frame lightweight
+  basis update;
 - the exporter is tested on synthetic HDF5 input and a weak-deflection GPU map
   so byte sizes, valid masks, basis mapping, and vertical handedness cannot
   silently flip or mirror.
 
 Required checks:
 
+- before Quest runtime validation, the Unity desktop gate includes both a
+  sign-level quadrant handedness capture and a magnitude-sensitive protractor
+  capture that compares screenshot color bands against `escape_dir_unity`;
+- the angular-window path is tested on desktop at yaw `0 deg`, `2 deg`, and
+  `4 deg` before it is used as evidence for head-rotation stability;
 - stereo disparity is correct;
 - lens map remains stable under head motion;
 - 72 Hz or 90 Hz target feasibility is recorded;
@@ -221,6 +232,13 @@ Required checks:
 - redshift and Doppler terms are tested in at least one limiting or benchmark
   case;
 - time-delay sampling is tested with a simple time-dependent disk feature.
+- real-time disk animation for the single-Kerr path uses the static transfer
+  map with disk-frame advection
+  `phi_emit = phi_m - Omega(r_m) * (t - Delta t_m)`; it must not retrace
+  geodesics per frame unless the metric or observer changes;
+- the display convention chooses and documents whether observed intensity is
+  weighted by `g^3` or `g^4`, and tests the selected convention on a simple
+  disk pattern before visual mode is accepted.
 
 Current CPU transfer v2 target:
 
@@ -274,5 +292,9 @@ Required checks:
 
 - BBH visual toy is labeled as approximate and non-Einstein-solution;
 - time-dependent vacuum lensing uses a documented metric source;
+- single-Kerr static transfer maps are not reused as physical evidence for
+  BBH, multi-black-hole, or gravitational-wave lensing; those systems need
+  time-dependent transfer maps, offline/cache playback, adaptive tracing, or
+  validated surrogates tied to the chosen metric;
 - toy accretion is not represented as full GRMHD;
 - full BBH + GRMHD + GRRT is treated as offline/cache/surrogate work.

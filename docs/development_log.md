@@ -19,6 +19,39 @@ from here.
 
 ## Log
 
+### 2026-07-07 - Unity basis refresh and static-Kerr boundary
+
+- Goal: Close the remaining Task 5 Unity P2 items and record the physical
+  boundary of the static single-Kerr real-time shortcut before disk animation
+  and later BBH planning.
+- Changed files / components: Unity runtime lens-map loader/binder, the
+  protractor comparison script, XR export tests, Quest validation notes,
+  physical-scope documentation, and validation targets.
+- Academic reason: The Unity bridge must preserve sky directions under runtime
+  recentering or anchor rotation, and future dynamic-metric work must not infer
+  more from the single-Kerr cache than stationarity and axisymmetry allow.
+- Physical correspondence: `BlackHoleLensMaterialBinder` refreshes the
+  explicit lens-screen world basis every `LateUpdate` by default, so material
+  vectors no longer go stale when the lens anchor rotates. The disk-animation
+  plan is documented as static transfer-map consumption:
+  `e(r_m, phi_m - Omega(r_m) * (t - Delta t_m)) * g_m^p`, with the power `p`
+  still to be chosen by the intensity convention.
+- Assumptions and conventions: The shortcut applies to a fixed observer in a
+  stationary axisymmetric Kerr spacetime. BBH, multi-black-hole, and
+  gravitational-wave lensing require time-dependent transfer maps, cache
+  playback, adaptive tracing, or validated surrogates tied to a documented
+  metric.
+- Validation: Versioned the 61 by 61 protractor comparison script so Unity
+  screenshots can be compared against `escape_dir_unity_rgba32f.bytes` and the
+  old non-uniform-scale skew hypothesis. Added tests that the Unity binder
+  refreshes basis vectors at runtime and that the protractor comparison rejects
+  the old scale-skew failure mode.
+- References: Task 5 Unity texture-contract notes and existing Kerr
+  transfer-map references in `docs/equations.md`.
+- Open issues / next steps: Run desktop angular-window yaw captures at
+  `0 deg`, `2 deg`, and `4 deg`; then proceed to Quest PCVR static-lens
+  validation while Task 6 advances GPU disk-transfer export.
+
 ### 2026-07-07 - Unity direction-basis scale guard
 
 - Goal: Fix the Task 5 Unity gate P0 where a scale-bearing object matrix could

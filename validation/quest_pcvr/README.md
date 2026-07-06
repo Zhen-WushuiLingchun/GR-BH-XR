@@ -79,11 +79,14 @@ Acceptance for this gate:
 - In the angular path, the shader only accepts signed forward rays with
   `localRay.z > 0`; back-facing rays are intentionally rejected to avoid a
   parity-flipped ghost window. The mapping is gnomonic,
-  `alpha = r_obs * x / z`, `beta = -r_obs * y / z`, and assumes the lens object
-  is rotated but not non-uniformly scaled.
+  `alpha = r_obs * x / z`, `beta = -r_obs * y / z`. Direction transforms use
+  explicit pure rotation basis vectors, not scale-bearing object matrices, so
+  object scale cannot skew the physical sky direction.
 - The Unity preview shader transforms stored local Unity escape directions by
-  the lens-screen object-to-world rotation before cubemap sampling, so the
-  background sky does not silently rotate with raw texture rows.
+  the lens-screen world basis before cubemap sampling, so the background sky
+  does not silently rotate with raw texture rows. `BlackHoleLensMaterialBinder`
+  refreshes that basis in `LateUpdate` by default so runtime recentering or
+  anchor rotation cannot leave stale vectors in the material.
 - A weak-deflection directional regression test confirms the right/top screen
   signs: right-up exported pixels have `x_unity > 0`, `y_unity > 0`, while
   right-down pixels have `x_unity > 0`, `y_unity < 0`.

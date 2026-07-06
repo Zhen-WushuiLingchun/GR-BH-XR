@@ -92,9 +92,11 @@ lookup.
 
 For capture/invalid pixels inside the active gate, the shader falls back to
 `event_rgba8`. For escaped rays, the sampled Unity-local escape direction is
-transformed by the lens-screen object's world rotation before the cubemap
-lookup, so the cubemap axis stays tied to the scene instead of to raw texture
-rows.
+transformed by the explicit lens-screen world basis before the cubemap lookup,
+so the cubemap axis stays tied to the scene instead of to raw texture rows.
+`BlackHoleLensMaterialBinder` refreshes the basis each `LateUpdate` by default,
+so runtime recentering or anchor rotation does not leave stale direction
+vectors in the material.
 
 This is still a static-observer approximation. The texture assumes the metadata
 `r_obs`, spin, inclination, and screen bounds used when it was generated. The
@@ -214,3 +216,12 @@ transform-scale bugs that a quadrant sign test cannot see. The formal desktop
 gate keeps the screen object at uniform `(20, 20, 20)` scale, but the physics
 direction path is also protected by explicit pure rotation basis vectors rather
 than `unity_ObjectToWorld` scale-bearing matrix columns.
+
+The matching screenshot comparison script is:
+
+```powershell
+python validation/quest_pcvr/scripts/compare_protractor_gate.py --package-dir F:\UnityProjects\GRBHXR_PCVR_Gate\GRBHXR_PCVR_Gate\Assets\GRBHXR\LensMaps\Kerr_a09_i60_1024_to_4k_display --screenshot F:\学习和研究\GR-BH-XR\outputs\task5\unity_gate\unity_gate_protractor_square_1024.png --samples 61 --json
+```
+
+Replace the output path with the local repository path if a console renders
+non-ASCII directory names incorrectly; the command is otherwise identical.

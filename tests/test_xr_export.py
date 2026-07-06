@@ -1,5 +1,7 @@
 import json
 import math
+import importlib.util
+import sys
 from pathlib import Path
 
 import h5py
@@ -17,6 +19,13 @@ from gr_bh_xr.xr.export_unity_textures import (
 
 UNITY_RUNTIME_DIR = Path(__file__).resolve().parents[1] / "xr" / "unity_frontend" / "Runtime"
 UNITY_EDITOR_DIR = Path(__file__).resolve().parents[1] / "xr" / "unity_frontend" / "Editor"
+PROTRACTOR_SCRIPT = (
+    Path(__file__).resolve().parents[1]
+    / "validation"
+    / "quest_pcvr"
+    / "scripts"
+    / "compare_protractor_gate.py"
+)
 
 
 def test_unity_basis_maps_positive_alpha_to_unity_right():
@@ -296,6 +305,7 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
 
 def test_unity_lens_map_loader_keeps_raw_textures_linear():
     source = (UNITY_RUNTIME_DIR / "BlackHoleLensMap.cs").read_text(encoding="utf8")
+    binder = (UNITY_RUNTIME_DIR / "BlackHoleLensMaterialBinder.cs").read_text(encoding="utf8")
 
     assert "new Texture2D(width, height, format, mipChain: false, linear: true)" in source
     assert "sourceAttributes" in source
@@ -305,7 +315,11 @@ def test_unity_lens_map_loader_keeps_raw_textures_linear():
     assert '"_LensWorldRight"' in source
     assert '"_LensWorldUp"' in source
     assert '"_LensWorldForward"' in source
+    assert "ApplyBasisToMaterial" in source
     assert "Debug.LogWarning" in source
+    assert "refreshBasisEveryFrame" in binder
+    assert "LateUpdate" in binder
+    assert "lensMap.ApplyBasisToMaterial(targetMaterial)" in binder
 
 
 def test_unity_editor_gate_automation_is_versioned():
@@ -336,3 +350,39 @@ def _unity_to_bh(
         + direction_unity[2] * forward_bh
     )
     return direction_bh / np.linalg.norm(direction_bh)
+
+
+def test_protractor_gate_comparison_detects_old_scale_skew():
+    module = _load_module(PROTRACTOR_SCRIPT, "compare_protractor_gate")
+    direction = np.asarray([0.45, 0.0, math.sqrt(1.0 - 0.45**2), 1.0], dtype=np.float32)
+    directions = np.broadcast_to(direction, (8, 8, 4)).copy()
+    raw_band = module.band_from_direction(direction)
+    assert raw_band is not None
+
+    linear_red = (raw_band + 0.5) / 18.0
+    linear_rgb = np.asarray([linear_red, 0.0, 1.0 - linear_red], dtype=np.float64)
+    srgb_rgb = _linear_to_srgb(linear_rgb)
+    image = np.broadcast_to(srgb_rgb, (8, 8, 3)).copy()
+
+    result = module.compare_protractor(image, directions, samples=5)
+
+    assert result.valid == 25
+    assert result.exact_raw == 25
+    assert result.raw_closer == 25
+    assert result.exact_old_skew == 0
+    assert result.old_skew_closer == 0
+
+
+def _load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _linear_to_srgb(values: np.ndarray) -> np.ndarray:
+    values = np.asarray(values, dtype=np.float64)
+    return np.where(values <= 0.0031308, values * 12.92, 1.055 * np.power(values, 1 / 2.4) - 0.055)

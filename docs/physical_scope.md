@@ -57,6 +57,32 @@ stable:
 - neural networks that directly generate final black-hole images;
 - true passthrough-pixel lensing in MR unless camera-frame access is available.
 
+## Static Kerr Real-Time Boundary
+
+For the first single-Kerr PCVR path, the metric is stationary and axisymmetric.
+That permits a static transfer-map workflow: geodesics, escape directions, disk
+crossing positions, redshift factors, and time delays can be computed offline
+for one observer configuration, then consumed by a real-time shader.
+
+This shortcut is valid only for the stated model. A non-axisymmetric thin-disk
+emissivity pattern can rotate without re-tracing geodesics by advecting the
+emission coordinates in the disk frame:
+
+```text
+I_pixel(t) ~ e(r_m, phi_m - Omega(r_m) * (t - Delta t_m)) * g_m^p
+```
+
+where `p = 3` or `p = 4` must be chosen and documented with the intensity
+convention. The transfer map stays fixed; the disk texture is sampled at the
+retarded emission time.
+
+This is not a general recipe for BBH, multi-black-hole, or gravitational-wave
+lensing. Time-dependent or non-axisymmetric metrics break the static-Kerr
+cache assumption and require a documented metric source plus time-dependent
+transfer maps, offline/cache playback, adaptive GPU tracing, or validated
+surrogates. A static Kerr map must not be reused as evidence for those future
+systems.
+
 ## Visual And Academic Claims
 
 Use these labels consistently:
