@@ -10,6 +10,7 @@ namespace GRBHXR
         public string sourceSchema;
         public int width;
         public int height;
+        public int sourceEscapePixels;
         public int escapePixels;
         public ResolutionMetadata resolution;
         public ScreenConvention screenConvention;

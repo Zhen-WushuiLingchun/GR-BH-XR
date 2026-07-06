@@ -62,7 +62,9 @@ def test_export_unity_texture_package_writes_raw_buffers_and_metadata(tmp_path):
     assert (out_dir / "event_preview.png").read_bytes().startswith(b"\x89PNG")
 
     metadata = json.loads((out_dir / "lens_map_metadata.json").read_text(encoding="utf8"))
-    assert metadata["schema"] == "gr-bh-xr.task5.unity_texture_package.v2"
+    assert metadata["schema"] == "gr-bh-xr.task5.unity_texture_package.v3"
+    assert metadata["sourceEscapePixels"] == 4
+    assert metadata["escapePixels"] == 4
     assert metadata["resolution"]["nativeTraceResolution"] is True
     assert metadata["screenConvention"]["textureOrigin"] == "bottom_left"
     assert metadata["screenConvention"]["verticalFlipApplied"] is True
@@ -114,6 +116,8 @@ def test_export_unity_texture_package_can_write_display_resampled_target_size(tm
     assert summary["height"] == target_size
     assert summary["source_width"] == width
     assert summary["source_height"] == height
+    assert summary["source_escape_pixels"] == width * height
+    assert summary["escape_pixels"] == target_size * target_size
     assert (out_dir / "event_rgba8.bytes").stat().st_size == target_size * target_size * 4
     assert (out_dir / "escape_dir_unity_rgba32f.bytes").stat().st_size == (
         target_size * target_size * 16
@@ -123,6 +127,8 @@ def test_export_unity_texture_package_can_write_display_resampled_target_size(tm
     assert metadata["resolution"]["sourceWidth"] == width
     assert metadata["resolution"]["exportWidth"] == target_size
     assert metadata["resolution"]["nativeTraceResolution"] is False
+    assert metadata["sourceEscapePixels"] == width * height
+    assert metadata["escapePixels"] == target_size * target_size
     assert "display resample" in metadata["resolution"]["resampling"]
 
     unity_raw = np.fromfile(out_dir / "escape_dir_unity_rgba32f.bytes", dtype="<f4").reshape(
@@ -130,6 +136,49 @@ def test_export_unity_texture_package_can_write_display_resampled_target_size(tm
     )
     np.testing.assert_allclose(unity_raw[..., 3], 1.0)
     np.testing.assert_allclose(np.linalg.norm(unity_raw[..., :3], axis=-1), 1.0, atol=1.0e-6)
+
+
+def test_display_resample_marks_cancelled_direction_as_invalid(tmp_path):
+    source = tmp_path / "cancelled_direction.h5"
+    out_dir = tmp_path / "unity_package_cancelled"
+    target_size = 3
+
+    with h5py.File(source, "w") as handle:
+        handle.attrs["schema"] = "gr-bh-xr.phase2.gpu_lens_map.v2"
+        handle.attrs["inclination_deg"] = 90.0
+        handle.create_dataset("alpha", data=np.asarray([-1.0, 1.0]))
+        handle.create_dataset("beta", data=np.asarray([-1.0, 1.0]))
+        handle.create_dataset("gpu_event_code", data=np.ones((2, 2), dtype=np.int16))
+        rgba = np.zeros((2, 2, 4), dtype=np.uint8)
+        rgba[..., 3] = 255
+        handle.create_dataset("event_rgba8", data=rgba)
+        dirs = np.asarray(
+            [
+                [[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]],
+                [[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]],
+            ],
+            dtype=np.float32,
+        )
+        handle.create_dataset("gpu_escape_dir_x", data=dirs[..., 0])
+        handle.create_dataset("gpu_escape_dir_y", data=dirs[..., 1])
+        handle.create_dataset("gpu_escape_dir_z", data=dirs[..., 2])
+
+    export_unity_texture_package(
+        input_path=source,
+        out_dir=out_dir,
+        command="pytest cancelled direction",
+        target_size=target_size,
+    )
+
+    unity_raw = np.fromfile(out_dir / "escape_dir_unity_rgba32f.bytes", dtype="<f4").reshape(
+        (target_size, target_size, 4)
+    )
+    metadata = json.loads((out_dir / "lens_map_metadata.json").read_text(encoding="utf8"))
+    assert metadata["sourceEscapePixels"] == 4
+    assert metadata["escapePixels"] == 6
+    assert np.all(np.isfinite(unity_raw))
+    np.testing.assert_allclose(unity_raw[:, 1, :3], 0.0)
+    np.testing.assert_allclose(unity_raw[:, 1, 3], 0.0)
 
 
 def test_export_flips_solver_beta_rows_so_texture_top_is_visual_up(tmp_path):

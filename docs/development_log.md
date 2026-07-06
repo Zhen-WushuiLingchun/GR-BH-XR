@@ -19,6 +19,30 @@ from here.
 
 ## Log
 
+### 2026-07-06 - Unity direction-resample audit fields
+
+- Goal: Tighten the display-resampled Unity texture package after review of the
+  1024-to-4K flow.
+- Changed files / components: `src/gr_bh_xr/xr/export_unity_textures.py`,
+  Unity metadata parsing, XR export tests, and Task 5 documentation.
+- Academic reason: Direction textures are continuous only within escaped-ray
+  regions. A display resample must not create NaN-prone or physically
+  nonexistent directions at valid/invalid or near-critical boundaries.
+- Physical correspondence: No ray tracing or metric equations changed.
+  Resampled direction vectors are still bilinear display approximations of the
+  source escape-direction map, then renormalized. If interpolation cancels to a
+  near-zero vector, the texel is marked invalid instead of being normalized.
+- Assumptions and conventions: Metadata now separates source escaped-pixel
+  count from exported valid direction-texel count through `sourceEscapePixels`
+  and `escapePixels`.
+- Validation: Added synthetic export tests for display-resampled source/export
+  escape counts and for a constructed opposite-direction cancellation case.
+- References: Same Task 5 Unity texture contract and Task 4 escape-direction
+  map convention.
+- Open issues / next steps: Real Unity Editor validation is still required on a
+  machine with Unity installed; Python-equivalent rendering does not exercise
+  Unity asset import or material state.
+
 ### 2026-07-06 - Task 5 VR texture resolution path
 
 - Goal: Separate low-resolution interactive debug preview from headset-facing

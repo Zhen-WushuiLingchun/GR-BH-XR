@@ -14,7 +14,7 @@ import h5py
 import numpy as np
 
 
-PACKAGE_SCHEMA = "gr-bh-xr.task5.unity_texture_package.v2"
+PACKAGE_SCHEMA = "gr-bh-xr.task5.unity_texture_package.v3"
 
 
 @dataclass(frozen=True)
@@ -93,6 +93,7 @@ def export_unity_texture_package(
 
     basis = unity_basis_from_inclination(inclination_deg)
     valid = (event_code == 1) & np.all(np.isfinite(dir_bh), axis=-1)
+    source_escape_pixels = int(np.count_nonzero(valid))
     dir_bh_rgba = _pack_direction_rgba(dir_bh, valid)
     dir_unity = _bh_to_unity(dir_bh, valid, basis)
     dir_unity_rgba = _pack_direction_rgba(dir_unity, valid)
@@ -101,7 +102,7 @@ def export_unity_texture_package(
         event_code = _resize_nearest(event_code, height, width)
         dir_bh_rgba = _resize_direction_rgba(dir_bh_rgba, height, width)
         dir_unity_rgba = _resize_direction_rgba(dir_unity_rgba, height, width)
-    escape_pixels = int(np.count_nonzero(event_code == 1))
+    escape_pixels = int(np.count_nonzero(dir_unity_rgba[..., 3] >= 0.5))
     export_event_rgba8 = np.flipud(event_rgba8)
     export_dir_bh_rgba = np.flipud(dir_bh_rgba)
     export_dir_unity_rgba = np.flipud(dir_unity_rgba)
@@ -132,6 +133,7 @@ def export_unity_texture_package(
         dir_bh_path=dir_bh_path.name,
         dir_unity_path=dir_unity_path.name,
         preview_path=preview_path.name,
+        source_escape_pixels=source_escape_pixels,
         escape_pixels=escape_pixels,
     )
     metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf8")
@@ -143,6 +145,7 @@ def export_unity_texture_package(
         "height": height,
         "source_width": source_width,
         "source_height": source_height,
+        "source_escape_pixels": source_escape_pixels,
         "escape_pixels": escape_pixels,
         "files": {
             "event_rgba8": str(event_path),
@@ -218,10 +221,10 @@ def _resize_direction_rgba(
     resized = _resize_linear(direction_rgba.astype(np.float32), target_height, target_width)
     valid = resized[..., 3] > 0.5
     norm = np.linalg.norm(resized[..., :3], axis=-1)
-    good = valid & np.isfinite(norm) & (norm > 0.0)
+    good = valid & np.isfinite(norm) & (norm > 1.0e-6)
     rgb = resized[..., :3].copy()
     resized[..., :3] = 0.0
-    resized[..., 3] = valid.astype(np.float32)
+    resized[..., 3] = good.astype(np.float32)
     rgb_out = resized[..., :3]
     rgb_out[good] = rgb[good] / norm[good, np.newaxis]
     return resized.astype(np.float32, copy=False)
@@ -243,6 +246,7 @@ def _metadata(
     dir_bh_path: str,
     dir_unity_path: str,
     preview_path: str,
+    source_escape_pixels: int,
     escape_pixels: int,
 ) -> dict[str, Any]:
     return {
@@ -252,6 +256,7 @@ def _metadata(
         "generationCommand": command,
         "width": width,
         "height": height,
+        "sourceEscapePixels": source_escape_pixels,
         "escapePixels": escape_pixels,
         "resolution": {
             "sourceWidth": source_width,

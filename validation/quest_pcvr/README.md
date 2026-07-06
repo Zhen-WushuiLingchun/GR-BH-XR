@@ -47,6 +47,9 @@ Acceptance for this gate:
   bounds, and Unity basis vectors.
 - If `--target-size` was used, `lens_map_metadata.json` records both source and
   export dimensions and marks the package as display-resampled.
+- `sourceEscapePixels` is the escaped-pixel count on the source traced grid;
+  `escapePixels` is the exported texel count with valid escape-direction alpha
+  after any display resample.
 - `event_rgba8.bytes` has exactly `width * height * 4` bytes.
 - `escape_dir_unity_rgba32f.bytes` has exactly `width * height * 16` bytes and
   stores `(x_unity, y_unity, z_unity, valid_escape)`.

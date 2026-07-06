@@ -25,6 +25,9 @@ python -m gr_bh_xr.xr.export_unity_textures --input outputs/phase2/gpu_lensmap_k
 VR, but it does not add physical ray-tracing resolution beyond the source HDF5
 grid. The metadata records both source and exported dimensions; use native
 high-resolution traced maps for physics-resolution claims.
+`sourceEscapePixels` records the escaped-pixel count in the source HDF5 grid;
+`escapePixels` records the exported texels whose escape-direction alpha channel
+is valid after any display resampling.
 
 The exporter writes:
 
@@ -63,6 +66,9 @@ For the first PCVR pass:
 
 The preview shader samples the Unity-space direction texture for escaped rays
 and falls back to `event_rgba8` for capture or invalid pixels.
+During display resampling, direction vectors are bilinearly interpolated and
+renormalized. If interpolation cancels to a near-zero vector, the exporter marks
+that texel invalid instead of writing a direction that would normalize to NaN.
 
 `BlackHoleLensMap` loads the event texture with point sampling so categorical
 capture/failure colors are not blurred. The escape-direction texture uses
