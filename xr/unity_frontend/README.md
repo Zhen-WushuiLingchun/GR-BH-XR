@@ -77,6 +77,15 @@ world view ray, transforms that ray into the lens-screen object's local basis,
 maps the local angular coordinates to `(alpha, beta)`, and samples the lens map
 only inside the metadata screen bounds. Treat this angular mode as
 experimental until it has its own Unity desktop and Quest runtime validation.
+The angular path uses the signed local forward component and ignores fragments
+with `localRay.z <= 0`, so a back-facing screen cannot show a parity-flipped
+ghost lens. Its screen mapping is the tangent-plane relation
+`alpha = r_obs * x / z`, `beta = -r_obs * y / z`; this is a gnomonic
+small-angle approximation to the Bardeen screen and differs at order
+`(alpha / r_obs)^3`. It is acceptable for the current `8M / 100M` desktop
+window but must be documented if a wider field is used. The path also assumes
+the lens object has no non-uniform scale, because object rotation is used to
+transform both view rays and stored escape directions.
 
 For capture/invalid pixels inside the active gate, the shader falls back to
 `event_rgba8`. For escaped rays, the sampled Unity-local escape direction is
@@ -171,3 +180,21 @@ This package is a static texture bridge:
 - stereo disparity, head-motion stability, 72/90 Hz timing, black-hole angular
   size, and PC-to-Quest latency are validation tasks, not claims made by this
   package.
+
+## Editor Gate Automation
+
+The package includes editor-only batch helpers under `Editor/` so Unity desktop
+validation is reproducible from the repository rather than from local project
+scripts. In a Unity project that has copied or linked the exported lens-map
+package and skybox assets, run:
+
+```powershell
+$unity = 'D:\unity\Hub\Editor\6000.5.2f1\Editor\Unity.exe'
+$proj = 'F:\UnityProjects\GRBHXR_PCVR_Gate\GRBHXR_PCVR_Gate'
+& $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRGateAutomation.BatchConfigureAndCapture
+& $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRGateAutomation.BatchCaptureQuadrantHandedness
+```
+
+The second command generates a procedural four-quadrant cubemap and captures a
+screen-space square-gate image used to check that the RenderTexture screenshot
+path has not flipped the new `ComputeScreenPos` sampling vertically.

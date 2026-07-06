@@ -147,6 +147,10 @@ namespace GRBHXR
             {
                 return Metadata.sourceAttributes.r_obs;
             }
+            Debug.LogWarning(
+                "Lens-map metadata is missing sourceAttributes.r_obs; falling back to _LensRObs = 100. " +
+                "Angular-window previews may have the wrong scale."
+            );
             return 100.0f;
         }
 

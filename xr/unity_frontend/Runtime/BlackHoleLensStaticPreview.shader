@@ -63,15 +63,14 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 float betaMin = _LensScreenBounds.z;
                 float betaMax = _LensScreenBounds.w;
 
-                float2 lensUv = i.uv;
+                float2 lensUv = float2(0.0, 0.0);
                 bool insideAngularWindow = false;
                 if (_UseAngularWindow > 0.5)
                 {
-                    float localForward = abs(localRay.z);
-                    if (localForward > 1.0e-5)
+                    if (localRay.z > 1.0e-5)
                     {
-                        float alpha = _LensRObs * localRay.x / localForward;
-                        float beta = -_LensRObs * localRay.y / localForward;
+                        float alpha = _LensRObs * localRay.x / localRay.z;
+                        float beta = -_LensRObs * localRay.y / localRay.z;
                         insideAngularWindow =
                             alpha >= alphaMin && alpha <= alphaMax &&
                             beta >= betaMin && beta <= betaMax;

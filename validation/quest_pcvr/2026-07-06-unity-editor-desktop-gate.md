@@ -47,6 +47,12 @@ GR-BH-XR gate capture wrote F:/学习和研究/GR-BH-XR/outputs/task5/unity_gate
 Application will terminate with return code 0
 ```
 
+The capture method is versioned in the Unity package as:
+
+```text
+xr/unity_frontend/Editor/GRBHXRGateAutomation.cs
+```
+
 ## Outputs
 
 Generated screenshots are kept under ignored `outputs/`:
@@ -54,12 +60,54 @@ Generated screenshots are kept under ignored `outputs/`:
 ```text
 F:\学习和研究\GR-BH-XR\outputs\task5\unity_gate\unity_gate_square_2048.png
 F:\学习和研究\GR-BH-XR\outputs\task5\unity_gate\unity_gate_wide_1920x1080.png
+F:\学习和研究\GR-BH-XR\outputs\task5\unity_gate\unity_gate_quadrant_square_1024.png
+F:\学习和研究\GR-BH-XR\outputs\task5\unity_gate\unity_gate_quadrant_wide_1920x1080.png
 ```
 
 The square output is the primary physics-facing desktop gate. The wide output
 shows the square gate centered in a 16:9 frame, with direct skybox sampling
 outside the square gate; this avoids artificially stretching the square
 `alpha/beta` transfer map.
+
+## Handedness Check
+
+The package automation also generated a procedural four-quadrant cubemap and
+captured the screen-space square gate through the same Unity batchmode
+RenderTexture path:
+
+```powershell
+& $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRGateAutomation.BatchCaptureQuadrantHandedness -logFile $log
+```
+
+Latest log markers:
+
+```text
+GR-BH-XR gate configured: fov=9.1478 deg, r_obs=100.000, beta=[-8.000,8.000], quadrantSkybox=True, angularWindow=False.
+GR-BH-XR gate capture wrote F:/学习和研究/GR-BH-XR/outputs/task5/unity_gate\unity_gate_quadrant_square_1024.png
+GR-BH-XR gate capture wrote F:/学习和研究/GR-BH-XR/outputs/task5/unity_gate\unity_gate_quadrant_wide_1920x1080.png
+Application will terminate with return code 0
+```
+
+The quadrant cubemap encodes Unity direction signs:
+
+```text
+x >= 0, y >= 0 -> red
+x <  0, y >= 0 -> green
+x <  0, y <  0 -> blue
+x >= 0, y <  0 -> yellow
+```
+
+Six off-boundary screenshot samples were compared against
+`escape_dir_unity_rgba32f.bytes` using both possible vertical interpretations
+of the RenderTexture screenshot path:
+
+```text
+matches_no_vflip = 6 / 6
+matches_vflip    = 0 / 6
+```
+
+This closes the screen-space path evidence gap introduced by the switch from
+quad UV sampling to `ComputeScreenPos`.
 
 ## Result
 
@@ -69,6 +117,8 @@ outside the square gate; this avoids artificially stretching the square
   frame-dragging distortion.
 - The square gate removes the billboard perspective ellipse seen in earlier
   screenshots.
+- The batchmode screenshot path preserves the vertical screen-space direction
+  for the new `ComputeScreenPos` sampling path.
 
 ## Open Items
 

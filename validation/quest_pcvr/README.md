@@ -76,6 +76,11 @@ Acceptance for this gate:
   `_UseAngularWindow`, but that path is still experimental and must not be used
   as evidence for headset head-motion stability until it has its own Unity
   desktop and Quest runtime validation.
+- In the angular path, the shader only accepts signed forward rays with
+  `localRay.z > 0`; back-facing rays are intentionally rejected to avoid a
+  parity-flipped ghost window. The mapping is gnomonic,
+  `alpha = r_obs * x / z`, `beta = -r_obs * y / z`, and assumes the lens object
+  is rotated but not non-uniformly scaled.
 - The Unity preview shader transforms stored local Unity escape directions by
   the lens-screen object-to-world rotation before cubemap sampling, so the
   background sky does not silently rotate with raw texture rows.
@@ -129,6 +134,11 @@ of Git unless it is a deliberately minimal source asset.
 Current desktop gate note:
 
 - `2026-07-06-unity-editor-desktop-gate.md`
+
+The repository also provides `GRBHXR.EditorTools.GRBHXRGateAutomation` under
+`xr/unity_frontend/Editor/` for reproducible batch captures. The quadrant
+handedness batch command should be run whenever the screen-space sampling path
+or Unity render target path changes.
 
 ## Headset Runtime Protocol
 

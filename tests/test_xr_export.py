@@ -16,6 +16,7 @@ from gr_bh_xr.xr.export_unity_textures import (
 
 
 UNITY_RUNTIME_DIR = Path(__file__).resolve().parents[1] / "xr" / "unity_frontend" / "Runtime"
+UNITY_EDITOR_DIR = Path(__file__).resolve().parents[1] / "xr" / "unity_frontend" / "Editor"
 
 
 def test_unity_basis_maps_positive_alpha_to_unity_right():
@@ -278,7 +279,9 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     assert "ZWrite On" in shader
     assert "ComputeScreenPos" in shader
     assert "float2 screenUv = i.screenPos.xy" in shader
-    assert "float beta = -_LensRObs * localRay.y / localForward" in shader
+    assert "if (localRay.z > 1.0e-5)" in shader
+    assert "float beta = -_LensRObs * localRay.y / localRay.z" in shader
+    assert "abs(localRay.z)" not in shader
     assert "texCUBE(_SkyboxCubemap, worldRay)" in shader
     assert "texCUBE(_SkyboxCubemap, worldDir)" in shader
 
@@ -291,6 +294,20 @@ def test_unity_lens_map_loader_keeps_raw_textures_linear():
     assert "SetVector(" in source
     assert '"_LensScreenBounds"' in source
     assert '"_LensRObs"' in source
+    assert "Debug.LogWarning" in source
+
+
+def test_unity_editor_gate_automation_is_versioned():
+    source = (UNITY_EDITOR_DIR / "GRBHXRGateAutomation.cs").read_text(encoding="utf8")
+    asmdef = (UNITY_EDITOR_DIR / "GRBHXR.Editor.asmdef").read_text(encoding="utf8")
+
+    assert "BatchConfigureAndCapture" in source
+    assert "BatchCaptureQuadrantHandedness" in source
+    assert "unity_gate_square_2048.png" in source
+    assert "unity_gate_quadrant_square_1024.png" in source
+    assert "GRBHXR.Editor" in asmdef
+    assert '"includePlatforms"' in asmdef
+    assert '"Editor"' in asmdef
 
 
 def _unity_to_bh(

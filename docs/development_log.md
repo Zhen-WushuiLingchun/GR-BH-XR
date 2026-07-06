@@ -19,6 +19,37 @@ from here.
 
 ## Log
 
+### 2026-07-06 - Unity desktop gate reproducibility and handedness evidence
+
+- Goal: Close the Unity desktop gate evidence gaps found after the square
+  screen-space preview was accepted conditionally.
+- Changed files / components: Unity preview shader, runtime lens-map loader,
+  versioned Unity Editor gate automation, XR export tests, Quest validation
+  notes, and Unity package documentation.
+- Academic reason: The Unity bridge must be reproducible from tracked source,
+  and a screenshot-based validation path must prove that the display layer has
+  not introduced a hidden vertical mirror into physics textures.
+- Physical correspondence: The default desktop gate remains a screen-space
+  square sampling path, preserving the square `alpha/beta` transfer-map aspect.
+  The opt-in angular-window path now rejects back-facing rays with
+  `localRay.z <= 0` and documents its tangent-plane
+  `alpha = r_obs x / z`, `beta = -r_obs y / z` approximation and no
+  non-uniform-scale assumption. Missing `r_obs` metadata now emits a Unity
+  warning before falling back to `100M`.
+- Validation: Added repository-tracked Unity Editor automation under
+  `xr/unity_frontend/Editor/`. The formal Unity project executed
+  `GRBHXR.EditorTools.GRBHXRGateAutomation.BatchConfigureAndCapture` and
+  `BatchCaptureQuadrantHandedness` successfully from the package path. A
+  procedural quadrant cubemap screenshot was checked against
+  `escape_dir_unity_rgba32f.bytes`: `matches_no_vflip = 6/6`,
+  `matches_vflip = 0/6`. Python tests and `git diff --check` are part of the
+  closeout.
+- References: Existing Task 5 Unity texture-contract documentation and
+  `validation/quest_pcvr/2026-07-06-unity-editor-desktop-gate.md`.
+- Open issues / next steps: The angular-window / full-camera path still needs
+  yawed-camera desktop tests before Quest head-motion claims; physical head
+  translation remains outside the static baked-map model.
+
 ### 2026-07-06 - Unity cubemap direction and Luminet equal-radius gate
 
 - Goal: Fix the Unity static-preview coordinate consumption path and add the
