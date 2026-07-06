@@ -86,6 +86,9 @@ def export_unity_texture_package(
     dir_bh_rgba = _pack_direction_rgba(dir_bh, valid)
     dir_unity = _bh_to_unity(dir_bh, valid, basis)
     dir_unity_rgba = _pack_direction_rgba(dir_unity, valid)
+    export_event_rgba8 = np.flipud(event_rgba8)
+    export_dir_bh_rgba = np.flipud(dir_bh_rgba)
+    export_dir_unity_rgba = np.flipud(dir_unity_rgba)
 
     event_path = out_dir / "event_rgba8.bytes"
     dir_bh_path = out_dir / "escape_dir_bh_rgba32f.bytes"
@@ -93,10 +96,10 @@ def export_unity_texture_package(
     metadata_path = out_dir / "lens_map_metadata.json"
     preview_path = out_dir / "event_preview.png"
 
-    event_rgba8.tofile(event_path)
-    dir_bh_rgba.astype("<f4", copy=False).tofile(dir_bh_path)
-    dir_unity_rgba.astype("<f4", copy=False).tofile(dir_unity_path)
-    _write_event_preview(preview_path, event_rgba8)
+    export_event_rgba8.tofile(event_path)
+    export_dir_bh_rgba.astype("<f4", copy=False).tofile(dir_bh_path)
+    export_dir_unity_rgba.astype("<f4", copy=False).tofile(dir_unity_path)
+    _write_event_preview(preview_path, export_event_rgba8)
 
     metadata = _metadata(
         source_path=input_path,
@@ -186,12 +189,13 @@ def _metadata(
         "escapePixels": escape_pixels,
         "screenConvention": {
             "alphaColumnOrder": "x=0 is alpha_min; x=width-1 is alpha_max",
-            "betaRowOrder": "y=0 is beta_min; y=height-1 is beta_max",
+            "betaRowOrder": "exported y=0 is beta_max; exported y=height-1 is beta_min",
             "textureOrigin": "bottom_left",
             "uToAlpha": "alpha = alpha_min + u * (alpha_max - alpha_min)",
-            "vToBeta": "beta = beta_min + v * (beta_max - beta_min)",
+            "vToBeta": "beta = beta_max - v * (beta_max - beta_min)",
             "positiveAlpha": "Unity +X / screen right",
-            "positiveBeta": "texture +V; follows beta row order without a vertical flip",
+            "positiveBeta": "solver +beta increases theta and points visually downward; export applies flipud so texture +V points visually upward toward decreasing beta",
+            "verticalFlipApplied": True,
         },
         "screen": {
             "alphaMin": float(alpha[0]),

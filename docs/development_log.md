@@ -19,6 +19,36 @@ from here.
 
 ## Log
 
+### 2026-07-06 - Task 5 texture vertical-handedness fix
+
+- Goal: Fix the Unity export row convention before Quest or Unity Editor
+  consumption so the background sky is not vertically mirrored.
+- Changed files / components: `src/gr_bh_xr/xr/export_unity_textures.py`,
+  `tests/test_xr_export.py`, `xr/unity_frontend/README.md`,
+  `validation/quest_pcvr/README.md`, and validation targets.
+- Academic reason: A single-axis mirror can look visually plausible while
+  reversing the physical handedness of the lens map. The texture contract must
+  preserve screen orientation before any headset runtime validation.
+- Physical correspondence: The solver's `+beta` convention increases
+  Boyer-Lindquist `theta`, which is visually downward on the observer screen.
+  The export layer now applies `np.flipud` to every texture buffer so Unity
+  texture `+V` points visually upward and the texture top corresponds to
+  `beta_min`.
+- Assumptions and conventions: Metadata now records
+  `vToBeta = beta_max - v * (beta_max - beta_min)` and
+  `verticalFlipApplied = true`. BH-to-Unity vector basis remains unchanged:
+  positive `alpha` maps to Unity `+X`, and camera-to-black-hole maps to Unity
+  `+Z`.
+- Validation: Added a synthetic row-flip test and a 17x17 weak-deflection GPU
+  directional regression with `r_obs = 300M`, `alpha = +/-30M`, `beta =
+  +/-60M`. The weak-deflection export asserts right-up pixels have
+  `x_unity > 0`, `y_unity > 0`, right-down pixels have `x_unity > 0`,
+  `y_unity < 0`, and left-up pixels have `x_unity < 0`, `y_unity > 0`.
+- References: Same Task 4 momentum escape-direction buffers; this fixes
+  coordinate packaging, not ray physics.
+- Open issues / next steps: Proceed to Unity Editor desktop validation with a
+  recognizable cubemap before Quest PCVR runtime checks.
+
 ### 2026-07-06 - Task 5 Unity static texture bridge
 
 - Goal: Start Task 5 with a Unity/OpenXR-facing static texture bridge and lock
@@ -30,13 +60,13 @@ from here.
   rather than an ambiguous RGB-only image. The coordinate convention is part of
   the physics contract because a silent mirror or vertical flip would make a
   visually plausible but physically wrong lens map.
-- Physical correspondence: The exporter preserves the HDF5 screen order
-  `x -> alpha`, `y -> beta`, maps `UV(0,0)` to `(alpha_min, beta_min)`, and
-  stores both BH-Cartesian and Unity-space escape direction textures. BH axes
-  use `+Z_BH` as the Kerr spin axis and the observer at `phi = 0`,
-  `theta = inclination_deg`. Unity `+Z` points from the camera to the black
-  hole, Unity `+Y` is the projected spin axis, and Unity `+X` is positive
-  `alpha`.
+- Physical correspondence: The initial bridge stored both BH-Cartesian and
+  Unity-space escape direction textures and fixed the BH-to-Unity basis. The
+  later vertical-handedness entry above supersedes the initial unflipped
+  `beta` row convention. BH axes use `+Z_BH` as the Kerr spin axis and the
+  observer at `phi = 0`, `theta = inclination_deg`. Unity `+Z` points from the
+  camera to the black hole, Unity `+Y` is the projected spin axis, and Unity
+  `+X` is positive `alpha`.
 - Assumptions and conventions: Unity consumes raw `.bytes` textures:
   `event_rgba8` as `RGBA32` and `escape_dir_unity_rgba32f` as `RGBAFloat`.
   Geodesics remain generated offline by the Python CPU/GPU tools; Unity does

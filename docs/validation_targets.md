@@ -174,8 +174,12 @@ Task 5 begins with a static Unity texture bridge. Before any headset claim,
 the bridge must define the coordinate contract from HDF5 screen buffers to
 Unity textures:
 
-- raw texture pixel order is documented as `x -> alpha`, `y -> beta`, with
-  `UV(0,0) -> (alpha_min, beta_min)`;
+- raw texture pixel order is documented as `x -> alpha`, with exported `y`
+  vertically flipped relative to solver rows so `UV(0,0) -> (alpha_min,
+  beta_max)` and `UV(1,1) -> (alpha_max, beta_min)`;
+- the metadata records that solver `+beta` points toward increasing
+  Boyer-Lindquist `theta` / visual down, while Unity texture `+V` points visual
+  up after the export flip;
 - black-hole Cartesian axes are documented with `+Z_BH` as the spin axis and
   the observer at Boyer-Lindquist `phi = 0`, `theta = inclination_deg`;
 - Unity basis vectors are stored in exported metadata, with `forward_BH` from
@@ -183,8 +187,9 @@ Unity textures:
   the positive-`alpha` direction;
 - Unity consumes `event_rgba8` plus `escape_dir_unity_rgba32f`, not a visual
   RGB-only render;
-- the exporter is tested on synthetic HDF5 input so byte sizes, valid masks,
-  and basis mapping cannot silently flip or mirror.
+- the exporter is tested on synthetic HDF5 input and a weak-deflection GPU map
+  so byte sizes, valid masks, basis mapping, and vertical handedness cannot
+  silently flip or mirror.
 
 Required checks:
 

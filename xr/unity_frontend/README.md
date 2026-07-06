@@ -54,22 +54,26 @@ and falls back to `event_rgba8` for capture or invalid pixels.
 
 ## Coordinate Convention
 
-The HDF5 source grid and exported raw textures use the same row-major order:
+The HDF5 source grid stores rows in increasing `beta`, but the exporter
+vertically flips every texture buffer before writing Unity raw bytes:
 
 ```text
-pixel(x, y) = y * width + x
-x = 0              -> alpha_min
-x = width - 1      -> alpha_max
-y = 0              -> beta_min
-y = height - 1     -> beta_max
-Unity UV (0, 0)    -> alpha_min, beta_min
-Unity UV (1, 1)    -> alpha_max, beta_max
+exported pixel(x, y) = y * width + x
+x = 0                    -> alpha_min
+x = width - 1            -> alpha_max
+y = 0                    -> beta_max
+y = height - 1           -> beta_min
+Unity UV (0, 0)          -> alpha_min, beta_max
+Unity UV (1, 1)          -> alpha_max, beta_min
+alpha(u)                 = alpha_min + u * (alpha_max - alpha_min)
+beta(v)                  = beta_max - v * (beta_max - beta_min)
 ```
 
-This is the same `origin = lower` screen convention used by the validation
-plots. The exporter does not vertically flip the raw texture buffers. Texture
-`+V` is increasing `beta`; Unity world `+Y` below is a separate sky-direction
-basis vector used for cubemap sampling.
+This flip is deliberate. The solver's `+beta` convention increases
+Boyer-Lindquist `theta`, which is visually downward on the observer screen.
+Unity texture `+V` should move upward on screen, so the exported texture top is
+`beta_min`. Unity world `+Y` below is a separate sky-direction basis vector
+used for cubemap sampling.
 
 Black-hole Cartesian axes are:
 

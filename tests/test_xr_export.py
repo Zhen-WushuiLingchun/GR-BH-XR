@@ -3,7 +3,11 @@ import math
 
 import h5py
 import numpy as np
+import pytest
 
+from gr_bh_xr.gpu.backend import select_vulkan_adapter
+from gr_bh_xr.gpu.generate_lens_map import generate_gpu_lens_map
+from gr_bh_xr.types import MetricParams
 from gr_bh_xr.xr.export_unity_textures import (
     export_unity_texture_package,
     unity_basis_from_inclination,
@@ -60,6 +64,8 @@ def test_export_unity_texture_package_writes_raw_buffers_and_metadata(tmp_path):
     metadata = json.loads((out_dir / "lens_map_metadata.json").read_text(encoding="utf8"))
     assert metadata["schema"] == "gr-bh-xr.task5.unity_texture_package.v1"
     assert metadata["screenConvention"]["textureOrigin"] == "bottom_left"
+    assert metadata["screenConvention"]["verticalFlipApplied"] is True
+    assert metadata["screenConvention"]["vToBeta"] == "beta = beta_max - v * (beta_max - beta_min)"
     assert metadata["unityBasisInBhCoordinates"]["rightBh"] == [0.0, -1.0, 0.0]
 
     unity_raw = np.fromfile(out_dir / "escape_dir_unity_rgba32f.bytes", dtype="<f4").reshape(
@@ -70,3 +76,96 @@ def test_export_unity_texture_package_writes_raw_buffers_and_metadata(tmp_path):
     )
     np.testing.assert_allclose(unity_raw[:, 1:, 3], 1.0)
     np.testing.assert_allclose(unity_raw[:, 0, 3], 0.0)
+
+
+def test_export_flips_solver_beta_rows_so_texture_top_is_visual_up(tmp_path):
+    source = tmp_path / "direction_signs.h5"
+    out_dir = tmp_path / "unity_package"
+    basis = unity_basis_from_inclination(60.0)
+    alpha = np.asarray([-1.0, 0.0, 1.0])
+    beta = np.asarray([-1.0, 0.0, 1.0])
+    right = basis.right_bh
+    up = basis.up_bh
+    forward = basis.forward_bh
+    dir_top_bh = _unity_to_bh(np.asarray([0.0, 0.25, 0.96824584]), right, up, forward)
+    dir_bottom_bh = _unity_to_bh(np.asarray([0.0, -0.25, 0.96824584]), right, up, forward)
+    dirs = np.zeros((3, 3, 3), dtype=np.float32)
+    dirs[0, :, :] = dir_top_bh
+    dirs[1, :, :] = forward
+    dirs[2, :, :] = dir_bottom_bh
+
+    with h5py.File(source, "w") as handle:
+        handle.attrs["schema"] = "gr-bh-xr.phase2.gpu_lens_map.v2"
+        handle.attrs["inclination_deg"] = 60.0
+        handle.create_dataset("alpha", data=alpha)
+        handle.create_dataset("beta", data=beta)
+        handle.create_dataset("gpu_event_code", data=np.ones((3, 3), dtype=np.int16))
+        handle.create_dataset("event_rgba8", data=np.zeros((3, 3, 4), dtype=np.uint8))
+        handle.create_dataset("gpu_escape_dir_x", data=dirs[..., 0])
+        handle.create_dataset("gpu_escape_dir_y", data=dirs[..., 1])
+        handle.create_dataset("gpu_escape_dir_z", data=dirs[..., 2])
+
+    export_unity_texture_package(input_path=source, out_dir=out_dir, command="pytest")
+
+    unity_raw = np.fromfile(out_dir / "escape_dir_unity_rgba32f.bytes", dtype="<f4").reshape(
+        (3, 3, 4)
+    )
+    assert unity_raw[2, 1, 1] > 0.0
+    assert unity_raw[0, 1, 1] < 0.0
+
+
+def test_weak_deflection_export_has_correct_unity_screen_handedness(tmp_path):
+    pytest.importorskip("wgpu")
+    try:
+        select_vulkan_adapter()
+    except RuntimeError as exc:
+        pytest.skip(str(exc))
+
+    h5_path = tmp_path / "weak_deflection_gpu.h5"
+    out_dir = tmp_path / "unity_package"
+    generate_gpu_lens_map(
+        params=MetricParams(M=1.0, a=0.0),
+        inclination_deg=60.0,
+        grid=17,
+        alpha_max=120.0,
+        beta_max=120.0,
+        r_obs=300.0,
+        step_size=0.1,
+        steps=12000,
+        horizon_eps=0.3,
+        critical_refine_band=0.0,
+        out=h5_path,
+        command="pytest weak deflection handedness",
+    )
+    export_unity_texture_package(input_path=h5_path, out_dir=out_dir, command="pytest")
+
+    unity_raw = np.fromfile(out_dir / "escape_dir_unity_rgba32f.bytes", dtype="<f4").reshape(
+        (17, 17, 4)
+    )
+    alpha_step = 15.0
+    beta_step = 15.0
+    col_pos = int(round((30.0 + 120.0) / alpha_step))
+    col_neg = int(round((-30.0 + 120.0) / alpha_step))
+    source_row_beta_pos = int(round((60.0 + 120.0) / beta_step))
+    source_row_beta_neg = int(round((-60.0 + 120.0) / beta_step))
+    row_visual_down = 16 - source_row_beta_pos
+    row_visual_up = 16 - source_row_beta_neg
+
+    assert unity_raw[row_visual_up, col_pos, 0] > 0.0
+    assert unity_raw[row_visual_up, col_pos, 1] > 0.0
+    assert unity_raw[row_visual_down, col_pos, 0] > 0.0
+    assert unity_raw[row_visual_down, col_pos, 1] < 0.0
+    assert unity_raw[row_visual_up, col_neg, 0] < 0.0
+    assert unity_raw[row_visual_up, col_neg, 1] > 0.0
+
+
+def _unity_to_bh(
+    direction_unity: np.ndarray, right_bh: np.ndarray, up_bh: np.ndarray, forward_bh: np.ndarray
+) -> np.ndarray:
+    direction_unity = direction_unity / np.linalg.norm(direction_unity)
+    direction_bh = (
+        direction_unity[0] * right_bh
+        + direction_unity[1] * up_bh
+        + direction_unity[2] * forward_bh
+    )
+    return direction_bh / np.linalg.norm(direction_bh)

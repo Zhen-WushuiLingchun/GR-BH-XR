@@ -22,12 +22,18 @@ Acceptance for this gate:
 - `event_rgba8.bytes` has exactly `width * height * 4` bytes.
 - `escape_dir_unity_rgba32f.bytes` has exactly `width * height * 16` bytes and
   stores `(x_unity, y_unity, z_unity, valid_escape)`.
-- The documented screen convention is `UV(0,0) -> (alpha_min, beta_min)` and
-  `UV(1,1) -> (alpha_max, beta_max)`.
+- The documented screen convention is `UV(0,0) -> (alpha_min, beta_max)` and
+  `UV(1,1) -> (alpha_max, beta_min)` because exported textures are vertically
+  flipped relative to solver row order.
+- The export metadata states that solver `+beta` points visually downward
+  while Unity texture `+V` points visually upward after the flip.
 - The documented world convention maps positive `alpha` to Unity `+X` and the
   camera-to-black-hole direction to Unity `+Z`.
 - The Unity package under `xr/unity_frontend/` can load the raw bytes into
   `TextureFormat.RGBA32` and `TextureFormat.RGBAFloat` textures.
+- A weak-deflection directional regression test confirms the right/top screen
+  signs: right-up exported pixels have `x_unity > 0`, `y_unity > 0`, while
+  right-down pixels have `x_unity > 0`, `y_unity < 0`.
 
 ## Headset Runtime Protocol
 
