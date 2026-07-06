@@ -142,6 +142,38 @@ The repository also provides `GRBHXR.EditorTools.GRBHXRGateAutomation` under
 `xr/unity_frontend/Editor/` for reproducible batch captures. The quadrant
 handedness batch command should be run whenever the screen-space sampling path
 or Unity render target path changes.
+The angular-window yaw batch command should be run before Quest/OpenXR runtime
+work because the headset path uses `_UseAngularWindow = 1`, not the accepted
+screen-space desktop gate.
+
+```powershell
+$unity = 'D:\unity\Hub\Editor\6000.5.2f1\Editor\Unity.exe'
+$proj = 'F:\UnityProjects\GRBHXR_PCVR_Gate\GRBHXR_PCVR_Gate'
+& $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRGateAutomation.BatchCaptureAngularWindowYawGate -grbhxrCaptureDir 'F:\学习和研究\GR-BH-XR\outputs\task5\unity_gate'
+```
+
+The 2026-07-07 formal Unity-project run wrote yaw `0 deg`, `2 deg`, and
+`4 deg` angular-window screenshots under ignored `outputs/task5/unity_gate/`.
+The `0 deg` capture centers the Kerr lens window; the `4 deg` capture moves the
+window consistently with the yawed camera and falls back to direct skybox
+sampling outside the angular bounds. This closes the desktop precheck for the
+Quest path, but it is not yet a headset runtime result.
+
+Interpret this yaw gate narrowly. It verifies head-rotation anchoring for a
+distant, fixed-observer black hole: when the camera turns, the fixed angular
+window moves across the view without billboard perspective distortion. It is
+not a simulation of orbiting around the black hole or changing the observer
+inclination. Any real change of spin, inclination, observer position, or binary
+phase requires a newly generated, selected, interpolated, or progressively
+updated transfer map.
+
+The current NASA skybox is also a validation background, not a VR-quality sky
+asset by itself. A full-sky 4096-wide map contributes only about 100 source
+pixels across the current `~9.15 deg` camera FOV, so narrow-field captures can
+look blurred even when the lens transfer map is sharp. VR-quality inspection
+needs either a much higher-resolution all-sky map, such as 32K/64K class, a
+high-resolution local sky patch, or a procedural/catalog starfield designed for
+the chosen angular FOV.
 
 ## Headset Runtime Protocol
 
@@ -155,6 +187,13 @@ Quest PCVR result:
   according to the selected scene anchoring.
 - Stereo behavior: astronomical-distance mode should not invent physical
   binocular disparity; any usability scaling must be documented.
+- Shader compatibility with single-pass instanced stereo: both eyes must render
+  the same world-anchored angular window without one-eye black output or
+  eye-dependent offset.
+- PCVR Link resource note: a 4096x4096 `RGBAFloat` escape-direction texture is
+  about 256 MiB before mipmaps or driver overhead. Under PCVR this is a desktop
+  GPU resource, not a Quest-native compute target; record the actual GPU,
+  render scale, and frame timing during runtime validation.
 - Angular size: field of view, black-hole apparent radius, and screen
   half-width mapping are recorded.
 - PC-to-Quest latency is measured or qualitatively documented.

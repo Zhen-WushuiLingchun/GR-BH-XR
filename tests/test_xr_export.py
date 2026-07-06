@@ -288,6 +288,12 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     assert "_LensWorldRight" in shader
     assert "_LensWorldUp" in shader
     assert "_LensWorldForward" in shader
+    assert "#pragma multi_compile_instancing" in shader
+    assert "UNITY_VERTEX_INPUT_INSTANCE_ID" in shader
+    assert "UNITY_VERTEX_OUTPUT_STEREO" in shader
+    assert "UNITY_SETUP_INSTANCE_ID(v)" in shader
+    assert "UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o)" in shader
+    assert "UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i)" in shader
     assert "ZWrite On" in shader
     assert "ComputeScreenPos" in shader
     assert "float2 screenUv = i.screenPos.xy" in shader
@@ -331,10 +337,15 @@ def test_unity_editor_gate_automation_is_versioned():
     assert "BatchConfigureAndCapture" in source
     assert "BatchCaptureQuadrantHandedness" in source
     assert "BatchCaptureProtractorBands" in source
+    assert "BatchCaptureAngularWindowYawGate" in source
+    assert "CaptureYaw" in source
     assert '"_ProbeMode"' in source
     assert "unity_gate_square_2048.png" in source
     assert "unity_gate_quadrant_square_1024.png" in source
     assert "unity_gate_protractor_square_1024.png" in source
+    assert "unity_gate_angular_yaw_000_square_1024.png" in source
+    assert "unity_gate_angular_yaw_002_square_1024.png" in source
+    assert "unity_gate_angular_yaw_004_square_1024.png" in source
     assert "new Vector3(20.0f, 20.0f, 20.0f)" in source
     assert "new Vector3(20.0f, 20.0f, 1.0f)" not in source
     assert "GRBHXR.Editor" in asmdef

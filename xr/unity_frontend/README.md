@@ -105,6 +105,30 @@ head-motion-stability requirement. A full-camera or angular-window pass must be
 validated before making head-rotation claims; physical head translation would
 require regenerating or interpolating a different transfer map.
 
+The package does not perform real-time geodesic integration. It renders a
+precomputed transfer map in real time:
+
+```text
+view ray or screen coordinate -> precomputed escape direction -> cubemap sample
+```
+
+This is valid only for the baked observer/metric configuration. It is not a
+general solution for changing spin, changing inclination, moving the observer,
+BBH, multi-black-hole systems, or gravitational-wave lensing. Those cases need
+runtime GPU tracing, progressive/tiled transfer-map updates, a sequence of
+time-indexed transfer maps, or a validated surrogate model. A yawed camera in
+the angular-window gate tests head-rotation anchoring for a distant fixed
+black-hole window; it does not simulate orbiting around the black hole.
+
+The background cubemap has its own resolution budget. A 4096-wide all-sky map
+contains only about 100 source pixels across the current `~9.15 deg` gate FOV,
+so direct skybox regions can look blurred even when the 4K lens-map texture is
+working correctly. A higher-resolution lens-map display texture sharpens the
+black-hole mask and transfer lookup, but it cannot recover detail that is not
+present in the sampled skybox. VR-quality visual checks need a 32K/64K-class
+all-sky map, a local high-resolution sky patch, or a procedural/catalog
+starfield matched to the chosen angular field of view.
+
 During display resampling, direction vectors are bilinearly interpolated and
 renormalized. If interpolation cancels to a near-zero vector, the exporter marks
 that texel invalid instead of writing a direction that would normalize to NaN.

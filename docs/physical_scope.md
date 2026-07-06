@@ -64,6 +64,34 @@ That permits a static transfer-map workflow: geodesics, escape directions, disk
 crossing positions, redshift factors, and time delays can be computed offline
 for one observer configuration, then consumed by a real-time shader.
 
+This is a display and integration shortcut, not the final renderer model. It is
+acceptable for the Task 5 fixed-observer Quest gate and for the first animated
+thin-disk demo, because only the emissivity pattern changes in time. It is not
+acceptable as the general answer to parameter changes, observer motion, BBH,
+multi-black-hole scenes, or gravitational-wave lensing.
+
+Use three separate renderer tiers:
+
+```text
+Tier 0: static transfer-map playback
+  fixed metric + fixed observer + fixed screen bounds
+  Unity/Quest consumes precomputed textures only
+
+Tier 1: real-time or near-real-time GPU transfer-map update
+  spin / inclination / observer / screen-window changes trigger GPU tracing,
+  tiled updates, progressive refinement, or cached parameter interpolation
+
+Tier 2: dynamic-metric cache or surrogate
+  BBH, multi-black-hole, or gravitational-wave lensing uses time-indexed maps,
+  adaptive tracing, reduced-order models, or neural surrogates validated against
+  exact data and audit buffers
+```
+
+Do not describe Tier 0 as real-time geodesic integration. It is real-time
+rendering of an offline geodesic transfer map. Any UI that exposes spin,
+inclination, observer position, or binary phase must either regenerate/select a
+matching transfer map or visibly mark the output as a stale/approximate preview.
+
 This shortcut is valid only for the stated model. A non-axisymmetric thin-disk
 emissivity pattern can rotate without re-tracing geodesics by advecting the
 emission coordinates in the disk frame:

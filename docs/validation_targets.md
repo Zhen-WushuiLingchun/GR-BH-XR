@@ -214,6 +214,16 @@ Required checks:
   capture that compares screenshot color bands against `escape_dir_unity`;
 - the angular-window path is tested on desktop at yaw `0 deg`, `2 deg`, and
   `4 deg` before it is used as evidence for head-rotation stability;
+- the Unity shader includes single-pass instanced stereo macros so Quest/OpenXR
+  does not render a missing or eye-shifted lens map in one eye;
+- the angular-window yaw test is interpreted only as head-rotation anchoring
+  for a fixed distant observer. It is not accepted as evidence for changing the
+  physical Kerr observer inclination or orbiting around the black hole;
+- the validation report states that this Unity path renders a precomputed
+  transfer map in real time; it does not perform per-frame geodesic integration;
+- the skybox/background asset resolution is recorded separately from lens-map
+  resolution. A 4K all-sky map is not enough for a narrow `~9 deg` VR FOV if
+  the goal is crisp stellar background detail;
 - stereo disparity is correct;
 - lens map remains stable under head motion;
 - 72 Hz or 90 Hz target feasibility is recorded;
@@ -329,3 +339,16 @@ Required checks:
   validated surrogates tied to the chosen metric;
 - toy accretion is not represented as full GRMHD;
 - full BBH + GRMHD + GRRT is treated as offline/cache/surrogate work.
+
+Static single-Kerr playback is not a sufficient architecture for this track.
+Long-range real-time or interactive work must introduce one of:
+
+- adaptive GPU tracing with progressive/tiled updates;
+- time-indexed transfer-map cache playback tied to a documented metric;
+- reduced-order or neural surrogates trained on exact transfer-buffer data;
+- hybrid modes that keep audit buffers for escape/capture, redshift, time
+  delay, and image order rather than directly generating RGB output.
+
+Neural acceleration must learn transfer functions or radiance fields from
+validated exact data. It must not replace the audit buffers with an untraceable
+image generator.

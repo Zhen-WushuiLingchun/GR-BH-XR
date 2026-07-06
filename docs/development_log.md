@@ -19,6 +19,42 @@ from here.
 
 ## Log
 
+### 2026-07-07 - Static playback boundary and Quest yaw semantics
+
+- Goal: Clarify the Task 5 Unity path after desktop angular-window testing
+  showed that a yawed camera only moves a fixed distant lens window across the
+  view; it does not simulate orbiting around the black hole.
+- Changed files / components: `docs/physical_scope.md`,
+  `docs/validation_targets.md`, `validation/quest_pcvr/README.md`,
+  `validation/quest_pcvr/2026-07-06-unity-editor-desktop-gate.md`, and
+  `xr/unity_frontend/README.md`.
+- Academic reason: The project target includes eventual dynamic scenes,
+  including BBH, multi-black-hole, and gravitational-wave lensing. A fixed
+  single-Kerr transfer map must not be allowed to masquerade as the final
+  real-time ray-tracing architecture.
+- Physical correspondence: The current Unity bridge renders a precomputed
+  transfer map in real time:
+  `view ray or screen coordinate -> escape direction -> cubemap sample`. It
+  remains tied to the metadata observer and metric parameters. Changing spin,
+  inclination, observer position, or binary phase requires a new selected,
+  interpolated, progressively updated, or re-traced transfer map.
+- Assumptions and conventions: The renderer architecture is now documented in
+  three tiers: static transfer-map playback for the Quest gate, real-time or
+  near-real-time GPU transfer-map updates for parameter changes, and
+  dynamic-metric cache/surrogate methods for BBH or gravitational-wave lensing.
+- Validation: The 2026-07-07 Unity yaw captures remain useful only as a desktop
+  head-rotation anchoring precheck. The right-side blur in yawed captures is
+  separately attributed to all-sky background resolution: a 4096-wide sky map
+  contributes only about 100 source pixels across the current `9.1478 deg`
+  gate FOV, independent of the 4K lens-map display texture.
+- References: Existing Task 5 Unity texture-contract notes and the NASA Deep
+  Star Maps 2020 source note in the Unity project.
+- Open issues / next steps: Use a higher-resolution all-sky map, local
+  high-resolution sky patch, or procedural/catalog starfield for VR-quality
+  backgrounds; keep Quest first-pass validation focused on static-lens
+  stereo/frame-pacing/anchoring while the separate GPU real-time and surrogate
+  tracks are planned.
+
 ### 2026-07-07 - GPU thin-disk transfer hooks v3
 
 - Goal: Start the Task 6 GPU-side disk-transfer path by adding first-crossing

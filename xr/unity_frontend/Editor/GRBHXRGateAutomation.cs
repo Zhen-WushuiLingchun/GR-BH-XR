@@ -58,6 +58,18 @@ namespace GRBHXR.EditorTools
             AssetDatabase.Refresh();
         }
 
+        [MenuItem("GR-BH-XR/Gate/Capture Angular Window Yaw Gate")]
+        public static void CaptureAngularWindowYawGate()
+        {
+            var options = GateOptions.FromCommandLine();
+            options.UseAngularWindow = true;
+            ConfigurePreview(options, GateSkyboxKind.Nasa);
+            CaptureYaw(options, 0.0f, "unity_gate_angular_yaw_000_square_1024.png", 1024, 1024);
+            CaptureYaw(options, 2.0f, "unity_gate_angular_yaw_002_square_1024.png", 1024, 1024);
+            CaptureYaw(options, 4.0f, "unity_gate_angular_yaw_004_square_1024.png", 1024, 1024);
+            AssetDatabase.Refresh();
+        }
+
         public static void BatchConfigureAndCapture()
         {
             ConfigureAndCapture();
@@ -71,6 +83,11 @@ namespace GRBHXR.EditorTools
         public static void BatchCaptureProtractorBands()
         {
             CaptureProtractorBands();
+        }
+
+        public static void BatchCaptureAngularWindowYawGate()
+        {
+            CaptureAngularWindowYawGate();
         }
 
         private static void ConfigurePreview(GateOptions options, GateSkyboxKind skyboxKind)
@@ -241,6 +258,18 @@ namespace GRBHXR.EditorTools
                 target.Release();
                 UnityEngine.Object.DestroyImmediate(target);
             }
+        }
+
+        private static void CaptureYaw(GateOptions options, float yawDeg, string fileName, int width, int height)
+        {
+            var camera = Camera.main;
+            if (camera == null)
+            {
+                throw new MissingReferenceException("Main Camera not found.");
+            }
+            camera.transform.rotation = Quaternion.Euler(0.0f, yawDeg, 0.0f);
+            Debug.Log($"GR-BH-XR angular yaw capture: yaw={yawDeg:F1} deg, file={fileName}");
+            Capture(options, fileName, width, height);
         }
 
         private static Cubemap EnsureQuadrantCubemap(string path)
