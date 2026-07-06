@@ -9,6 +9,7 @@ from scipy.integrate import solve_ivp
 
 from .camera import initial_ray_state
 from .metric import carter_constant, hamiltonian, horizon_radius, inverse_metric, inverse_metric_derivatives
+from .sky import escape_direction_or_nan
 from .types import CameraConfig, FailureReason, MetricParams, RayDiagnostics, TraceConfig
 
 
@@ -65,6 +66,9 @@ def _diagnostics(
     )
     e_values = -ps[:, 0]
     lz_values = ps[:, 3]
+    escape_theta, escape_phi, escape_dir_x, escape_dir_y, escape_dir_z = escape_direction_or_nan(
+        event, float(xs[-1, 2]), float(xs[-1, 3])
+    )
 
     return RayDiagnostics(
         event=event,  # type: ignore[arg-type]
@@ -78,6 +82,11 @@ def _diagnostics(
         disk_crossings=int(disk_crossings),
         q_initial=float(q_values[0]),
         q_final=float(q_values[-1]),
+        escape_theta=escape_theta,
+        escape_phi=escape_phi,
+        escape_dir_x=escape_dir_x,
+        escape_dir_y=escape_dir_y,
+        escape_dir_z=escape_dir_z,
         failure_reason=failure_reason,
         message=message,
     )

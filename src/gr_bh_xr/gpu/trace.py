@@ -7,12 +7,14 @@ import math
 from typing import Any
 
 import numpy as np
+from scipy.spatial import cKDTree
 
 from gr_bh_xr.critical_curve import critical_curve_polygon
 from gr_bh_xr.gpu import SCHEMA_VERSION
 from gr_bh_xr.gpu.backend import backend_info, create_vulkan_device, require_wgpu
 from gr_bh_xr.gpu.codes import SCHEMA_EVENT_CODES, SCHEMA_FAILURE_CODES
 from gr_bh_xr.metric import horizon_radius
+from gr_bh_xr.sky import escape_direction_arrays
 from gr_bh_xr.types import MetricParams, TraceConfig
 
 
@@ -115,6 +117,11 @@ class GpuLensMap:
     refinement_level: np.ndarray
     subpixel_capture_fraction: np.ndarray
     subpixel_invalid_fraction: np.ndarray
+    escape_theta: np.ndarray
+    escape_phi: np.ndarray
+    escape_dir_x: np.ndarray
+    escape_dir_y: np.ndarray
+    escape_dir_z: np.ndarray
     event_rgba8: np.ndarray
     debug_rgba8: np.ndarray
 
@@ -146,6 +153,14 @@ def trace_lens_map(config: GpuTraceConfig) -> GpuLensMap:
     min_r = result["min_r"].reshape(shape).astype(np.float32)
     h_max_abs = result["h_max_abs"].reshape(shape).astype(np.float32)
     q_drift_abs = result["q_drift_abs"].reshape(shape).astype(np.float32)
+    final_theta = result["final_theta"].reshape(shape).astype(np.float32)
+    final_phi = result["final_phi"].reshape(shape).astype(np.float32)
+    escape_theta, escape_phi, escape_dir_x, escape_dir_y, escape_dir_z = escape_direction_arrays(
+        event_code=event_code,
+        theta=final_theta,
+        phi=final_phi,
+        escape_code=SCHEMA_EVENT_CODES["escape"],
+    )
     refinement_level, subpixel_capture_fraction, subpixel_invalid_fraction = _refine_critical_band(
         config, alpha, beta
     )
@@ -166,9 +181,24 @@ def trace_lens_map(config: GpuTraceConfig) -> GpuLensMap:
         refinement_level=refinement_level,
         subpixel_capture_fraction=subpixel_capture_fraction,
         subpixel_invalid_fraction=subpixel_invalid_fraction,
+        escape_theta=escape_theta,
+        escape_phi=escape_phi,
+        escape_dir_x=escape_dir_x,
+        escape_dir_y=escape_dir_y,
+        escape_dir_z=escape_dir_z,
         event_rgba8=event_rgba8,
         debug_rgba8=debug_rgba8,
     )
+
+
+def trace_screen_points(config: GpuTraceConfig, alpha: np.ndarray, beta: np.ndarray) -> dict[str, Any]:
+    """Trace explicit screen points with the cached WGPU pipeline.
+
+    This is used by validation tests for targeted CPU arbitration. It returns
+    flat arrays with the same event/failure codes as the HDF5 map schema.
+    """
+
+    return _trace_screen_points(config, alpha, beta)
 
 
 def _trace_screen_points(config: GpuTraceConfig, alpha: np.ndarray, beta: np.ndarray) -> dict[str, Any]:
@@ -193,7 +223,7 @@ def _trace_screen_points(config: GpuTraceConfig, alpha: np.ndarray, beta: np.nda
     )
     out_f32_buffer = device.create_buffer(
         label="gr-bh-xr gpu f32 outputs",
-        size=int(n_pixels * 3 * np.dtype(np.float32).itemsize),
+        size=int(n_pixels * 5 * np.dtype(np.float32).itemsize),
         usage=wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_SRC,
     )
     screen_buffer = device.create_buffer_with_data(
@@ -223,7 +253,7 @@ def _trace_screen_points(config: GpuTraceConfig, alpha: np.ndarray, beta: np.nda
     out_i32 = np.frombuffer(device.queue.read_buffer(out_i32_buffer), dtype=np.int32).copy()
     out_f32 = np.frombuffer(device.queue.read_buffer(out_f32_buffer), dtype=np.float32).copy()
     out_i32 = out_i32.reshape((n_pixels, 3))
-    out_f32 = out_f32.reshape((n_pixels, 3))
+    out_f32 = out_f32.reshape((n_pixels, 5))
     return {
         "backend": info,
         "event_code": out_i32[:, 0],
@@ -232,6 +262,8 @@ def _trace_screen_points(config: GpuTraceConfig, alpha: np.ndarray, beta: np.nda
         "min_r": out_f32[:, 0],
         "h_max_abs": out_f32[:, 1],
         "q_drift_abs": out_f32[:, 2],
+        "final_theta": out_f32[:, 3],
+        "final_phi": out_f32[:, 4],
     }
 
 
@@ -244,6 +276,8 @@ def _empty_trace_result(info: dict[str, Any]) -> dict[str, Any]:
         "min_r": np.empty(0, dtype=np.float32),
         "h_max_abs": np.empty(0, dtype=np.float32),
         "q_drift_abs": np.empty(0, dtype=np.float32),
+        "final_theta": np.empty(0, dtype=np.float32),
+        "final_phi": np.empty(0, dtype=np.float32),
     }
 
 
@@ -308,20 +342,13 @@ def critical_band_mask(
     if abs(params.a) <= 1.0e-12:
         radius = np.sqrt(aa * aa + bb * bb)
         return np.abs(radius - 3.0 * math.sqrt(3.0) * params.M) <= band
-    polygon = critical_curve_polygon(params, theta_obs, samples=1024)
+    polygon = critical_curve_polygon(params, theta_obs, samples=4096)
     points = np.stack([aa.ravel(), bb.ravel()], axis=1)
-    dist = np.full(points.shape[0], np.inf, dtype=np.float64)
-    for idx in range(polygon.shape[0]):
-        p = polygon[idx]
-        q = polygon[(idx + 1) % polygon.shape[0]]
-        segment = q - p
-        seg_len2 = float(segment @ segment)
-        if seg_len2 <= 0.0:
-            continue
-        rel = points - p
-        t = np.clip((rel @ segment) / seg_len2, 0.0, 1.0)
-        closest = p + t[:, None] * segment
-        dist = np.minimum(dist, np.linalg.norm(points - closest, axis=1))
+    tree = cKDTree(polygon)
+    try:
+        dist, _ = tree.query(points, k=1, workers=-1)
+    except TypeError:  # pragma: no cover - compatibility for older SciPy.
+        dist, _ = tree.query(points, k=1)
     return dist.reshape(aa.shape) <= band
 
 
@@ -703,12 +730,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
     }
     let ibase = idx * 3u;
-    let fbase = idx * 3u;
+    let fbase = idx * 5u;
     out_i32[ibase + 0u] = event;
     out_i32[ibase + 1u] = failure;
     out_i32[ibase + 2u] = i32(step_count);
     out_f32[fbase + 0u] = min_r;
     out_f32[fbase + 1u] = h_max;
     out_f32[fbase + 2u] = qmax - qmin;
+    out_f32[fbase + 3u] = s.th;
+    out_f32[fbase + 4u] = s.ph;
 }
 """

@@ -31,12 +31,16 @@ Generated GPU maps use schema `gr-bh-xr.phase2.gpu_lens_map.v1`.
   `gpu_h_max_abs`, `gpu_q_drift_abs`, `gpu_steps`,
   `gpu_refinement_level`, `gpu_subpixel_capture_fraction`, and
   `gpu_subpixel_invalid_fraction`
+- escaped-ray direction buffers: `gpu_escape_theta`, `gpu_escape_phi`, and
+  `gpu_escape_dir_{x,y,z}`
 - texture buffers: `event_rgba8`, `debug_rgba8`
 - comparison-only CPU buffers: `cpu_event_code`, `cpu_failure_code`,
-  `cpu_min_r`
+  `cpu_min_r`, `cpu_escape_theta`, `cpu_escape_phi`, and
+  `cpu_escape_dir_{x,y,z}`
 - comparison masks: `stable_comparison_mask`,
   `full_grid_event_agreement_mask`, `excluded_critical_band`,
   `excluded_near_capture`
+- continuous comparison buffer: `escape_direction_error_rad`
 - metadata: backend, requested backend, adapter name, precision, RK method,
   step size, step count, metric parameters, screen bounds, observer radius,
   horizon epsilon, and generation command
@@ -70,6 +74,13 @@ Schwarzschild and Kerr `a=0.5`, `i=60 deg` 65x65 validation runs, with matching
 CPU/GPU capture fractions, full-grid event agreement of `100%`, and zero GPU
 failures outside exclusions.
 
+Escaped rays now carry an asymptotic sky direction map for background
+lensing/cubemap lookup. The CPU-vs-GPU validator compares the unit direction
+vectors on stable escaped pixels and records max/RMS/median angular error in
+radians. On the reviewed Kerr `a=0.5`, `i=60 deg`, 65x65 case, the direction
+comparison used 2746 escaped stable pixels with max error `0.00292 rad`, RMS
+`1.69e-4 rad`, and median `4.05e-5 rad`.
+
 The default GPU map generator and validator now supersample the analytic
 critical-curve band with `critical_refine_band = 0.25 M` and
 `critical_refine_factor = 2`. Center-sample event codes remain available for
@@ -97,8 +108,9 @@ near-polar fixed-step artifacts: f32 RK4 with `h = 0.05` could step over the
 narrow centrifugal barrier near the Boyer-Lindquist polar axis. The follow-up
 shader adds near-polar substepping and a reserved `polar_step_overshoot` code.
 On the reviewed 256x256 Kerr case this reduced `solver_failure`,
-`unclassified_max_lambda`, and invalid counts to zero while refining 4102
-critical-band pixels. Future GPU work may still use the new code if more
+`unclassified_max_lambda`, and invalid counts to zero while refining 4096
+critical-band pixels after cKDTree acceleration of the critical-band mask.
+Future GPU work may still use the new code if more
 extreme parameters expose a polar overshoot.
 
 Observed f32 residual scale on the accepted 65x65 validation cases is

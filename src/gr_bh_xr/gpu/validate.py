@@ -17,6 +17,7 @@ from gr_bh_xr.gpu.codes import SCHEMA_EVENT_CODES, SCHEMA_FAILURE_CODES
 from gr_bh_xr.gpu.generate_lens_map import write_gpu_lens_map
 from gr_bh_xr.gpu.trace import GpuLensMap, GpuTraceConfig, critical_band_mask, trace_lens_map
 from gr_bh_xr.metric import horizon_radius
+from gr_bh_xr.sky import angular_error_from_dirs
 from gr_bh_xr.types import MetricParams
 
 
@@ -70,6 +71,9 @@ def validate_cpu_vs_gpu(
         cpu_event=cpu["event_code"],
         cpu_failure=cpu["failure_code"],
         cpu_min_r=cpu["min_r"],
+        cpu_escape_dir_x=cpu["escape_dir_x"],
+        cpu_escape_dir_y=cpu["escape_dir_y"],
+        cpu_escape_dir_z=cpu["escape_dir_z"],
         gpu_map=gpu_map,
         horizon_eps=horizon_eps,
         critical_band=critical_band,
@@ -136,6 +140,11 @@ def _generate_cpu_reference(
                 "event_code": handle["event_code"][...],
                 "failure_code": handle["failure_code"][...],
                 "min_r": handle["min_r"][...],
+                "escape_theta": handle["escape_theta"][...],
+                "escape_phi": handle["escape_phi"][...],
+                "escape_dir_x": handle["escape_dir_x"][...],
+                "escape_dir_y": handle["escape_dir_y"][...],
+                "escape_dir_z": handle["escape_dir_z"][...],
             }
 
 
@@ -148,6 +157,9 @@ def _compare(
     cpu_event: np.ndarray,
     cpu_failure: np.ndarray,
     cpu_min_r: np.ndarray,
+    cpu_escape_dir_x: np.ndarray,
+    cpu_escape_dir_y: np.ndarray,
+    cpu_escape_dir_z: np.ndarray,
     gpu_map: GpuLensMap,
     horizon_eps: float,
     critical_band: float,
@@ -172,6 +184,15 @@ def _compare(
         np.count_nonzero(gpu_map.event_code == SCHEMA_EVENT_CODES["capture"]) / total
     )
     gpu_failure_outside_exclusions = (gpu_map.failure_code != SCHEMA_FAILURE_CODES["none"]) & stable
+    escape_direction_error = _escape_direction_error(
+        cpu_event=cpu_event,
+        cpu_escape_dir_x=cpu_escape_dir_x,
+        cpu_escape_dir_y=cpu_escape_dir_y,
+        cpu_escape_dir_z=cpu_escape_dir_z,
+        gpu_map=gpu_map,
+        stable=stable,
+    )
+    finite_direction_error = escape_direction_error[np.isfinite(escape_direction_error)]
     summary = {
         "stable_event_agreement": stable_agreement,
         "stable_sample_count": stable_count,
@@ -187,14 +208,63 @@ def _compare(
         "excluded_critical_band": int(np.count_nonzero(critical_mask)),
         "excluded_near_capture": int(np.count_nonzero(near_capture)),
         "near_capture_radius": near_capture_radius,
+        "escape_direction_sample_count": int(finite_direction_error.size),
+        "escape_direction_max_error_rad": float(np.max(finite_direction_error))
+        if finite_direction_error.size
+        else math.nan,
+        "escape_direction_rms_error_rad": float(
+            np.sqrt(np.mean(finite_direction_error * finite_direction_error))
+        )
+        if finite_direction_error.size
+        else math.nan,
+        "escape_direction_median_error_rad": float(np.median(finite_direction_error))
+        if finite_direction_error.size
+        else math.nan,
     }
     return {
         "stable_mask": stable.astype(np.uint8),
         "full_grid_agreement_mask": full_grid_agreement_mask.astype(np.uint8),
         "critical_mask": critical_mask.astype(np.uint8),
         "near_capture_mask": near_capture.astype(np.uint8),
+        "escape_direction_error": escape_direction_error.astype(np.float32),
         "summary": summary,
     }
+
+
+def _escape_direction_error(
+    *,
+    cpu_event: np.ndarray,
+    cpu_escape_dir_x: np.ndarray,
+    cpu_escape_dir_y: np.ndarray,
+    cpu_escape_dir_z: np.ndarray,
+    gpu_map: GpuLensMap,
+    stable: np.ndarray,
+) -> np.ndarray:
+    mask = (
+        stable
+        & (cpu_event == EVENT_CODES["escape"])
+        & (gpu_map.event_code == SCHEMA_EVENT_CODES["escape"])
+    )
+    error = np.full(gpu_map.event_code.shape, np.nan, dtype=np.float64)
+    finite = (
+        mask
+        & np.isfinite(cpu_escape_dir_x)
+        & np.isfinite(cpu_escape_dir_y)
+        & np.isfinite(cpu_escape_dir_z)
+        & np.isfinite(gpu_map.escape_dir_x)
+        & np.isfinite(gpu_map.escape_dir_y)
+        & np.isfinite(gpu_map.escape_dir_z)
+    )
+    if np.any(finite):
+        error[finite] = angular_error_from_dirs(
+            cpu_escape_dir_x[finite],
+            cpu_escape_dir_y[finite],
+            cpu_escape_dir_z[finite],
+            gpu_map.escape_dir_x[finite],
+            gpu_map.escape_dir_y[finite],
+            gpu_map.escape_dir_z[finite],
+        )
+    return error
 
 
 def _write_compare_file(
@@ -223,6 +293,21 @@ def _write_compare_file(
             cpu_failure.attrs[f"code_{failure}"] = code
         handle.create_dataset("cpu_min_r", data=cpu["min_r"], compression="gzip", shuffle=True)
         handle.create_dataset(
+            "cpu_escape_theta", data=cpu["escape_theta"], compression="gzip", shuffle=True
+        )
+        handle.create_dataset(
+            "cpu_escape_phi", data=cpu["escape_phi"], compression="gzip", shuffle=True
+        )
+        handle.create_dataset(
+            "cpu_escape_dir_x", data=cpu["escape_dir_x"], compression="gzip", shuffle=True
+        )
+        handle.create_dataset(
+            "cpu_escape_dir_y", data=cpu["escape_dir_y"], compression="gzip", shuffle=True
+        )
+        handle.create_dataset(
+            "cpu_escape_dir_z", data=cpu["escape_dir_z"], compression="gzip", shuffle=True
+        )
+        handle.create_dataset(
             "stable_comparison_mask",
             data=comparison["stable_mask"],
             compression="gzip",
@@ -243,6 +328,12 @@ def _write_compare_file(
         handle.create_dataset(
             "excluded_near_capture",
             data=comparison["near_capture_mask"],
+            compression="gzip",
+            shuffle=True,
+        )
+        handle.create_dataset(
+            "escape_direction_error_rad",
+            data=comparison["escape_direction_error"],
             compression="gzip",
             shuffle=True,
         )

@@ -94,5 +94,10 @@ class RayDiagnostics:
     disk_crossings: int
     q_initial: float
     q_final: float
+    escape_theta: float = np.nan
+    escape_phi: float = np.nan
+    escape_dir_x: float = np.nan
+    escape_dir_y: float = np.nan
+    escape_dir_z: float = np.nan
     failure_reason: FailureReason = "none"
     message: str = ""

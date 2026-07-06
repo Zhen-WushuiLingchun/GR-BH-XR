@@ -42,12 +42,17 @@ def test_generate_lens_map_writes_required_hdf5_buffers(tmp_path):
             "lz_drift_abs",
             "q_drift_abs",
             "disk_crossings",
+            "escape_theta",
+            "escape_phi",
+            "escape_dir_x",
+            "escape_dir_y",
+            "escape_dir_z",
         ):
             assert dataset in handle
         assert handle["alpha"].shape == (17,)
         assert handle["beta"].shape == (17,)
         assert handle["event_code"].shape == (17, 17)
-        assert handle.attrs["schema"] == "gr-bh-xr.phase1.lens_map.v3"
+        assert handle.attrs["schema"] == "gr-bh-xr.phase1.lens_map.v4"
         assert handle.attrs["M"] == 1.0
         assert handle.attrs["a"] == 0.0
         assert handle.attrs["grid"] == 17
@@ -61,6 +66,10 @@ def test_generate_lens_map_writes_required_hdf5_buffers(tmp_path):
         failure_codes = handle["failure_code"][...]
         assert np.count_nonzero(event_codes == EVENT_CODES["capture"]) > 0
         assert np.count_nonzero(event_codes == EVENT_CODES["escape"]) > 0
+        escape_mask = event_codes == EVENT_CODES["escape"]
+        assert np.all(np.isfinite(handle["escape_theta"][...][escape_mask]))
+        assert np.all(np.isfinite(handle["escape_phi"][...][escape_mask]))
+        assert np.all(np.isfinite(handle["escape_dir_x"][...][escape_mask]))
         assert np.count_nonzero(failure_codes == FAILURE_CODES["none"]) > 0
         axis_col = len(handle["alpha"]) // 2
         axis_invalid = event_codes[:, axis_col] == EVENT_CODES["invalid"]

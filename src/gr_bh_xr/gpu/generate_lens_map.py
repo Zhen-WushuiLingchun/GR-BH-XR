@@ -63,6 +63,21 @@ def write_gpu_lens_map(out: Path | str, lens_map: GpuLensMap, command: str = "")
             shuffle=True,
         )
         handle.create_dataset(
+            "gpu_escape_theta", data=lens_map.escape_theta, compression="gzip", shuffle=True
+        )
+        handle.create_dataset(
+            "gpu_escape_phi", data=lens_map.escape_phi, compression="gzip", shuffle=True
+        )
+        handle.create_dataset(
+            "gpu_escape_dir_x", data=lens_map.escape_dir_x, compression="gzip", shuffle=True
+        )
+        handle.create_dataset(
+            "gpu_escape_dir_y", data=lens_map.escape_dir_y, compression="gzip", shuffle=True
+        )
+        handle.create_dataset(
+            "gpu_escape_dir_z", data=lens_map.escape_dir_z, compression="gzip", shuffle=True
+        )
+        handle.create_dataset(
             "event_rgba8", data=lens_map.event_rgba8, compression="gzip", shuffle=True
         )
         handle.create_dataset(

@@ -143,6 +143,8 @@ Required Task 4 checks:
 - CPU-vs-GPU comparison output records both the stable-region event agreement
   used for the gate and a full-grid event-agreement field used to detect
   cancelling capture/escape count errors;
+- escaped rays record asymptotic sky direction buffers, and the GPU validator
+  compares CPU-vs-GPU unit direction vectors on stable escaped pixels;
 - generated HDF5/debug texture artifacts stay under ignored `outputs/phase2/`.
 - the analytic critical-curve band is marked by a refinement buffer and
   supersampled into subpixel capture/invalid fractions for downstream texture

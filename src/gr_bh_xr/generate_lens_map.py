@@ -67,10 +67,15 @@ def _write_lens_map(
     q_drift_abs: np.ndarray,
     disk_crossings: np.ndarray,
     failure_code: np.ndarray,
+    escape_theta: np.ndarray,
+    escape_phi: np.ndarray,
+    escape_dir_x: np.ndarray,
+    escape_dir_y: np.ndarray,
+    escape_dir_z: np.ndarray,
 ) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(out, "w") as handle:
-        handle.attrs["schema"] = "gr-bh-xr.phase1.lens_map.v3"
+        handle.attrs["schema"] = "gr-bh-xr.phase1.lens_map.v4"
         handle.attrs["M"] = params.M
         handle.attrs["a"] = params.a
         handle.attrs["inclination_deg"] = inclination_deg
@@ -105,6 +110,11 @@ def _write_lens_map(
         )
         for failure, code in FAILURE_CODES.items():
             failure_ds.attrs[f"code_{failure}"] = code
+        handle.create_dataset("escape_theta", data=escape_theta, compression="gzip", shuffle=True)
+        handle.create_dataset("escape_phi", data=escape_phi, compression="gzip", shuffle=True)
+        handle.create_dataset("escape_dir_x", data=escape_dir_x, compression="gzip", shuffle=True)
+        handle.create_dataset("escape_dir_y", data=escape_dir_y, compression="gzip", shuffle=True)
+        handle.create_dataset("escape_dir_z", data=escape_dir_z, compression="gzip", shuffle=True)
 
 
 def generate_lens_map(
@@ -139,6 +149,11 @@ def generate_lens_map(
     q_drift_abs = np.full(shape, np.nan, dtype=np.float64)
     disk_crossings = np.zeros(shape, dtype=np.int16)
     failure_code = np.zeros(shape, dtype=np.int16)
+    escape_theta = np.full(shape, np.nan, dtype=np.float64)
+    escape_phi = np.full(shape, np.nan, dtype=np.float64)
+    escape_dir_x = np.full(shape, np.nan, dtype=np.float64)
+    escape_dir_y = np.full(shape, np.nan, dtype=np.float64)
+    escape_dir_z = np.full(shape, np.nan, dtype=np.float64)
 
     trace_config = TraceConfig(
         max_lambda=max_lambda,
@@ -171,6 +186,11 @@ def generate_lens_map(
             lz_drift_abs[row, col] = diag.lz_drift_abs
             q_drift_abs[row, col] = diag.q_drift_abs
             disk_crossings[row, col] = diag.disk_crossings
+            escape_theta[row, col] = diag.escape_theta
+            escape_phi[row, col] = diag.escape_phi
+            escape_dir_x[row, col] = diag.escape_dir_x
+            escape_dir_y[row, col] = diag.escape_dir_y
+            escape_dir_z[row, col] = diag.escape_dir_z
 
         if verbose:
             print(f"completed row {row + 1}/{grid}", flush=True)
@@ -197,6 +217,11 @@ def generate_lens_map(
         q_drift_abs=q_drift_abs,
         disk_crossings=disk_crossings,
         failure_code=failure_code,
+        escape_theta=escape_theta,
+        escape_phi=escape_phi,
+        escape_dir_x=escape_dir_x,
+        escape_dir_y=escape_dir_y,
+        escape_dir_z=escape_dir_z,
     )
 
     counts = {

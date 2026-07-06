@@ -116,6 +116,35 @@ from here.
   Task 5 Unity/OpenXR texture bridge, then measure headset frame pacing,
   stereo stability, and head-motion behavior.
 
+### 2026-07-06 - Task 4 escape-direction map
+
+- Goal: Add the physical background-lensing buffer needed before Task 5 PCVR:
+  escaped-ray sky direction.
+- Changed files / components: `src/gr_bh_xr/sky.py`, CPU/GPU lens-map schemas,
+  GPU validator, GPU tests, and validation documentation.
+- Academic reason: A capture mask is enough for a shadow, but background
+  lensing requires a transfer map from screen coordinates to asymptotic sky
+  direction. This makes the next Unity/OpenXR step consume a physics buffer
+  rather than inventing a visual-only distortion.
+- Physical correspondence: Escaped rays now record `(theta_inf, phi_inf)` and
+  a unit Cartesian direction vector. Non-escape pixels are NaN. The GPU
+  validator compares CPU and GPU escaped-ray direction vectors on the same
+  stable mask used for event agreement.
+- Assumptions and conventions: Directions are Boyer-Lindquist asymptotic sky
+  directions at the configured escape radius. Renderer-specific cubemap axes
+  remain a Task 5 convention layer.
+- Validation: Kerr `a = 0.5`, `i = 60 deg`, 65x65 CPU-vs-GPU validation kept
+  full-grid/stable event agreement `1.0` and capture-fraction difference `0.0`;
+  escaped-direction comparison used 2746 stable escaped pixels with max angular
+  error `0.002916683 rad`, RMS `0.000168729 rad`, and median
+  `4.04749e-05 rad`. A 256x256 Kerr map still reported zero invalid/failure
+  pixels and refined 4096 critical-band pixels, taking about `2.46 s` including
+  device setup and HDF5 write after cKDTree critical-band acceleration.
+- References: Same Bardeen screen-coordinate and Kerr geodesic sources as
+  Phase 1; this is a transfer-buffer exposure, not a new metric model.
+- Open issues / next steps: Define the renderer cubemap coordinate convention
+  and implement the Unity/OpenXR texture bridge.
+
 ### 2026-07-06 - Phase 1 closeout review
 
 - Goal: Record that Phase 1 CPU Kerr reference solver work has passed external
