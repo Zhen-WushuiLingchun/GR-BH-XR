@@ -17,6 +17,26 @@ def test_isco_and_redshift_schwarzschild_limits():
     g = redshift_factor(params, r=10.0, p_t=-1.0, p_phi=0.0)
 
     assert math.isclose(g, math.sqrt(1.0 - 3.0 / 10.0), rel_tol=1.0e-12)
+    assert math.isclose(
+        redshift_factor(params, r=isco_radius(params), p_t=-1.0, p_phi=0.0),
+        1.0 / math.sqrt(2.0),
+        rel_tol=1.0e-12,
+    )
+
+
+def test_schwarzschild_redshift_mirror_invariant():
+    params = MetricParams(M=1.0, a=0.0)
+    r = 10.0
+    p_phi = 3.0
+    g_prograde_side = redshift_factor(params, r=r, p_t=-1.0, p_phi=p_phi)
+    g_retrograde_side = redshift_factor(params, r=r, p_t=-1.0, p_phi=-p_phi)
+    u_t = 1.0 / math.sqrt(1.0 - 3.0 / r)
+
+    assert math.isclose(
+        1.0 / g_prograde_side + 1.0 / g_retrograde_side,
+        2.0 * u_t,
+        rel_tol=1.0e-12,
+    )
 
 
 def test_trace_ray_records_equatorial_crossing_states():

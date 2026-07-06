@@ -13,6 +13,7 @@ from gr_bh_xr.gpu.generate_lens_map import generate_gpu_lens_map
 from gr_bh_xr.gpu.preview import preview_envelope_warning
 from gr_bh_xr.gpu.trace import GpuTraceConfig, trace_screen_points
 from gr_bh_xr.gpu.validate import validate_cpu_vs_gpu
+from gr_bh_xr.gpu.validate_disk_transfer import validate_disk_transfer_cpu_vs_gpu
 from gr_bh_xr.types import CameraConfig, MetricParams, TraceConfig
 
 
@@ -194,6 +195,52 @@ def test_gpu_cpu_validator_writes_compare_hdf5_and_summary(tmp_path):
             "excluded_near_capture",
         ):
             assert dataset in handle
+
+
+def test_gpu_disk_transfer_validator_matches_cpu_reference(tmp_path):
+    _require_vulkan_adapter()
+    out = tmp_path / "gpu_disk_compare_schwarzschild.h5"
+
+    summary = validate_disk_transfer_cpu_vs_gpu(
+        params=MetricParams(M=1.0, a=0.0),
+        inclination_deg=80.0,
+        grid=16,
+        alpha_max=30.0,
+        beta_max=30.0,
+        r_obs=100.0,
+        step_size=0.05,
+        steps=12000,
+        horizon_eps=0.3,
+        critical_band=0.25,
+        disk_edge_band=0.25,
+        r_out=30.0,
+        max_order=2,
+        out=out,
+        command="pytest gpu disk compare",
+    )
+
+    assert out.exists()
+    assert out.with_suffix(".json").exists()
+    assert summary["disk_compare_sample_count"] > 0
+    assert summary["disk_validity_mismatch_count"] == 0
+    assert summary["disk_r_max_abs_error"] < 1.0e-2
+    assert summary["disk_g_max_abs_error"] < 1.0e-3
+    assert summary["disk_phi_max_error_rad"] < 1.0e-3
+    with h5py.File(out, "r") as handle:
+        for dataset in (
+            "cpu_disk_r_m",
+            "cpu_disk_phi_m",
+            "cpu_disk_t_m",
+            "cpu_disk_g_m",
+            "disk_compare_mask",
+            "disk_validity_mismatch_mask",
+            "disk_r_abs_error",
+            "disk_phi_error_rad",
+            "disk_t_abs_error",
+            "disk_g_abs_error",
+        ):
+            assert dataset in handle
+        assert handle.attrs["disk_transfer_comparison"] == "cpu_dop853_vs_gpu_f32_rk4"
 
 
 def test_gpu_near_axis_points_match_cpu_arbitration():

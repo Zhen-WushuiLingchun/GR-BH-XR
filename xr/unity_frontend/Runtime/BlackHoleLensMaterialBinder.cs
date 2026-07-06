@@ -12,7 +12,7 @@ namespace GRBHXR
 
         private void Awake()
         {
-            lensMap = GetComponent<BlackHoleLensMap>();
+            TryResolveLensMap();
         }
 
         private void Start()
@@ -22,7 +22,7 @@ namespace GRBHXR
 
         private void LateUpdate()
         {
-            if (refreshBasisEveryFrame)
+            if (refreshBasisEveryFrame && TryResolveLensMap())
             {
                 lensMap.ApplyBasisToMaterial(targetMaterial);
             }
@@ -30,7 +30,24 @@ namespace GRBHXR
 
         public void Bind()
         {
-            lensMap.ApplyToMaterial(targetMaterial);
+            if (TryResolveLensMap())
+            {
+                lensMap.ApplyToMaterial(targetMaterial);
+            }
+        }
+
+        private bool TryResolveLensMap()
+        {
+            if (lensMap == null)
+            {
+                lensMap = GetComponent<BlackHoleLensMap>();
+            }
+            if (lensMap == null)
+            {
+                Debug.LogWarning("BlackHoleLensMaterialBinder could not find BlackHoleLensMap.");
+                return false;
+            }
+            return true;
         }
     }
 }

@@ -319,6 +319,8 @@ def test_unity_lens_map_loader_keeps_raw_textures_linear():
     assert "Debug.LogWarning" in source
     assert "refreshBasisEveryFrame" in binder
     assert "LateUpdate" in binder
+    assert "TryResolveLensMap" in binder
+    assert "Debug.LogWarning" in binder
     assert "lensMap.ApplyBasisToMaterial(targetMaterial)" in binder
 
 

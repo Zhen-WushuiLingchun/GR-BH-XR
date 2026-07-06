@@ -105,6 +105,34 @@ geometric transfer hooks for Task 6 and do not alter the capture/escape event
 gate. Full disk emissivity, observed intensity, optical depth, GRRT, adaptive
 sampling, and headset runtime integration remain deferred.
 
+The disk buffers are valid by buffer value, not by final event code alone. A
+ray can cross the emitting annulus and later terminate at a Boyer-Lindquist
+axis-coordinate failure; consumers should use finite `gpu_disk_r_m` / `g_m`
+values to detect a valid disk sample and use `event_code` as a separate final
+ray diagnostic.
+
+## Disk-Transfer CPU-vs-GPU Gate
+
+The disk validator uses matched CPU and GPU grids, screen bounds, observer
+radius, disk annulus, and order count:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.gpu.validate_disk_transfer --spin 0 --inclination-deg 80 --grid 64 --alpha-max 30 --beta-max 30 --r-obs 100 --step-size 0.05 --steps 12000 --out outputs/task6/gpu_disk_compare_schwarzschild_64.h5
+```
+
+The first formal gate used a 64x64 even grid with the same physical bounds and
+reported zero disk-validity mismatches, `max |Delta r_m| = 0.00362 M`,
+`max |Delta g_m| = 2.31e-5`, `max phi_m error = 1.05e-5 rad`, and
+`max |Delta t_m| = 0.00376`. This satisfies the thresholds listed in
+`docs/validation_targets.md`. A smaller 16x16 smoke run is kept in tests for
+runtime cost.
+
+Both CPU and GPU crossing detectors currently use sign changes through the
+equatorial plane. A measure-zero tangent crossing at a theta turning point on
+the disk plane can be missed by both paths and is not part of the current
+acceptance set.
+
 The default-step interactive preview is validated for ordinary Kerr inspection,
 not for every screen coordinate chart limit. Its documented f32 operating
 envelope is approximately `20 deg <= i <= 160 deg` and `|a| <= 0.95`. Outside

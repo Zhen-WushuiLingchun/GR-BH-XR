@@ -55,6 +55,43 @@ from here.
   then export display textures for `r_m`, `phi_m`/`sin,cos`, `g_m`, and
   `Delta t_m` for Unity audit and visual disk modes.
 
+### 2026-07-07 - GPU disk-transfer CPU comparison
+
+- Goal: Add the first matched CPU-vs-GPU validation path for the v3 disk
+  transfer buffers before treating them as display-texture source data.
+- Changed files / components: GPU disk-transfer validator CLI, GPU tests,
+  disk redshift tests, Unity binder guard, GPU validation documentation, and
+  validation targets.
+- Academic reason: Disk rendering needs a quantitative transfer-buffer gate,
+  not only event-code agreement. The redshift chain also needs cheap analytic
+  invariants that catch sign or block-inversion regressions.
+- Physical correspondence: The validator compares matched CPU DOP853 and GPU
+  f32 RK4 disk layers by true crossing order and reports validity mismatch,
+  `|Delta r_m|`, `phi_m` angular error, `|Delta t_m|`, and `|Delta g_m|`.
+  Stable masks exclude failures, the critical curve, near-capture pixels, and
+  a disk-annulus edge band. The Schwarzschild redshift tests now include
+  `g(r_ISCO, L_z = 0) = 1/sqrt(2)` and the mirror invariant
+  `1/g(+L_z) + 1/g(-L_z) = 2 u^t`.
+- Assumptions and conventions: GPU disk buffers are valid independently of
+  final ray event code; a ray may record a physically prior disk crossing and
+  later terminate at an axis-coordinate failure. CPU and GPU both use
+  sign-change equatorial crossing detection, so exact tangential double
+  crossings remain a documented boundary case.
+- Validation: A matched 16 by 16 Schwarzschild `i = 80 deg`,
+  `alpha,beta in [-30M, 30M]`, `r_obs = 100M` comparison wrote
+  `outputs/task6/gpu_disk_compare_schwarzschild_16.h5` with zero validity
+  mismatches, `max |Delta r_m| = 2.33e-4 M`,
+  `max |Delta g_m| = 2.73e-6`, `max phi_m error = 6.67e-6 rad`, and
+  `max |Delta t_m| = 5.84e-4`. The formal 64 by 64 gate wrote
+  `outputs/task6/gpu_disk_compare_schwarzschild_64.h5` with zero validity
+  mismatches, `max |Delta r_m| = 0.00362 M`,
+  `max |Delta g_m| = 2.31e-5`, `max phi_m error = 1.05e-5 rad`, and
+  `max |Delta t_m| = 0.00376`.
+- References: Same Bardeen/Press/Teukolsky ISCO and Cunningham redshift
+  references as the CPU Task 6 transfer path.
+- Open issues / next steps: Run the formal 64 by 64 gate, then export
+  display-grade disk transfer textures for Unity audit/visual modes.
+
 ### 2026-07-07 - Unity basis refresh and static-Kerr boundary
 
 - Goal: Close the remaining Task 5 Unity P2 items and record the physical

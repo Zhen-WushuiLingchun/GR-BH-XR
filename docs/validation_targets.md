@@ -138,6 +138,9 @@ Required Task 4 checks:
   as `gpu_disk_r_m`, `gpu_disk_phi_m`, `gpu_disk_sin_phi_m`,
   `gpu_disk_cos_phi_m`, `gpu_disk_t_m`, and `gpu_disk_g_m`; these are transfer
   buffers and do not change the capture/escape event classification gate;
+- disk-transfer buffers may contain valid crossings even if the ray later ends
+  as `invalid` at the Boyer-Lindquist axis; consumers must treat disk-buffer
+  validity independently from the final `event_code`;
 - CPU-vs-GPU comparison files also record `cpu_event_code`,
   `cpu_failure_code`, `cpu_min_r`, and the masks used to exclude CPU failures,
   the near-critical screen band, and near-capture Boyer-Lindquist samples;
@@ -260,6 +263,30 @@ Current CPU transfer v2 target:
   separates direct (`m = 0`) and secondary (`m = 1`) Schwarzschild disk images;
 - emission profile, observed intensity, optical depth, and GPU/Unity texture
   integration remain deferred until the CPU transfer buffers pass review.
+
+Current GPU transfer v3 comparison target:
+
+- CPU and GPU disk-transfer validation must use matched `grid`, screen bounds,
+  observer radius, horizon cutoff, disk annulus, and crossing order. The formal
+  Schwarzschild gate uses an even grid, such as `64x64`, with
+  `alpha,beta in [-30M, 30M]` and `r_obs = 100M` to avoid exact `alpha = 0`
+  axis samples.
+- Stable-region comparison excludes CPU/GPU failures, critical-band pixels,
+  near-capture pixels, and a documented disk-annulus edge band.
+- Required stable-region metrics for matched finite disk hits:
+
+```text
+validity mismatch count = 0 outside exclusions
+max |Delta r_m| < 1e-2 M
+max |Delta g_m| < 1e-3
+max phi_m angular error < 1e-3 rad
+Delta t_m is recorded and reported; its tighter threshold is set after display-scale runs
+```
+
+- A sign-change crossing detector can miss a measure-zero tangential double
+  crossing when a theta turning point lies exactly on the equatorial plane.
+  CPU and GPU currently share this limitation; it must be revisited before
+  using such edge cases for claims.
 
 ## Phase 5 MR Overlay
 
