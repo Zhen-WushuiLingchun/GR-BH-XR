@@ -19,6 +19,40 @@ from here.
 
 ## Log
 
+### 2026-07-07 - Unity direction-basis scale guard
+
+- Goal: Fix the Task 5 Unity gate P0 where a scale-bearing object matrix could
+  skew escaped-ray directions before cubemap lookup.
+- Changed files / components: Unity preview shader, runtime lens-map loader,
+  Unity Editor gate automation, XR export tests, Unity package README, and the
+  Quest desktop-gate validation note.
+- Academic reason: A physics-auditable renderer must not pass a sign-only
+  handedness test while silently changing the angular amplitude of the
+  background transfer direction. The display bridge must preserve the
+  `escape_dir_unity` vector as a direction on the sky, not as a scaled mesh
+  vector.
+- Physical correspondence: `BlackHoleLensMap` now writes explicit pure
+  rotation basis vectors (`_LensWorldRight`, `_LensWorldUp`,
+  `_LensWorldForward`) into the material. The shader uses those basis vectors
+  for both angular-window view rays and escaped-direction cubemap lookup,
+  instead of deriving direction transforms from `unity_ObjectToWorld` or
+  `unity_WorldToObject` scale-bearing matrices.
+- Assumptions and conventions: The formal desktop gate still uses a uniform
+  `(20, 20, 20)` LensScreen scale, but correctness no longer depends on object
+  scale being physically meaningful. The screen-space gate remains the accepted
+  desktop path; angular-window head-motion validation is still pending.
+- Validation: Ran the formal Unity project
+  `F:\UnityProjects\GRBHXR_PCVR_Gate\GRBHXR_PCVR_Gate` through batchmode NASA,
+  quadrant, and protractor captures. The protractor PNG was decoded from sRGB
+  to linear and compared against `escape_dir_unity_rgba32f.bytes` on a 61 by
+  61 lattice with `u = x`, `v = 1 - y`: raw no-skew direction had
+  `exact = 2004/2058`, `closer = 2048/2058`,
+  `mean_abs_band_error = 0.027`; the old `(x,y)*20` skew had
+  `exact = 10/2058`, `closer = 10/2058`, `mean_abs_band_error = 3.255`.
+- References: `validation/quest_pcvr/2026-07-06-unity-editor-desktop-gate.md`.
+- Open issues / next steps: Validate `_UseAngularWindow` with yawed desktop
+  captures before Quest head-rotation claims.
+
 ### 2026-07-06 - Unity desktop gate reproducibility and handedness evidence
 
 - Goal: Close the Unity desktop gate evidence gaps found after the square

@@ -83,9 +83,12 @@ ghost lens. Its screen mapping is the tangent-plane relation
 `alpha = r_obs * x / z`, `beta = -r_obs * y / z`; this is a gnomonic
 small-angle approximation to the Bardeen screen and differs at order
 `(alpha / r_obs)^3`. It is acceptable for the current `8M / 100M` desktop
-window but must be documented if a wider field is used. The path also assumes
-the lens object has no non-uniform scale, because object rotation is used to
-transform both view rays and stored escape directions.
+window but must be documented if a wider field is used. The shader does not use
+scale-bearing object matrices for physical directions. `BlackHoleLensMap`
+writes explicit pure rotation basis vectors (`_LensWorldRight`,
+`_LensWorldUp`, `_LensWorldForward`) into the material, and the shader uses
+those vectors for both angular-window view rays and escaped-direction cubemap
+lookup.
 
 For capture/invalid pixels inside the active gate, the shader falls back to
 `event_rgba8`. For escaped rays, the sampled Unity-local escape direction is
@@ -198,3 +201,16 @@ $proj = 'F:\UnityProjects\GRBHXR_PCVR_Gate\GRBHXR_PCVR_Gate'
 The second command generates a procedural four-quadrant cubemap and captures a
 screen-space square-gate image used to check that the RenderTexture screenshot
 path has not flipped the new `ComputeScreenPos` sampling vertically.
+
+For a magnitude-sensitive direction check, run:
+
+```powershell
+& $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRGateAutomation.BatchCaptureProtractorBands
+```
+
+This enables `_ProbeMode` and colors the post-basis escaped direction with
+10-degree polar-angle bands away from Unity `+Z`. It is designed to catch
+transform-scale bugs that a quadrant sign test cannot see. The formal desktop
+gate keeps the screen object at uniform `(20, 20, 20)` scale, but the physics
+direction path is also protected by explicit pure rotation basis vectors rather
+than `unity_ObjectToWorld` scale-bearing matrix columns.

@@ -8,6 +8,10 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
         _LensScreenBounds ("Lens Screen Bounds", Vector) = (-8, 8, -8, 8)
         _LensRObs ("Lens Observer Radius", Float) = 100
         _UseAngularWindow ("Use Angular Window", Float) = 0
+        _ProbeMode ("Probe Mode", Float) = 0
+        _LensWorldRight ("Lens World Right", Vector) = (1, 0, 0, 0)
+        _LensWorldUp ("Lens World Up", Vector) = (0, 1, 0, 0)
+        _LensWorldForward ("Lens World Forward", Vector) = (0, 0, 1, 0)
     }
     SubShader
     {
@@ -29,6 +33,10 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
             float4 _LensScreenBounds;
             float _LensRObs;
             float _UseAngularWindow;
+            float _ProbeMode;
+            float4 _LensWorldRight;
+            float4 _LensWorldUp;
+            float4 _LensWorldForward;
 
             struct appdata
             {
@@ -54,10 +62,37 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 return o;
             }
 
+            float3 lensDirectionToWorld(float3 direction)
+            {
+                return normalize(
+                    normalize(_LensWorldRight.xyz) * direction.x +
+                    normalize(_LensWorldUp.xyz) * direction.y +
+                    normalize(_LensWorldForward.xyz) * direction.z
+                );
+            }
+
+            float3 worldDirectionToLens(float3 direction)
+            {
+                float3 world = normalize(direction);
+                return normalize(float3(
+                    dot(world, normalize(_LensWorldRight.xyz)),
+                    dot(world, normalize(_LensWorldUp.xyz)),
+                    dot(world, normalize(_LensWorldForward.xyz))
+                ));
+            }
+
+            fixed4 protractorProbe(float3 direction)
+            {
+                float thetaDeg = degrees(acos(clamp(normalize(direction).z, -1.0, 1.0)));
+                float band = clamp(floor(thetaDeg / 10.0), 0.0, 17.0);
+                float encoded = (band + 0.5) / 18.0;
+                return fixed4(encoded, 0.0, 1.0 - encoded, 1.0);
+            }
+
             fixed4 frag(v2f i) : SV_Target
             {
                 float3 worldRay = normalize(i.worldPos - _WorldSpaceCameraPos);
-                float3 localRay = normalize(mul((float3x3)unity_WorldToObject, worldRay));
+                float3 localRay = worldDirectionToLens(worldRay);
                 float alphaMin = _LensScreenBounds.x;
                 float alphaMax = _LensScreenBounds.y;
                 float betaMin = _LensScreenBounds.z;
@@ -104,7 +139,11 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 {
                     return eventColor;
                 }
-                float3 worldDir = normalize(mul((float3x3)unity_ObjectToWorld, dir.xyz));
+                float3 worldDir = lensDirectionToWorld(dir.xyz);
+                if (_ProbeMode > 0.5)
+                {
+                    return protractorProbe(worldDir);
+                }
                 return texCUBE(_SkyboxCubemap, worldDir);
             }
             ENDCG

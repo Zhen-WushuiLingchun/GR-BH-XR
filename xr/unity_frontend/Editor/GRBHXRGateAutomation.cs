@@ -15,6 +15,8 @@ namespace GRBHXR.EditorTools
         private const string DefaultSkyboxMaterialPath = "Assets/GRBHXR/Skyboxes/M_NASA_DeepStarMap2020_Skybox.mat";
         private const string DefaultQuadrantCubemapPath = "Assets/GRBHXR/Skyboxes/GRBHXR_QuadrantHandedness.cubemap";
         private const string DefaultQuadrantSkyboxMaterialPath = "Assets/GRBHXR/Skyboxes/M_GRBHXR_QuadrantHandedness_Skybox.mat";
+        private const string DefaultProtractorCubemapPath = "Assets/GRBHXR/Skyboxes/GRBHXR_ProtractorBands.cubemap";
+        private const string DefaultProtractorSkyboxMaterialPath = "Assets/GRBHXR/Skyboxes/M_GRBHXR_ProtractorBands_Skybox.mat";
         private const string DefaultMaterialPath = "Assets/GRBHXR/Materials/M_KerrLensPreview.mat";
         private const string DefaultScenePath = "Assets/Scenes/GRBHXR_KerrLensPreview.unity";
         private const string DefaultCaptureDir = "F:/学习和研究/GR-BH-XR/outputs/task5/unity_gate";
@@ -23,14 +25,14 @@ namespace GRBHXR.EditorTools
         public static void ConfigureScreenSpaceGatePreview()
         {
             var options = GateOptions.FromCommandLine();
-            ConfigurePreview(options, useQuadrantSkybox: false);
+            ConfigurePreview(options, GateSkyboxKind.Nasa);
         }
 
         [MenuItem("GR-BH-XR/Gate/Configure And Capture")]
         public static void ConfigureAndCapture()
         {
             var options = GateOptions.FromCommandLine();
-            ConfigurePreview(options, useQuadrantSkybox: false);
+            ConfigurePreview(options, GateSkyboxKind.Nasa);
             Capture(options, "unity_gate_square_2048.png", 2048, 2048);
             Capture(options, "unity_gate_wide_1920x1080.png", 1920, 1080);
             AssetDatabase.Refresh();
@@ -40,9 +42,19 @@ namespace GRBHXR.EditorTools
         public static void CaptureQuadrantHandedness()
         {
             var options = GateOptions.FromCommandLine();
-            ConfigurePreview(options, useQuadrantSkybox: true);
+            ConfigurePreview(options, GateSkyboxKind.Quadrant);
             Capture(options, "unity_gate_quadrant_square_1024.png", 1024, 1024);
             Capture(options, "unity_gate_quadrant_wide_1920x1080.png", 1920, 1080);
+            AssetDatabase.Refresh();
+        }
+
+        [MenuItem("GR-BH-XR/Gate/Capture Protractor Bands")]
+        public static void CaptureProtractorBands()
+        {
+            var options = GateOptions.FromCommandLine();
+            ConfigurePreview(options, GateSkyboxKind.Protractor);
+            Capture(options, "unity_gate_protractor_square_1024.png", 1024, 1024);
+            Capture(options, "unity_gate_protractor_wide_1920x1080.png", 1920, 1080);
             AssetDatabase.Refresh();
         }
 
@@ -56,7 +68,12 @@ namespace GRBHXR.EditorTools
             CaptureQuadrantHandedness();
         }
 
-        private static void ConfigurePreview(GateOptions options, bool useQuadrantSkybox)
+        public static void BatchCaptureProtractorBands()
+        {
+            CaptureProtractorBands();
+        }
+
+        private static void ConfigurePreview(GateOptions options, GateSkyboxKind skyboxKind)
         {
             AssetDatabase.Refresh();
 
@@ -77,10 +94,15 @@ namespace GRBHXR.EditorTools
 
             Cubemap cubemap;
             Material skyboxMaterial;
-            if (useQuadrantSkybox)
+            if (skyboxKind == GateSkyboxKind.Quadrant)
             {
                 cubemap = EnsureQuadrantCubemap(options.QuadrantCubemapPath);
                 skyboxMaterial = EnsureSkyboxMaterial(options.QuadrantSkyboxMaterialPath, cubemap);
+            }
+            else if (skyboxKind == GateSkyboxKind.Protractor)
+            {
+                cubemap = EnsureProtractorCubemap(options.ProtractorCubemapPath);
+                skyboxMaterial = EnsureSkyboxMaterial(options.ProtractorSkyboxMaterialPath, cubemap);
             }
             else
             {
@@ -99,6 +121,7 @@ namespace GRBHXR.EditorTools
             material.shader = shader;
             material.SetTexture("_SkyboxCubemap", cubemap);
             material.SetFloat("_UseAngularWindow", options.UseAngularWindow ? 1.0f : 0.0f);
+            material.SetFloat("_ProbeMode", skyboxKind == GateSkyboxKind.Protractor ? 1.0f : 0.0f);
             EditorUtility.SetDirty(material);
 
             var screen = GameObject.Find("LensScreen");
@@ -109,7 +132,7 @@ namespace GRBHXR.EditorTools
             }
             screen.transform.position = Vector3.zero;
             screen.transform.rotation = Quaternion.identity;
-            screen.transform.localScale = new Vector3(20.0f, 20.0f, 1.0f);
+            screen.transform.localScale = new Vector3(20.0f, 20.0f, 20.0f);
             screen.GetComponent<MeshRenderer>().sharedMaterial = material;
 
             var lensMap = screen.GetComponent<BlackHoleLensMap>();
@@ -161,7 +184,11 @@ namespace GRBHXR.EditorTools
             Debug.Log(
                 $"GR-BH-XR gate configured: fov={camera.fieldOfView:F4} deg, " +
                 $"r_obs={rObs:F3}, beta=[{metadata.screen.betaMin:F3},{metadata.screen.betaMax:F3}], " +
-                $"quadrantSkybox={useQuadrantSkybox}, angularWindow={options.UseAngularWindow}."
+                $"skyboxKind={skyboxKind}, angularWindow={options.UseAngularWindow}, " +
+                $"lossyScale={screen.transform.lossyScale}, probeMode={material.GetFloat("_ProbeMode"):F1}, " +
+                $"basisR={material.GetVector("_LensWorldRight")}, " +
+                $"basisU={material.GetVector("_LensWorldUp")}, " +
+                $"basisF={material.GetVector("_LensWorldForward")}."
             );
         }
 
@@ -218,6 +245,16 @@ namespace GRBHXR.EditorTools
 
         private static Cubemap EnsureQuadrantCubemap(string path)
         {
+            return EnsureProceduralCubemap(path, QuadrantColor);
+        }
+
+        private static Cubemap EnsureProtractorCubemap(string path)
+        {
+            return EnsureProceduralCubemap(path, ProtractorColor);
+        }
+
+        private static Cubemap EnsureProceduralCubemap(string path, Func<Vector3, Color> colorForDirection)
+        {
             var cubemap = AssetDatabase.LoadAssetAtPath<Cubemap>(path);
             if (cubemap != null)
             {
@@ -252,7 +289,7 @@ namespace GRBHXR.EditorTools
                     {
                         float u = 2.0f * ((x + 0.5f) / size) - 1.0f;
                         float v = 2.0f * ((y + 0.5f) / size) - 1.0f;
-                        pixels[y * size + x] = QuadrantColor(DirectionForFace(face, u, v));
+                        pixels[y * size + x] = colorForDirection(DirectionForFace(face, u, v));
                     }
                 }
                 cubemap.SetPixels(pixels, face);
@@ -321,6 +358,14 @@ namespace GRBHXR.EditorTools
             return Color.yellow;
         }
 
+        private static Color ProtractorColor(Vector3 direction)
+        {
+            float thetaDeg = Mathf.Acos(Mathf.Clamp(direction.z, -1.0f, 1.0f)) * Mathf.Rad2Deg;
+            int band = Mathf.Clamp(Mathf.FloorToInt(thetaDeg / 10.0f), 0, 17);
+            float encoded = (band + 0.5f) / 18.0f;
+            return new Color(encoded, 0.0f, 1.0f - encoded, 1.0f);
+        }
+
         private static T LoadRequired<T>(string path) where T : UnityEngine.Object
         {
             var asset = AssetDatabase.LoadAssetAtPath<T>(path);
@@ -371,6 +416,8 @@ namespace GRBHXR.EditorTools
             public string SkyboxMaterialPath = DefaultSkyboxMaterialPath;
             public string QuadrantCubemapPath = DefaultQuadrantCubemapPath;
             public string QuadrantSkyboxMaterialPath = DefaultQuadrantSkyboxMaterialPath;
+            public string ProtractorCubemapPath = DefaultProtractorCubemapPath;
+            public string ProtractorSkyboxMaterialPath = DefaultProtractorSkyboxMaterialPath;
             public string MaterialPath = DefaultMaterialPath;
             public string ScenePath = DefaultScenePath;
             public string CaptureDir = DefaultCaptureDir;
@@ -384,6 +431,8 @@ namespace GRBHXR.EditorTools
                 options.SkyboxMaterialPath = CommandLineValue("-grbhxrSkyboxMaterialPath", options.SkyboxMaterialPath);
                 options.QuadrantCubemapPath = CommandLineValue("-grbhxrQuadrantCubemapPath", options.QuadrantCubemapPath);
                 options.QuadrantSkyboxMaterialPath = CommandLineValue("-grbhxrQuadrantSkyboxMaterialPath", options.QuadrantSkyboxMaterialPath);
+                options.ProtractorCubemapPath = CommandLineValue("-grbhxrProtractorCubemapPath", options.ProtractorCubemapPath);
+                options.ProtractorSkyboxMaterialPath = CommandLineValue("-grbhxrProtractorSkyboxMaterialPath", options.ProtractorSkyboxMaterialPath);
                 options.MaterialPath = CommandLineValue("-grbhxrMaterialPath", options.MaterialPath);
                 options.ScenePath = CommandLineValue("-grbhxrScenePath", options.ScenePath);
                 options.CaptureDir = CommandLineValue("-grbhxrCaptureDir", options.CaptureDir);
@@ -416,6 +465,13 @@ namespace GRBHXR.EditorTools
                 }
                 return false;
             }
+        }
+
+        private enum GateSkyboxKind
+        {
+            Nasa,
+            Quadrant,
+            Protractor
         }
     }
 }

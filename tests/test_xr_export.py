@@ -271,17 +271,25 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     shader = (UNITY_RUNTIME_DIR / "BlackHoleLensStaticPreview.shader").read_text(encoding="utf8")
 
     assert "unity_ObjectToWorld" in shader
-    assert "unity_WorldToObject" in shader
     assert "_WorldSpaceCameraPos" in shader
     assert "_LensScreenBounds" in shader
     assert "_LensRObs" in shader
     assert "_UseAngularWindow" in shader
+    assert "_ProbeMode" in shader
+    assert "_LensWorldRight" in shader
+    assert "_LensWorldUp" in shader
+    assert "_LensWorldForward" in shader
     assert "ZWrite On" in shader
     assert "ComputeScreenPos" in shader
     assert "float2 screenUv = i.screenPos.xy" in shader
     assert "if (localRay.z > 1.0e-5)" in shader
     assert "float beta = -_LensRObs * localRay.y / localRay.z" in shader
     assert "abs(localRay.z)" not in shader
+    assert "worldDirectionToLens(worldRay)" in shader
+    assert "lensDirectionToWorld(dir.xyz)" in shader
+    assert "mul((float3x3)unity_ObjectToWorld, dir.xyz)" not in shader
+    assert "mul((float3x3)unity_WorldToObject, worldRay)" not in shader
+    assert "protractorProbe(worldDir)" in shader
     assert "texCUBE(_SkyboxCubemap, worldRay)" in shader
     assert "texCUBE(_SkyboxCubemap, worldDir)" in shader
 
@@ -294,6 +302,9 @@ def test_unity_lens_map_loader_keeps_raw_textures_linear():
     assert "SetVector(" in source
     assert '"_LensScreenBounds"' in source
     assert '"_LensRObs"' in source
+    assert '"_LensWorldRight"' in source
+    assert '"_LensWorldUp"' in source
+    assert '"_LensWorldForward"' in source
     assert "Debug.LogWarning" in source
 
 
@@ -303,8 +314,13 @@ def test_unity_editor_gate_automation_is_versioned():
 
     assert "BatchConfigureAndCapture" in source
     assert "BatchCaptureQuadrantHandedness" in source
+    assert "BatchCaptureProtractorBands" in source
+    assert '"_ProbeMode"' in source
     assert "unity_gate_square_2048.png" in source
     assert "unity_gate_quadrant_square_1024.png" in source
+    assert "unity_gate_protractor_square_1024.png" in source
+    assert "new Vector3(20.0f, 20.0f, 20.0f)" in source
+    assert "new Vector3(20.0f, 20.0f, 1.0f)" not in source
     assert "GRBHXR.Editor" in asmdef
     assert '"includePlatforms"' in asmdef
     assert '"Editor"' in asmdef

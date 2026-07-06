@@ -139,6 +139,9 @@ namespace GRBHXR
                 );
             }
             material.SetFloat("_LensRObs", ObserverRadiusOrDefault());
+            material.SetVector("_LensWorldRight", transform.rotation * Vector3.right);
+            material.SetVector("_LensWorldUp", transform.rotation * Vector3.up);
+            material.SetVector("_LensWorldForward", transform.rotation * Vector3.forward);
         }
 
         private float ObserverRadiusOrDefault()
