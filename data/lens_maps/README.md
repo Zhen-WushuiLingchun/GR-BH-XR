@@ -14,7 +14,7 @@ python -m gr_bh_xr.generate_lens_map --spin 0 --inclination-deg 90 --grid 129 --
 python -m gr_bh_xr.generate_lens_map --spin 0.5 --inclination-deg 60 --grid 129 --alpha-max 8 --beta-max 8 --out outputs/phase1/lensmap_kerr_a0.5_i60.h5
 ```
 
-The file uses schema `gr-bh-xr.phase1.lens_map.v2`.
+The file uses schema `gr-bh-xr.phase1.lens_map.v3`.
 
 Datasets:
 
@@ -22,13 +22,14 @@ Datasets:
 - `beta`: screen-coordinate samples for rows, in units of `M`.
 - `event_code`: integer event grid with attributes `code_capture = 0`,
   `code_escape = 1`, `code_disk_crossing = 2`, and `code_invalid = 3`.
-  `invalid` means the reference trace did not end in a classified event, or an
-  initialization/integration failure occurred; near-critical rays can enter this
-  class when `max_lambda` is too short for the selected grid.
+  `invalid` means the reference trace ended at a numerical or coordinate
+  limitation before capture, escape, or disk crossing.
 - `failure_code`: integer failure-cause grid with attributes `code_none = 0`,
   `code_trace_exception = 1`, `code_unclassified_max_lambda = 2`, and
-  `code_solver_failure = 3`. This separates solver exceptions from rays that
-  simply reached `max_lambda` without capture or escape.
+  `code_solver_failure = 3`, and `code_axis_coordinate_singularity = 4`. This
+  separates solver exceptions, rays that simply reached `max_lambda`, and
+  `L_z = 0` rays that terminate at the Boyer-Lindquist polar-axis coordinate
+  singularity.
 - `min_r`: minimum Boyer-Lindquist radius reached by each traced ray.
 - `h_max_abs`: maximum absolute Hamiltonian residual along each ray.
 - `e_drift_abs`: drift of `E = -p_t`.
@@ -57,3 +58,10 @@ Phase 1 lens maps expose the physical/debug buffers needed to audit the
 capture/escape shadow geometry. They do not yet include thin-disk transfer
 quantities such as crossing location `(r_m, phi_m)`, image order `m`, redshift
 factor `g_m`, time delay `Delta t_m`, optical depth, or observed intensity.
+
+For the default odd-sized rectangular grids, the screen column `alpha = 0`
+corresponds to `L_z = 0`. Some of those meridional rays reach `theta = 0` or
+`theta = pi`, where Boyer-Lindquist coordinates are singular even though the
+physical zero-angular-momentum limit is regular. They are recorded as
+`axis_coordinate_singularity`. Increasing `max_lambda` will not remove that
+class; a future axis-regular or Kerr-Schild trace is the correct fix.

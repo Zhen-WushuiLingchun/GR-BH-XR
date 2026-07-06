@@ -25,14 +25,14 @@ reference solver. It must record:
 - event class: horizon capture, sky escape, disk crossing, or invalid state;
 - Schwarzschild shadow critical impact parameter `b_c = 3 sqrt(3) M`.
 
-Current finite-difference derivative tolerance target:
+Current analytic-derivative tolerance target:
 
 ```text
-outer grouped max |H| = O(1e-7) or better for default Kerr critical-curve runs
+outer grouped max |H| < 1e-8 for default Kerr critical-curve runs
 ```
 
-The stricter `abs(H) < 1e-8` target is deferred until analytic metric
-derivatives or a better near-horizon coordinate treatment are implemented.
+Near-capture Boyer-Lindquist residuals and polar-axis coordinate singularities
+remain separate audit categories rather than global pass/fail gates.
 
 Tracked Phase 1 validation entry points:
 
@@ -42,3 +42,5 @@ Tracked Phase 1 validation entry points:
   finite spin and inclination.
 - `lens_map/README.md`: HDF5 persistence of per-pixel diagnostic buffers and
   basic validation figures.
+- `ray_examples/README.md`: illustrative capture, near-critical, and escape ray
+  paths for visual sanity checking.

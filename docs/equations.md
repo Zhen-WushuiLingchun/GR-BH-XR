@@ -49,6 +49,10 @@ dx^mu / dlambda = partial H / partial p_mu
 dp_mu / dlambda = - partial H / partial x^mu
 ```
 
+The Phase 1 CPU reference solver evaluates `partial_r g^{mu nu}` and
+`partial_theta g^{mu nu}` analytically for the Boyer-Lindquist inverse metric.
+Finite differences are retained only as a derivative test oracle.
+
 Required tracked invariants (`Q` from `carter1968kerr`; screen mapping and
 geodesic structure from `bardeen1973kerrGeodesics` and
 `gralla2020nullGeodesicsKerr`):

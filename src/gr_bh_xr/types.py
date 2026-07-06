@@ -15,6 +15,13 @@ import numpy as np
 from numpy.typing import NDArray
 
 EventType = Literal["capture", "escape", "disk_crossing", "invalid"]
+FailureReason = Literal[
+    "none",
+    "axis_coordinate_singularity",
+    "trace_exception",
+    "unclassified_max_lambda",
+    "solver_failure",
+]
 FloatArray = NDArray[np.float64]
 
 
@@ -67,6 +74,8 @@ class TraceConfig:
     atol: float = 1.0e-11
     max_step: float = 2.0
     stop_on_disk: bool = False
+    axis_eps: float = 1.0e-5
+    axis_lz_tol: float = 1.0e-12
 
 
 @dataclass(frozen=True)
@@ -84,4 +93,5 @@ class RayDiagnostics:
     disk_crossings: int
     q_initial: float
     q_final: float
+    failure_reason: FailureReason = "none"
     message: str = ""

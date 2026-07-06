@@ -8,11 +8,24 @@ from .critical_curve import (
     spherical_photon_constants,
 )
 from .geodesic import trace_ray
-from .metric import carter_constant, hamiltonian, horizon_radius
-from .types import CameraConfig, MetricParams, RayDiagnostics, RayState, TraceConfig
+from .metric import (
+    carter_constant,
+    hamiltonian,
+    horizon_radius,
+    inverse_metric_derivatives_finite_difference,
+)
+from .types import (
+    CameraConfig,
+    FailureReason,
+    MetricParams,
+    RayDiagnostics,
+    RayState,
+    TraceConfig,
+)
 
 __all__ = [
     "CameraConfig",
+    "FailureReason",
     "MetricParams",
     "RayDiagnostics",
     "RayState",
@@ -22,6 +35,7 @@ __all__ = [
     "hamiltonian",
     "horizon_radius",
     "initial_ray_state",
+    "inverse_metric_derivatives_finite_difference",
     "photon_shell_bounds",
     "screen_coordinates",
     "screen_constants",

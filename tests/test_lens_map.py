@@ -47,6 +47,7 @@ def test_generate_lens_map_writes_required_hdf5_buffers(tmp_path):
         assert handle["alpha"].shape == (17,)
         assert handle["beta"].shape == (17,)
         assert handle["event_code"].shape == (17, 17)
+        assert handle.attrs["schema"] == "gr-bh-xr.phase1.lens_map.v3"
         assert handle.attrs["M"] == 1.0
         assert handle.attrs["a"] == 0.0
         assert handle.attrs["grid"] == 17
@@ -61,6 +62,13 @@ def test_generate_lens_map_writes_required_hdf5_buffers(tmp_path):
         assert np.count_nonzero(event_codes == EVENT_CODES["capture"]) > 0
         assert np.count_nonzero(event_codes == EVENT_CODES["escape"]) > 0
         assert np.count_nonzero(failure_codes == FAILURE_CODES["none"]) > 0
+        axis_col = len(handle["alpha"]) // 2
+        axis_invalid = event_codes[:, axis_col] == EVENT_CODES["invalid"]
+        assert np.count_nonzero(axis_invalid) > 0
+        assert np.all(
+            failure_codes[:, axis_col][axis_invalid]
+            == FAILURE_CODES["axis_coordinate_singularity"]
+        )
 
 
 def test_plot_lens_map_renders_pdf_from_hdf5(tmp_path):

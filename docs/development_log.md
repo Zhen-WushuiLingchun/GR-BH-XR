@@ -19,6 +19,51 @@ from here.
 
 ## Log
 
+### 2026-07-06 - Phase 1.2 axis classification and analytic derivatives
+
+- Goal: Close the remaining Phase 1 audit issues before GPU work by correcting
+  axis-singularity invalid semantics, adding the missing ray-example figure
+  generator, and replacing finite-difference inverse-metric derivatives with
+  closed-form derivatives.
+- Changed files / components: `src/gr_bh_xr/types.py`,
+  `src/gr_bh_xr/geodesic.py`, `src/gr_bh_xr/metric.py`,
+  `src/gr_bh_xr/generate_lens_map.py`, `src/gr_bh_xr/plot_ray_examples.py`,
+  tests, `docs/equations.md`, `docs/validation_targets.md`,
+  `data/lens_maps/README.md`, `figures/README.md`, and validation README files.
+- Academic reason: The previous `failure_code` field showed that default
+  lens-map invalid pixels were not near-critical max-lambda failures; they were
+  `alpha = 0`, `L_z = 0` rays reaching the Boyer-Lindquist polar-axis coordinate
+  singularity. The audit trail now records that cause explicitly.
+- Physical correspondence: Axis hits remain `event = invalid` because the
+  Boyer-Lindquist coordinate chart fails at `theta = 0, pi`, but the
+  `failure_reason` is now `axis_coordinate_singularity`. The Hamiltonian RHS
+  uses analytic derivatives of the inverse metric with respect to `r` and
+  `theta`; finite differences remain only as a test oracle.
+- Assumptions and conventions: The reference solver remains a Python
+  Boyer-Lindquist exterior implementation under `src/gr_bh_xr/`, although the
+  original roadmap listed illustrative C++ paths. The roadmap allowed Python or
+  C++ for this reference stage; GPU kernels remain a later task.
+- Validation: `python -m pytest` passed with 17 tests. Kerr `a = 0.9`,
+  `i = 60 deg`, 24-angle validation reported `max_abs_error =
+  0.002557648497466758 M`, invalid events `0`, outer `h_max_abs =
+  3.850047197717643e-09`, and near-capture `h_max_abs =
+  1.2032874110445846e-06`. A 17x17 Schwarzschild lens-map CLI run reported
+  event counts `capture = 85`, `escape = 194`, `invalid = 10`, and failure
+  counts `axis_coordinate_singularity = 10`, `none = 279`,
+  `trace_exception = 0`, `solver_failure = 0`, `unclassified_max_lambda = 0`.
+  Full 129x129 lens-map reruns reported Schwarzschild `invalid = 78` with
+  `axis_coordinate_singularity = 78`, and Kerr `a = 0.5`, `i = 60 deg`
+  `invalid = 82` with `axis_coordinate_singularity = 82`; both had
+  `trace_exception = 0`, `solver_failure = 0`, and `unclassified_max_lambda =
+  0`.
+  `python -m gr_bh_xr.plot_ray_examples --out figures/ray_examples.pdf`
+  generated the missing ray-example figure.
+- References: Same Phase 1 Hamiltonian and Bardeen screen-coordinate sources as
+  `docs/equations.md`; no new literature was required.
+- Open issues / next steps: A future axis-regular or Kerr-Schild tracer should
+  replace the axis termination with a physical continuation. Lens maps still
+  need winding/image-order diagnostics before disk transfer work.
+
 ### 2026-07-06 - Phase 1 audit semantics tightening
 
 - Goal: Address post-review audit semantics before moving to the next physics
@@ -53,9 +98,9 @@ from here.
   `outputs/phase1/shadow_validation_audit17.pdf`.
 - References: Same Phase 1 Hamiltonian and Bardeen screen-coordinate sources as
   `docs/equations.md`.
-- Open issues / next steps: Analytic metric derivatives remain the clean path
-  for tightening the Hamiltonian residual target; lens maps still need adaptive
-  refinement and image-order/winding diagnostics.
+- Open issues / next steps: Analytic metric derivatives and axis-specific
+  failure classification were addressed in the Phase 1.2 entry above. Lens maps
+  still need adaptive refinement and image-order/winding diagnostics.
 
 ### 2026-06-29 - Diagnostic grouping and Phase 1 lens-map buffers
 
@@ -87,9 +132,10 @@ from here.
   Schwarzschild HDF5 rendered to `outputs/phase1/shadow_validation.pdf`.
 - References: Data products follow the Phase 1 Hamiltonian/Carter diagnostics
   and Bardeen screen coordinates documented in `docs/equations.md`.
-- Open issues / next steps: The 129x129 maps include near-critical invalid
-  samples under the current `max_lambda`; future work should add adaptive
-  refinement, winding/image-order diagnostics, and finite-radius tetrads.
+- Open issues / next steps: Later Phase 1.2 review reclassified the 129x129
+  invalid samples as `alpha = 0` Boyer-Lindquist axis-coordinate hits, not
+  near-critical `max_lambda` exhaustion. Future work should add
+  winding/image-order diagnostics and finite-radius tetrads.
 
 ### 2026-06-29 - Kerr critical curve validation
 

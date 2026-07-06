@@ -26,6 +26,7 @@ FAILURE_CODES = {
     "trace_exception": 1,
     "unclassified_max_lambda": 2,
     "solver_failure": 3,
+    "axis_coordinate_singularity": 4,
 }
 
 
@@ -36,12 +37,10 @@ def _validate_grid_args(grid: int, alpha_max: float, beta_max: float) -> None:
         raise ValueError("Screen half-widths alpha_max and beta_max must be positive.")
 
 
-def _failure_code(event: str, message: str) -> int:
-    if event != "invalid":
+def _failure_code(failure_reason: str) -> int:
+    if failure_reason == "none":
         return FAILURE_CODES["none"]
-    if "end of the integration interval" in message:
-        return FAILURE_CODES["unclassified_max_lambda"]
-    return FAILURE_CODES["solver_failure"]
+    return FAILURE_CODES.get(failure_reason, FAILURE_CODES["solver_failure"])
 
 
 def _write_lens_map(
@@ -70,7 +69,7 @@ def _write_lens_map(
 ) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(out, "w") as handle:
-        handle.attrs["schema"] = "gr-bh-xr.phase1.lens_map.v2"
+        handle.attrs["schema"] = "gr-bh-xr.phase1.lens_map.v3"
         handle.attrs["M"] = params.M
         handle.attrs["a"] = params.a
         handle.attrs["inclination_deg"] = inclination_deg
@@ -164,7 +163,7 @@ def generate_lens_map(
                 failure_code[row, col] = FAILURE_CODES["trace_exception"]
                 continue
             event_code[row, col] = EVENT_CODES[diag.event]
-            failure_code[row, col] = _failure_code(diag.event, diag.message)
+            failure_code[row, col] = _failure_code(diag.failure_reason)
             min_r[row, col] = diag.min_r
             h_max_abs[row, col] = diag.h_max_abs
             e_drift_abs[row, col] = diag.e_drift_abs

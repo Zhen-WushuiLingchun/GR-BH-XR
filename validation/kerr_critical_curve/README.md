@@ -74,12 +74,13 @@ min_r <= r_+ + max(0.1 M, 2 horizon_eps)
 ```
 
 The outer group is the place to review Hamiltonian residuals separately from
-capture-side termination. The near-capture group is expected to degrade as rays
-approach the Boyer-Lindquist coordinate singularity, especially for high-spin
-prograde samples. If either group exceeds the general Phase 1 residual target,
-that exceedance is recorded as a numerical limitation and motivation for
-analytic metric derivatives and the deferred Kerr-Schild horizon-penetrating
-solver, not a failure of the critical-curve boundary comparison.
+capture-side termination. With analytic inverse-metric derivatives, the default
+outer-group residual should satisfy `max |H| < 1e-8`. The near-capture group is
+expected to degrade as rays approach the Boyer-Lindquist coordinate
+singularity, especially for high-spin prograde samples. Near-capture
+exceedances are recorded as a numerical limitation and motivation for the
+deferred Kerr-Schild horizon-penetrating solver, not a failure of the
+critical-curve boundary comparison.
 
 For this implementation, `E = -p_t` and `L_z = p_phi` drift are structural
 zeroes because `t` and `phi` are cyclic coordinates and the Hamiltonian right

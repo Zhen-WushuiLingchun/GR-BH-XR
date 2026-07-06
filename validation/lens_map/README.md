@@ -26,13 +26,14 @@ Generated HDF5 and PDF outputs are intentionally written under
   Hamiltonian residuals, conserved-quantity drift diagnostics, and disk-crossing
   counts.
 - The HDF5 file records `failure_code`, separating trace exceptions, solver
-  failures, and rays that reached `max_lambda` without a classified event.
+  failures, rays that reached `max_lambda` without a classified event, and
+  Boyer-Lindquist polar-axis coordinate singularities.
 - The event-code grid contains both capture and escape samples for the default
   Schwarzschild `alpha_max = beta_max = 8M` run.
-- Near-critical samples may appear as `invalid` when the fixed `max_lambda`
-  budget ends before a capture or escape event, or when the finite-difference
-  Boyer-Lindquist trace fails numerically; `failure_code` records which case
-  occurred.
+- On odd grids, invalid pixels in the central `alpha = 0` column are expected
+  when `L_z = 0` rays reach the Boyer-Lindquist polar axis. They are recorded as
+  `axis_coordinate_singularity`; this is a coordinate limitation, not a
+  near-critical `max_lambda` budget failure.
 - The plotting command renders a readable PDF with event-class and Hamiltonian
   residual panels; invalid pixels are colored separately from escape pixels.
 - These buffers remain Phase 1 diagnostic products only. Disk transfer,

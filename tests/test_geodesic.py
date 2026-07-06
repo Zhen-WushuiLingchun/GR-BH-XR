@@ -31,3 +31,17 @@ def test_conserved_quantities_are_stable_for_noncritical_kerr_ray():
     assert diagnostics.e_drift_abs < 1.0e-12
     assert diagnostics.lz_drift_abs < 1.0e-12
     assert diagnostics.q_drift_abs < 1.0e-4
+
+
+def test_axis_coordinate_singularity_is_structured_invalid_reason():
+    params = MetricParams(M=1.0, a=0.0)
+    diagnostics = trace_ray(
+        params,
+        CameraConfig(r_obs=50.0, theta_obs=math.pi / 2.0, alpha=0.0, beta=8.0),
+        TraceConfig(max_lambda=700.0, r_escape=100.0, max_step=2.0),
+    )
+
+    assert diagnostics.event == "invalid"
+    assert diagnostics.failure_reason == "axis_coordinate_singularity"
+    assert diagnostics.lambda_end > 0.0
+    assert diagnostics.min_r < 50.0

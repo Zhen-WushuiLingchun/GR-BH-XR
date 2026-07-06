@@ -94,11 +94,78 @@ def carter_constant(params: MetricParams, x: FloatArray, p: FloatArray) -> float
 def inverse_metric_derivatives(
     params: MetricParams, r: float, theta: float
 ) -> tuple[FloatArray, FloatArray]:
-    """Numerically differentiate `g^{mu nu}` with respect to `(r, theta)`.
+    """Analytically differentiate `g^{mu nu}` with respect to `(r, theta)`."""
 
-    A finite-difference derivative keeps the reference implementation compact
-    and inspectable. The Phase 1 validation suite watches the resulting
-    Hamiltonian and conserved-quantity drift.
+    s = math.sin(theta)
+    c = math.cos(theta)
+    s2 = s * s
+    if s2 <= 1.0e-14:
+        raise ValueError("Boyer-Lindquist inverse metric derivatives are singular at the axis.")
+
+    a = params.a
+    a2 = a * a
+    M = params.M
+    r2 = r * r
+    rp = r2 + a2
+    sig = sigma(params, r, theta)
+    dlt = delta(params, r)
+
+    sig_r = 2.0 * r
+    sig_t = -2.0 * a2 * s * c
+    dlt_r = 2.0 * (r - M)
+    s2_t = 2.0 * s * c
+
+    den = sig * dlt
+    den_r = sig_r * dlt + sig * dlt_r
+    den_t = sig_t * dlt
+
+    shell = rp * rp - a2 * dlt * s2
+    shell_r = 4.0 * r * rp - a2 * dlt_r * s2
+    shell_t = -a2 * dlt * s2_t
+
+    d_r = np.zeros((4, 4), dtype=np.float64)
+    d_theta = np.zeros((4, 4), dtype=np.float64)
+
+    d_r[0, 0] = -_quotient_derivative(shell, shell_r, den, den_r)
+    d_theta[0, 0] = -_quotient_derivative(shell, shell_t, den, den_t)
+
+    gtphi_num = -2.0 * M * a * r
+    gtphi_num_r = -2.0 * M * a
+    d_r[0, 3] = d_r[3, 0] = _quotient_derivative(gtphi_num, gtphi_num_r, den, den_r)
+    d_theta[0, 3] = d_theta[3, 0] = _quotient_derivative(gtphi_num, 0.0, den, den_t)
+
+    d_r[1, 1] = _quotient_derivative(dlt, dlt_r, sig, sig_r)
+    d_theta[1, 1] = _quotient_derivative(dlt, 0.0, sig, sig_t)
+
+    d_r[2, 2] = -sig_r / (sig * sig)
+    d_theta[2, 2] = -sig_t / (sig * sig)
+
+    gphiphi_num = dlt - a2 * s2
+    gphiphi_num_r = dlt_r
+    gphiphi_num_t = -a2 * s2_t
+    gphiphi_den = sig * dlt * s2
+    gphiphi_den_r = den_r * s2
+    gphiphi_den_t = den_t * s2 + den * s2_t
+    d_r[3, 3] = _quotient_derivative(
+        gphiphi_num, gphiphi_num_r, gphiphi_den, gphiphi_den_r
+    )
+    d_theta[3, 3] = _quotient_derivative(
+        gphiphi_num, gphiphi_num_t, gphiphi_den, gphiphi_den_t
+    )
+    return d_r, d_theta
+
+
+def _quotient_derivative(value: float, derivative: float, denom: float, denom_derivative: float) -> float:
+    return (derivative * denom - value * denom_derivative) / (denom * denom)
+
+
+def inverse_metric_derivatives_finite_difference(
+    params: MetricParams, r: float, theta: float
+) -> tuple[FloatArray, FloatArray]:
+    """Finite-difference derivative retained for analytic-derivative tests.
+
+    This is not used by the integrator. It is kept only as an independent
+    numerical cross-check for the closed-form derivatives above.
     """
 
     hr = max(1.0e-5, 1.0e-5 * abs(r))

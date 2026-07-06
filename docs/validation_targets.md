@@ -64,18 +64,16 @@ b_c = 3 sqrt(3) M
   `gralla2020nullGeodesicsKerr` / `bardeen1973kerrGeodesics` for at least
   `a = 0.5`, `i = 60 deg` and `a = 0.9`, `i = 60 deg`;
 
-Current Phase 1 finite-difference derivative target:
+Current Phase 1 analytic-derivative target:
 
 ```text
-outer grouped max |H| = O(1e-7) or better for default Kerr critical-curve runs
+outer grouped max |H| < 1e-8 for default Kerr critical-curve runs
 near-capture max |H| is recorded but not used as the critical-curve pass/fail gate
 ```
 
-The stricter `abs(H) < 1e-8` target remains the next numerical target after
-analytic metric derivatives or a better near-horizon coordinate treatment are
-implemented. This revision is based on the observed finite-difference
-derivative ceiling in the Boyer-Lindquist exterior reference solver, not on a
-change to the analytic equations.
+The stricter outer-ray target is enabled by closed-form derivatives of
+`g^{mu nu}`. Near-capture rays are still reported separately because
+Boyer-Lindquist coordinates remain ill-conditioned close to the horizon.
 
 Kerr critical-curve validation target:
 
@@ -100,10 +98,22 @@ Lens-map persistence target:
   `e_drift_abs`, `lz_drift_abs`, `q_drift_abs`, `disk_crossings`, and
   `failure_code`;
 - event-code and failure-code mappings are stored in HDF5 attributes;
+- `axis_coordinate_singularity` is a separate failure reason for `L_z = 0`
+  rays that hit the Boyer-Lindquist polar-axis coordinate singularity;
 - default Schwarzschild `alpha_max = beta_max = 8M` map includes both capture
   and escape samples;
 - a validation figure can be generated from the HDF5 file without retracing
   rays.
+
+Ray-example figure target:
+
+- `figures/ray_examples.pdf` can be regenerated from the Phase 1 Hamiltonian
+  RHS and shows capture, near-critical, and escape equatorial Schwarzschild
+  rays as an illustrative sanity check.
+
+Task 3 was implemented as a Python source package under `src/gr_bh_xr/` rather
+than the illustrative C++ paths in the roadmap. The roadmap explicitly allowed
+Python or C++ for the reference solver; GPU work remains deferred to Task 4.
 
 The tolerance may be revised only with a documented numerical reason.
 
