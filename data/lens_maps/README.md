@@ -14,7 +14,7 @@ python -m gr_bh_xr.generate_lens_map --spin 0 --inclination-deg 90 --grid 129 --
 python -m gr_bh_xr.generate_lens_map --spin 0.5 --inclination-deg 60 --grid 129 --alpha-max 8 --beta-max 8 --out outputs/phase1/lensmap_kerr_a0.5_i60.h5
 ```
 
-The file uses schema `gr-bh-xr.phase1.lens_map.v1`.
+The file uses schema `gr-bh-xr.phase1.lens_map.v2`.
 
 Datasets:
 
@@ -25,6 +25,10 @@ Datasets:
   `invalid` means the reference trace did not end in a classified event, or an
   initialization/integration failure occurred; near-critical rays can enter this
   class when `max_lambda` is too short for the selected grid.
+- `failure_code`: integer failure-cause grid with attributes `code_none = 0`,
+  `code_trace_exception = 1`, `code_unclassified_max_lambda = 2`, and
+  `code_solver_failure = 3`. This separates solver exceptions from rays that
+  simply reached `max_lambda` without capture or escape.
 - `min_r`: minimum Boyer-Lindquist radius reached by each traced ray.
 - `h_max_abs`: maximum absolute Hamiltonian residual along each ray.
 - `e_drift_abs`: drift of `E = -p_t`.
@@ -41,6 +45,11 @@ File attributes:
 - `generation_command`.
 - `coordinate_system = Boyer-Lindquist exterior`.
 - `units = G = c = M = 1 unless attrs[M] differs`.
+
+`E` and `L_z` drift are retained for schema completeness, but in the current
+Hamiltonian implementation they are structural zeroes because `t` and `phi` are
+cyclic coordinates. The numerically informative drift buffers are `h_max_abs`
+and `q_drift_abs`.
 
 ## Current Scope
 

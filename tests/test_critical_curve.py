@@ -9,7 +9,7 @@ from gr_bh_xr.critical_curve import (
 )
 from gr_bh_xr.metric import horizon_radius
 from gr_bh_xr.types import MetricParams
-from gr_bh_xr.validate_kerr_critical_curve import validate_kerr_critical_curve
+from gr_bh_xr.validate_kerr_critical_curve import _near_capture_radius, validate_kerr_critical_curve
 
 
 def test_photon_shell_bounds_are_ordered_and_outside_horizon():
@@ -42,6 +42,13 @@ def test_visible_curve_is_finite_for_inclined_kerr():
     assert polygon.shape[1] == 2
     assert polygon.shape[0] >= 2 * len(upper)
     assert all(math.isfinite(point.alpha) and math.isfinite(point.beta) for point in upper + lower)
+
+
+def test_near_capture_group_radius_tracks_large_horizon_eps():
+    params = MetricParams(M=1.0, a=0.5)
+
+    assert _near_capture_radius(params, horizon_eps=0.02) == horizon_radius(params) + 0.1
+    assert _near_capture_radius(params, horizon_eps=0.2) == horizon_radius(params) + 0.4
 
 
 def test_kerr_critical_curve_validation_smoke():

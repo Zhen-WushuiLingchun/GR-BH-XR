@@ -21,12 +21,27 @@ EVENT_CODES = {
     "invalid": 3,
 }
 
+FAILURE_CODES = {
+    "none": 0,
+    "trace_exception": 1,
+    "unclassified_max_lambda": 2,
+    "solver_failure": 3,
+}
+
 
 def _validate_grid_args(grid: int, alpha_max: float, beta_max: float) -> None:
     if grid < 2:
         raise ValueError("Lens-map grid must contain at least two samples per axis.")
     if alpha_max <= 0.0 or beta_max <= 0.0:
         raise ValueError("Screen half-widths alpha_max and beta_max must be positive.")
+
+
+def _failure_code(event: str, message: str) -> int:
+    if event != "invalid":
+        return FAILURE_CODES["none"]
+    if "end of the integration interval" in message:
+        return FAILURE_CODES["unclassified_max_lambda"]
+    return FAILURE_CODES["solver_failure"]
 
 
 def _write_lens_map(
@@ -51,10 +66,11 @@ def _write_lens_map(
     lz_drift_abs: np.ndarray,
     q_drift_abs: np.ndarray,
     disk_crossings: np.ndarray,
+    failure_code: np.ndarray,
 ) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(out, "w") as handle:
-        handle.attrs["schema"] = "gr-bh-xr.phase1.lens_map.v1"
+        handle.attrs["schema"] = "gr-bh-xr.phase1.lens_map.v2"
         handle.attrs["M"] = params.M
         handle.attrs["a"] = params.a
         handle.attrs["inclination_deg"] = inclination_deg
@@ -84,6 +100,11 @@ def _write_lens_map(
         handle.create_dataset(
             "disk_crossings", data=disk_crossings, compression="gzip", shuffle=True
         )
+        failure_ds = handle.create_dataset(
+            "failure_code", data=failure_code, compression="gzip", shuffle=True
+        )
+        for failure, code in FAILURE_CODES.items():
+            failure_ds.attrs[f"code_{failure}"] = code
 
 
 def generate_lens_map(
@@ -97,12 +118,13 @@ def generate_lens_map(
     max_lambda: float,
     horizon_eps: float,
     max_step: float,
-    out: Path,
+    out: Path | str,
     command: str = "",
     verbose: bool = True,
 ) -> dict[str, object]:
     """Trace a rectangular screen grid and persist diagnostic buffers."""
 
+    out = Path(out)
     _validate_grid_args(grid, alpha_max, beta_max)
     theta_obs = math.radians(inclination_deg)
     alpha = np.linspace(-alpha_max, alpha_max, grid, dtype=np.float64)
@@ -116,6 +138,7 @@ def generate_lens_map(
     lz_drift_abs = np.full(shape, np.nan, dtype=np.float64)
     q_drift_abs = np.full(shape, np.nan, dtype=np.float64)
     disk_crossings = np.zeros(shape, dtype=np.int16)
+    failure_code = np.zeros(shape, dtype=np.int16)
 
     trace_config = TraceConfig(
         max_lambda=max_lambda,
@@ -138,8 +161,10 @@ def generate_lens_map(
                     trace_config,
                 )
             except Exception:
+                failure_code[row, col] = FAILURE_CODES["trace_exception"]
                 continue
             event_code[row, col] = EVENT_CODES[diag.event]
+            failure_code[row, col] = _failure_code(diag.event, diag.message)
             min_r[row, col] = diag.min_r
             h_max_abs[row, col] = diag.h_max_abs
             e_drift_abs[row, col] = diag.e_drift_abs
@@ -171,10 +196,15 @@ def generate_lens_map(
         lz_drift_abs=lz_drift_abs,
         q_drift_abs=q_drift_abs,
         disk_crossings=disk_crossings,
+        failure_code=failure_code,
     )
 
     counts = {
         event: int(np.count_nonzero(event_code == code)) for event, code in EVENT_CODES.items()
+    }
+    failure_counts = {
+        failure: int(np.count_nonzero(failure_code == code))
+        for failure, code in FAILURE_CODES.items()
     }
     finite_h = h_max_abs[np.isfinite(h_max_abs)]
     summary = {
@@ -184,6 +214,7 @@ def generate_lens_map(
         "r_obs": r_obs,
         "grid": grid,
         "event_counts": counts,
+        "failure_counts": failure_counts,
         "h_max_abs": float(np.max(finite_h)) if finite_h.size else None,
     }
     return summary

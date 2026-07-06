@@ -119,6 +119,10 @@ def _summarize_diagnostics(diags: list[RayDiagnostics]) -> dict[str, float | int
     }
 
 
+def _near_capture_radius(params: MetricParams, horizon_eps: float) -> float:
+    return horizon_radius(params) + max(0.1 * params.M, 2.0 * horizon_eps)
+
+
 def validate_kerr_critical_curve(
     *,
     params: MetricParams,
@@ -191,7 +195,7 @@ def validate_kerr_critical_curve(
         "invalid": sum(1 for diag in all_diags if diag.event == "invalid"),
         "disk_crossing": sum(1 for diag in all_diags if diag.event == "disk_crossing"),
     }
-    near_capture_radius = horizon_radius(params) + 0.1 * params.M
+    near_capture_radius = _near_capture_radius(params, horizon_eps)
     near_capture_diags = [diag for diag in all_diags if diag.min_r <= near_capture_radius]
     outer_diags = [diag for diag in all_diags if diag.min_r > near_capture_radius]
     return {

@@ -1,7 +1,7 @@
 import h5py
 import numpy as np
 
-from gr_bh_xr.generate_lens_map import EVENT_CODES, generate_lens_map
+from gr_bh_xr.generate_lens_map import EVENT_CODES, FAILURE_CODES, generate_lens_map
 from gr_bh_xr.plot_lens_map import plot_lens_map
 from gr_bh_xr.types import MetricParams
 
@@ -19,7 +19,7 @@ def test_generate_lens_map_writes_required_hdf5_buffers(tmp_path):
         max_lambda=700.0,
         horizon_eps=0.3,
         max_step=2.0,
-        out=out,
+        out=str(out),
         command="pytest",
         verbose=False,
     )
@@ -27,12 +27,15 @@ def test_generate_lens_map_writes_required_hdf5_buffers(tmp_path):
     assert out.exists()
     assert summary["event_counts"]["capture"] > 0
     assert summary["event_counts"]["escape"] > 0
+    assert "failure_counts" in summary
+    assert summary["failure_counts"]["none"] > 0
 
     with h5py.File(out, "r") as handle:
         for dataset in (
             "alpha",
             "beta",
             "event_code",
+            "failure_code",
             "min_r",
             "h_max_abs",
             "e_drift_abs",
@@ -51,9 +54,13 @@ def test_generate_lens_map_writes_required_hdf5_buffers(tmp_path):
         assert handle.attrs["generation_command"] == "pytest"
         for event, code in EVENT_CODES.items():
             assert handle["event_code"].attrs[f"code_{event}"] == code
+        for failure, code in FAILURE_CODES.items():
+            assert handle["failure_code"].attrs[f"code_{failure}"] == code
         event_codes = handle["event_code"][...]
+        failure_codes = handle["failure_code"][...]
         assert np.count_nonzero(event_codes == EVENT_CODES["capture"]) > 0
         assert np.count_nonzero(event_codes == EVENT_CODES["escape"]) > 0
+        assert np.count_nonzero(failure_codes == FAILURE_CODES["none"]) > 0
 
 
 def test_plot_lens_map_renders_pdf_from_hdf5(tmp_path):

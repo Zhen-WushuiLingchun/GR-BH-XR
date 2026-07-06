@@ -67,11 +67,22 @@ primary pass/fail condition for this curve comparison.
 The pass/fail criterion for this validator is the capture/escape boundary error
 and invalid-event count. The JSON keeps the legacy aggregate
 `worst_diagnostics` field and also writes `diagnostic_groups.outer` and
-`diagnostic_groups.near_capture`, split at `min_r <= r_+ + 0.1 M`. The outer
-group is the place to review Hamiltonian residuals separately from capture-side
-termination. The near-capture group is expected to degrade as rays approach the
-Boyer-Lindquist coordinate singularity, especially for high-spin prograde
-samples. If either group exceeds the general Phase 1 residual target, that
-exceedance is recorded as a numerical limitation and motivation for analytic
-metric derivatives and the deferred Kerr-Schild horizon-penetrating solver, not
-a failure of the critical-curve boundary comparison.
+`diagnostic_groups.outer` and `diagnostic_groups.near_capture`, split at:
+
+```text
+min_r <= r_+ + max(0.1 M, 2 horizon_eps)
+```
+
+The outer group is the place to review Hamiltonian residuals separately from
+capture-side termination. The near-capture group is expected to degrade as rays
+approach the Boyer-Lindquist coordinate singularity, especially for high-spin
+prograde samples. If either group exceeds the general Phase 1 residual target,
+that exceedance is recorded as a numerical limitation and motivation for
+analytic metric derivatives and the deferred Kerr-Schild horizon-penetrating
+solver, not a failure of the critical-curve boundary comparison.
+
+For this implementation, `E = -p_t` and `L_z = p_phi` drift are structural
+zeroes because `t` and `phi` are cyclic coordinates and the Hamiltonian right
+hand side does not update `p_t` or `p_phi`. They remain in the JSON for schema
+completeness, but the informative drift checks are the Hamiltonian residual and
+Carter `Q`.

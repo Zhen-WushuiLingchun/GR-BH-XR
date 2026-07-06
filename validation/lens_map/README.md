@@ -25,12 +25,15 @@ Generated HDF5 and PDF outputs are intentionally written under
 - The HDF5 file contains screen axes, event codes, per-pixel minimum radius,
   Hamiltonian residuals, conserved-quantity drift diagnostics, and disk-crossing
   counts.
+- The HDF5 file records `failure_code`, separating trace exceptions, solver
+  failures, and rays that reached `max_lambda` without a classified event.
 - The event-code grid contains both capture and escape samples for the default
   Schwarzschild `alpha_max = beta_max = 8M` run.
 - Near-critical samples may appear as `invalid` when the fixed `max_lambda`
-  budget ends before a capture or escape event; the count is part of the audit
-  output and should decrease under later adaptive or longer integrations.
-- The plotting command renders a readable PDF with capture mask and Hamiltonian
-  residual panels.
+  budget ends before a capture or escape event, or when the finite-difference
+  Boyer-Lindquist trace fails numerically; `failure_code` records which case
+  occurred.
+- The plotting command renders a readable PDF with event-class and Hamiltonian
+  residual panels; invalid pixels are colored separately from escape pixels.
 - These buffers remain Phase 1 diagnostic products only. Disk transfer,
   redshift, time delay, GRRT intensity, and XR rendering are later stages.

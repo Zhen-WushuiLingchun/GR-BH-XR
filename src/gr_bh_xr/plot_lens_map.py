@@ -11,39 +11,45 @@ import numpy as np
 
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt  # noqa: E402
+from matplotlib.colors import BoundaryNorm, ListedColormap  # noqa: E402
 
 
-def plot_lens_map(*, input_path: Path, out: Path) -> None:
+def plot_lens_map(*, input_path: Path | str, out: Path | str) -> None:
     """Render capture mask and Hamiltonian residual panels from an HDF5 lens map."""
 
+    input_path = Path(input_path)
+    out = Path(out)
     with h5py.File(input_path, "r") as handle:
         alpha = handle["alpha"][...]
         beta = handle["beta"][...]
         event_code = handle["event_code"][...]
         h_max_abs = handle["h_max_abs"][...]
-        capture_code = int(handle["event_code"].attrs["code_capture"])
         a = float(handle.attrs["a"])
         inclination_deg = float(handle.attrs["inclination_deg"])
 
-    capture_mask = event_code == capture_code
-    finite_h = np.where(np.isfinite(h_max_abs), h_max_abs, np.nan)
-    log_h = np.log10(np.maximum(finite_h, 1.0e-16))
+    log_h = np.full_like(h_max_abs, np.nan, dtype=np.float64)
+    finite = np.isfinite(h_max_abs)
+    log_h[finite] = np.log10(np.maximum(h_max_abs[finite], 1.0e-16))
     extent = [float(alpha[0]), float(alpha[-1]), float(beta[0]), float(beta[-1])]
 
     fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.8), constrained_layout=True)
     fig.suptitle(f"Phase 1 lens map: a={a:.3g}, i={inclination_deg:.3g} deg")
 
+    event_cmap = ListedColormap(["black", "white", "#2b6cb0", "#f59e0b"])
+    event_norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5, 3.5], event_cmap.N)
     mask_image = axes[0].imshow(
-        capture_mask.astype(np.float64),
+        event_code,
         origin="lower",
         extent=extent,
-        cmap="gray_r",
+        cmap=event_cmap,
+        norm=event_norm,
         interpolation="nearest",
     )
-    axes[0].set_title("Capture mask")
+    axes[0].set_title("Event class")
     axes[0].set_xlabel("alpha / M")
     axes[0].set_ylabel("beta / M")
-    fig.colorbar(mask_image, ax=axes[0], label="capture=1")
+    event_bar = fig.colorbar(mask_image, ax=axes[0], ticks=[0, 1, 2, 3])
+    event_bar.ax.set_yticklabels(["capture", "escape", "disk", "invalid"])
 
     h_image = axes[1].imshow(
         log_h,

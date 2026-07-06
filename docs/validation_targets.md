@@ -64,11 +64,18 @@ b_c = 3 sqrt(3) M
   `gralla2020nullGeodesicsKerr` / `bardeen1973kerrGeodesics` for at least
   `a = 0.5`, `i = 60 deg` and `a = 0.9`, `i = 60 deg`;
 
-Initial reference tolerance target:
+Current Phase 1 finite-difference derivative target:
 
 ```text
-abs(H) < 1e-8
+outer grouped max |H| = O(1e-7) or better for default Kerr critical-curve runs
+near-capture max |H| is recorded but not used as the critical-curve pass/fail gate
 ```
+
+The stricter `abs(H) < 1e-8` target remains the next numerical target after
+analytic metric derivatives or a better near-horizon coordinate treatment are
+implemented. This revision is based on the observed finite-difference
+derivative ceiling in the Boyer-Lindquist exterior reference solver, not on a
+change to the analytic equations.
 
 Kerr critical-curve validation target:
 
@@ -82,11 +89,17 @@ Kerr critical-curve JSON must split diagnostics into `outer` and
 `near_capture` groups so near-horizon Boyer-Lindquist residual degradation is
 not confused with the outer-ray Hamiltonian target.
 
+`E = -p_t` and `L_z = p_phi` drift are still recorded, but they are structural
+zeroes for the current Hamiltonian implementation because `t` and `phi` are
+cyclic coordinates and the right-hand side does not update `p_t` or `p_phi`.
+The informative numerical drift checks are therefore `H` and Carter `Q`.
+
 Lens-map persistence target:
 
 - HDF5 output records `alpha`, `beta`, `event_code`, `min_r`, `h_max_abs`,
-  `e_drift_abs`, `lz_drift_abs`, `q_drift_abs`, and `disk_crossings`;
-- event-code mapping is stored in HDF5 attributes;
+  `e_drift_abs`, `lz_drift_abs`, `q_drift_abs`, `disk_crossings`, and
+  `failure_code`;
+- event-code and failure-code mappings are stored in HDF5 attributes;
 - default Schwarzschild `alpha_max = beta_max = 8M` map includes both capture
   and escape samples;
 - a validation figure can be generated from the HDF5 file without retracing

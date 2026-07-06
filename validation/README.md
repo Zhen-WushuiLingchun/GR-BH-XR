@@ -25,11 +25,14 @@ reference solver. It must record:
 - event class: horizon capture, sky escape, disk crossing, or invalid state;
 - Schwarzschild shadow critical impact parameter `b_c = 3 sqrt(3) M`.
 
-Initial tolerance target:
+Current finite-difference derivative tolerance target:
 
 ```text
-abs(H) < 1e-8
+outer grouped max |H| = O(1e-7) or better for default Kerr critical-curve runs
 ```
+
+The stricter `abs(H) < 1e-8` target is deferred until analytic metric
+derivatives or a better near-horizon coordinate treatment are implemented.
 
 Tracked Phase 1 validation entry points:
 

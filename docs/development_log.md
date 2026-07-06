@@ -19,6 +19,44 @@ from here.
 
 ## Log
 
+### 2026-07-06 - Phase 1 audit semantics tightening
+
+- Goal: Address post-review audit semantics before moving to the next physics
+  feature: clarify Hamiltonian tolerance wording, identify structural
+  conserved-quantity zeroes, and separate lens-map invalid causes.
+- Changed files / components: `src/gr_bh_xr/validate_kerr_critical_curve.py`,
+  `src/gr_bh_xr/generate_lens_map.py`, `src/gr_bh_xr/plot_lens_map.py`, tests,
+  `docs/validation_targets.md`, `data/lens_maps/README.md`, and validation
+  README files.
+- Academic reason: Keep validation claims aligned with what the current
+  finite-difference Boyer-Lindquist reference solver actually demonstrates,
+  rather than letting audit buffers imply stronger numerical evidence than they
+  contain.
+- Physical correspondence: The critical-curve pass/fail gate remains boundary
+  error plus invalid count. Hamiltonian residuals are split into outer and
+  near-capture groups using `r_+ + max(0.1 M, 2 horizon_eps)`. `E` and `L_z`
+  drift are documented as structural zeroes from cyclic coordinates; `H` and
+  Carter `Q` remain the informative numerical residuals.
+- Assumptions and conventions: The current finite-difference metric derivative
+  implementation is documented as producing outer grouped `max |H|` at roughly
+  the `1e-7` level for high-spin critical-curve runs; `abs(H) < 1e-8` is
+  deferred until analytic derivatives or a better near-horizon coordinate
+  treatment.
+- Validation: `python -m pytest` passed with 14 tests. A targeted Kerr
+  `a = 0.9`, `i = 60 deg`, 24-angle validation reported `max_abs_error =
+  0.002557648497466758 M`, invalid events `0`, outer `h_max_abs =
+  4.27889450538288e-08`, and near-capture `h_max_abs =
+  0.0001606790337973507`. A 17x17 Schwarzschild lens-map CLI run wrote HDF5
+  schema v2 with event counts `capture = 85`, `escape = 194`, `invalid = 10`
+  and failure counts `none = 279`, `solver_failure = 10`, `trace_exception = 0`,
+  `unclassified_max_lambda = 0`; the plot CLI rendered
+  `outputs/phase1/shadow_validation_audit17.pdf`.
+- References: Same Phase 1 Hamiltonian and Bardeen screen-coordinate sources as
+  `docs/equations.md`.
+- Open issues / next steps: Analytic metric derivatives remain the clean path
+  for tightening the Hamiltonian residual target; lens maps still need adaptive
+  refinement and image-order/winding diagnostics.
+
 ### 2026-06-29 - Diagnostic grouping and Phase 1 lens-map buffers
 
 - Goal: Split Kerr critical-curve diagnostics so near-horizon
