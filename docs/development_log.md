@@ -19,6 +19,34 @@ from here.
 
 ## Log
 
+### 2026-07-06 - Task 6 thin-disk crossing semantics v2
+
+- Goal: Fix thin-disk transfer crossing semantics found during review before
+  using the buffers as Task 6 validation ground truth.
+- Changed files / components: `trace_ray` disk-crossing events,
+  `RayDiagnostics`, `generate_disk_transfer`, disk-transfer tests, schema docs,
+  and validation targets.
+- Academic reason: Cunningham/Luminet disk-image order is the true equatorial
+  crossing order. It must not be collapsed by post-filtering to the emitting
+  annulus, otherwise secondary images can be mislabeled as direct images.
+- Physical correspondence: Startup disk-event guarding now preserves the sign
+  of the initial equatorial offset, exact coplanar equatorial rays are excluded
+  from thin-disk event recording, and schema v2 stores emitting-annulus hits in
+  their true zero-based crossing-order layer.
+- Assumptions and conventions: `disk_crossing_count` counts stored emitting
+  annulus hits, while the `disk_m` axis is the true equatorial crossing order.
+  Edge-on coplanar rays require separate treatment and are not used as thin-disk
+  transfer records.
+- Validation: Added north/south startup pseudo-crossing regression coverage,
+  exact-coplanar skip coverage, and a true-order HDF5 regression where `m = 1`
+  remains populated while `m = 0` is absent for the same pixel.
+- References: Same `bardeen1972rotatingBlackHoles`,
+  `cunningham1975kerrDiskSpectrum`, and `luminet1979blackHoleImage` disk
+  transfer references used by Task 6 v1.
+- Open issues / next steps: Generate Luminet-style direct and secondary
+  image diagnostics, then decide which disk-transfer channels should enter the
+  GPU/Unity texture contract.
+
 ### 2026-07-06 - Task 6 CPU thin-disk transfer v1
 
 - Goal: Start the formal thin-disk transfer-function path while Unity Editor

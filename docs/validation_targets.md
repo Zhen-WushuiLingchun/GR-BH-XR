@@ -222,11 +222,14 @@ Required checks:
   case;
 - time-delay sampling is tested with a simple time-dependent disk feature.
 
-Current CPU transfer v1 target:
+Current CPU transfer v2 target:
 
-- HDF5 schema `gr-bh-xr.task6.thin_disk_transfer.v1` records
+- HDF5 schema `gr-bh-xr.task6.thin_disk_transfer.v2` records
   `disk_r_m`, `disk_phi_m`, `disk_t_m`, and `disk_g_m` with shape
   `(max_order, grid, grid)`;
+- `m` is the true zero-based equatorial crossing order before disk-annulus
+  filtering, so a ray whose first equatorial crossing falls inside ISCO and
+  second crossing hits the emitting annulus is stored in the `m = 1` layer;
 - `r_in = r_ISCO(a)` follows `bardeen1972rotatingBlackHoles`;
 - Keplerian redshift `g = E / (u^t (E - Omega L_z))` is stored for each valid
   disk crossing and follows `cunningham1975kerrDiskSpectrum`;

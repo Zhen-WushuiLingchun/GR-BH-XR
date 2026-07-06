@@ -13,6 +13,11 @@ from .sky import escape_direction_or_nan
 from .types import CameraConfig, FailureReason, MetricParams, RayDiagnostics, TraceConfig
 
 
+EQUATOR_THETA = math.pi / 2.0
+DISK_EVENT_GUARD_LAMBDA = 1.0e-6
+DISK_COPLANAR_TOL = 1.0e-12
+
+
 def hamiltonian_rhs(params: MetricParams, _lam: float, y: np.ndarray) -> np.ndarray:
     """Hamiltonian equations for canonical state `(x^mu, p_mu)`."""
 
@@ -32,7 +37,7 @@ def hamiltonian_rhs(params: MetricParams, _lam: float, y: np.ndarray) -> np.ndar
 
 
 def _count_disk_crossings(theta_values: np.ndarray) -> int:
-    centered = theta_values - math.pi / 2.0
+    centered = theta_values - EQUATOR_THETA
     crossings = 0
     last = centered[0]
     for value in centered[1:]:
@@ -72,6 +77,7 @@ def _diagnostics(
     azimuthal_winding = abs(delta_phi) / (2.0 * math.pi)
     image_order = max(0, int(math.floor(2.0 * azimuthal_winding + 1.0e-12)))
     crossing_lam_tuple: tuple[float, ...] = ()
+    crossing_order_tuple: tuple[int, ...] = ()
     crossing_t_tuple: tuple[float, ...] = ()
     crossing_r_tuple: tuple[float, ...] = ()
     crossing_phi_tuple: tuple[float, ...] = ()
@@ -84,6 +90,7 @@ def _diagnostics(
         and disk_crossing_states.ndim == 2
     ):
         crossing_lam_tuple = tuple(float(value) for value in disk_crossing_lambda)
+        crossing_order_tuple = tuple(range(len(crossing_lam_tuple)))
         crossing_t_tuple = tuple(float(value) for value in disk_crossing_states[:, 0])
         crossing_r_tuple = tuple(float(value) for value in disk_crossing_states[:, 1])
         crossing_phi_tuple = tuple(float(value) for value in disk_crossing_states[:, 3])
@@ -108,6 +115,7 @@ def _diagnostics(
         q_initial=float(q_values[0]),
         q_final=float(q_values[-1]),
         disk_crossing_lambda=crossing_lam_tuple,
+        disk_crossing_order=crossing_order_tuple,
         disk_crossing_t=crossing_t_tuple,
         disk_crossing_r=crossing_r_tuple,
         disk_crossing_phi=crossing_phi_tuple,
@@ -167,16 +175,28 @@ def trace_ray(
 
     events = [capture_event, escape_event]
     axis_event_index: int | None = None
+    disk_event_index: int | None = None
+    initial_disk_offset = float(y0[2] - EQUATOR_THETA)
+    initial_p_theta = float(y0[6])
+    is_coplanar_ray = (
+        abs(initial_disk_offset) <= DISK_COPLANAR_TOL
+        and abs(initial_p_theta) <= DISK_COPLANAR_TOL
+    )
+    if not is_coplanar_ray:
+        guard_source = initial_disk_offset
+        if abs(guard_source) <= DISK_COPLANAR_TOL:
+            guard_source = initial_p_theta
+        guard_value = math.copysign(1.0, guard_source)
 
-    def disk_event(lam: float, y: np.ndarray) -> float:
-        if lam < 1.0e-6:
-            return 1.0
-        return float(y[2] - math.pi / 2.0)
+        def disk_event(lam: float, y: np.ndarray) -> float:
+            if lam < DISK_EVENT_GUARD_LAMBDA:
+                return guard_value
+            return float(y[2] - EQUATOR_THETA)
 
-    disk_event.terminal = bool(cfg.stop_on_disk)  # type: ignore[attr-defined]
-    disk_event.direction = 0.0  # type: ignore[attr-defined]
-    disk_event_index = len(events)
-    events.append(disk_event)
+        disk_event.terminal = bool(cfg.stop_on_disk)  # type: ignore[attr-defined]
+        disk_event.direction = 0.0  # type: ignore[attr-defined]
+        disk_event_index = len(events)
+        events.append(disk_event)
 
     use_axis_event = abs(y0[7]) <= cfg.axis_lz_tol
     if use_axis_event:
@@ -220,8 +240,12 @@ def trace_ray(
         )
 
     y_values = sol.y.T
-    disk_crossing_lambda = sol.t_events[disk_event_index]
-    disk_crossing_states = sol.y_events[disk_event_index]
+    if disk_event_index is None:
+        disk_crossing_lambda = np.array([], dtype=np.float64)
+        disk_crossing_states = np.empty((0, y0.size), dtype=np.float64)
+    else:
+        disk_crossing_lambda = sol.t_events[disk_event_index]
+        disk_crossing_states = sol.y_events[disk_event_index]
     disk_crossings = int(disk_crossing_lambda.size)
     event = "invalid"
     failure_reason: FailureReason = "none"

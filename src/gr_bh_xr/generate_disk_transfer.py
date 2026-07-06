@@ -17,7 +17,7 @@ from .geodesic import trace_ray
 from .types import CameraConfig, MetricParams, TraceConfig
 
 
-SCHEMA = "gr-bh-xr.task6.thin_disk_transfer.v1"
+SCHEMA = "gr-bh-xr.task6.thin_disk_transfer.v2"
 
 
 def generate_disk_transfer(
@@ -95,14 +95,17 @@ def generate_disk_transfer(
             )
             stored = 0
             for idx, r_cross in enumerate(diag.disk_crossing_r):
+                true_order = diag.disk_crossing_order[idx] if diag.disk_crossing_order else idx
+                if true_order >= max_order:
+                    break
                 if not (r_in <= r_cross <= r_out):
                     continue
-                if stored >= max_order:
-                    break
-                disk_r[stored, row, col] = r_cross
-                disk_phi[stored, row, col] = diag.disk_crossing_phi[idx]
-                disk_time[stored, row, col] = diag.disk_crossing_t[idx]
-                disk_g[stored, row, col] = redshift_factor(
+                if np.isfinite(disk_r[true_order, row, col]):
+                    continue
+                disk_r[true_order, row, col] = r_cross
+                disk_phi[true_order, row, col] = diag.disk_crossing_phi[idx]
+                disk_time[true_order, row, col] = diag.disk_crossing_t[idx]
+                disk_g[true_order, row, col] = redshift_factor(
                     params,
                     r=r_cross,
                     p_t=diag.disk_crossing_p_t[idx],

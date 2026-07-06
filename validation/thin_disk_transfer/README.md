@@ -18,9 +18,11 @@ disk emissivity, optical depth, or observed intensity.
 - Redshift: `g = nu_obs / nu_emit = E / (u^t (E - Omega L_z))`, using the
   asymptotic observer convention already used by the Bardeen screen camera.
 
-Crossing order `m` is the order of valid disk crossings inside
-`r_ISCO <= r_m <= r_out`. This is the disk-transfer order, distinct from the
-photon-ring zoom's azimuthal winding proxy.
+Crossing order `m` is the zero-based order of true equatorial-plane crossings
+before annulus filtering. Crossings outside `r_ISCO <= r_m <= r_out` are not
+stored, but later valid crossings keep their true `m` slot. This is the
+disk-image order used to separate direct, secondary, and higher-order images;
+it is distinct from the photon-ring zoom's azimuthal winding proxy.
 
 ## Command
 
@@ -35,14 +37,15 @@ Generated HDF5 outputs are ignored by Git.
 
 ## HDF5 Schema
 
-Schema: `gr-bh-xr.task6.thin_disk_transfer.v1`.
+Schema: `gr-bh-xr.task6.thin_disk_transfer.v2`.
 
 Datasets:
 
 - `alpha`, `beta`: screen axes.
 - `event_code`, `failure_code`: final ray event and failure reason.
-- `disk_crossing_count`: number of stored valid disk crossings per pixel.
-- `disk_m`: stored crossing-order axis.
+- `disk_crossing_count`: number of stored valid emitting-annulus crossings per
+  pixel.
+- `disk_m`: true equatorial crossing-order axis.
 - `disk_r_m`, `disk_phi_m`, `disk_t_m`, `disk_g_m`: arrays with shape
   `(max_order, grid, grid)` and NaN where a crossing order is absent.
 

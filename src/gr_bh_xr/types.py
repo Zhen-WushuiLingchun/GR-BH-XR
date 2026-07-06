@@ -97,6 +97,7 @@ class RayDiagnostics:
     q_initial: float
     q_final: float
     disk_crossing_lambda: tuple[float, ...] = ()
+    disk_crossing_order: tuple[int, ...] = ()
     disk_crossing_t: tuple[float, ...] = ()
     disk_crossing_r: tuple[float, ...] = ()
     disk_crossing_phi: tuple[float, ...] = ()

@@ -28,9 +28,44 @@ def test_trace_ray_records_equatorial_crossing_states():
 
     assert diagnostics.disk_crossings >= 1
     assert len(diagnostics.disk_crossing_r) == diagnostics.disk_crossings
+    assert diagnostics.disk_crossing_order == tuple(range(diagnostics.disk_crossings))
     assert len(diagnostics.disk_crossing_phi) == diagnostics.disk_crossings
     assert len(diagnostics.disk_crossing_p_phi) == diagnostics.disk_crossings
     assert all(math.isfinite(value) for value in diagnostics.disk_crossing_r)
+
+
+def test_trace_ray_does_not_record_startup_pseudo_crossing():
+    params = MetricParams(M=1.0, a=0.0)
+    trace_config = TraceConfig(max_lambda=900.0, r_escape=200.0, max_step=2.0)
+
+    north = trace_ray(
+        params,
+        CameraConfig(r_obs=100.0, theta_obs=math.radians(60.0), alpha=3.0, beta=3.0),
+        trace_config,
+    )
+    south = trace_ray(
+        params,
+        CameraConfig(r_obs=100.0, theta_obs=math.radians(120.0), alpha=3.0, beta=-3.0),
+        trace_config,
+    )
+
+    assert north.disk_crossings == south.disk_crossings == 1
+    assert north.disk_crossing_lambda[0] > 1.0
+    assert south.disk_crossing_lambda[0] > 1.0
+    assert north.disk_crossing_r[0] < 100.0
+    assert south.disk_crossing_r[0] < 100.0
+
+
+def test_trace_ray_skips_exact_coplanar_disk_recording():
+    diagnostics = trace_ray(
+        MetricParams(M=1.0, a=0.0),
+        CameraConfig(r_obs=100.0, theta_obs=math.pi / 2.0, alpha=3.0, beta=0.0),
+        TraceConfig(max_lambda=900.0, r_escape=200.0, max_step=2.0),
+    )
+
+    assert diagnostics.disk_crossings == 0
+    assert diagnostics.disk_crossing_lambda == ()
+    assert diagnostics.disk_crossing_order == ()
 
 
 def test_generate_disk_transfer_writes_thin_disk_buffers(tmp_path):
@@ -81,3 +116,32 @@ def test_generate_disk_transfer_writes_thin_disk_buffers(tmp_path):
         assert np.all(handle["disk_r_m"][...][valid] <= 30.0)
         assert np.all(np.isfinite(handle["disk_g_m"][...][valid]))
         assert np.nanmin(handle["disk_g_m"][...]) > 0.0
+
+
+def test_generate_disk_transfer_preserves_true_equatorial_crossing_order(tmp_path):
+    out = tmp_path / "disk_transfer_order.h5"
+
+    generate_disk_transfer(
+        params=MetricParams(M=1.0, a=0.0),
+        inclination_deg=60.0,
+        grid=2,
+        alpha_min=-6.0,
+        alpha_max=-5.9,
+        beta_min=1.0,
+        beta_max=1.1,
+        r_obs=100.0,
+        max_lambda=1400.0,
+        horizon_eps=0.3,
+        max_step=1.0,
+        r_out=30.0,
+        max_order=2,
+        out=out,
+        command="pytest true order",
+        verbose=False,
+    )
+
+    with h5py.File(out, "r") as handle:
+        assert handle.attrs["schema"] == SCHEMA
+        assert np.isnan(handle["disk_r_m"][0, 0, 0])
+        assert np.isfinite(handle["disk_r_m"][1, 0, 0])
+        assert handle["disk_crossing_count"][0, 0] == 1
