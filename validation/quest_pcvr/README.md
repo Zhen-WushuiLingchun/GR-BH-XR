@@ -15,6 +15,19 @@ python -m gr_bh_xr.gpu.generate_lens_map --spin 0.5 --inclination-deg 60 --grid 
 python -m gr_bh_xr.xr.export_unity_textures --input outputs/phase2/gpu_lensmap_kerr_a0.5_i60.h5 --out-dir outputs/task5/unity_lensmap_kerr_a0.5_i60
 ```
 
+Local desktop-validation packages prepared on 2026-07-06:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.gpu.generate_lens_map --spin 0 --inclination-deg 90 --grid 256 --alpha-max 8 --beta-max 8 --out outputs/task5/gpu_lensmap_schwarzschild_i90_256.h5
+python -m gr_bh_xr.xr.export_unity_textures --input outputs/task5/gpu_lensmap_schwarzschild_i90_256.h5 --out-dir outputs/task5/unity_lensmap_schwarzschild_i90_256
+python -m gr_bh_xr.gpu.generate_lens_map --spin 0.9 --inclination-deg 60 --grid 256 --alpha-max 8 --beta-max 8 --step-size 0.025 --steps 16000 --out outputs/task5/gpu_lensmap_kerr_a0.9_i60_256.h5
+python -m gr_bh_xr.xr.export_unity_textures --input outputs/task5/gpu_lensmap_kerr_a0.9_i60_256.h5 --out-dir outputs/task5/unity_lensmap_kerr_a0.9_i60_256
+```
+
+The generated package directories are intentionally under ignored `outputs/`.
+They should be copied into a Unity project for desktop validation.
+
 Acceptance for this gate:
 
 - `lens_map_metadata.json` records the source schema, dimensions, screen
@@ -34,6 +47,31 @@ Acceptance for this gate:
 - A weak-deflection directional regression test confirms the right/top screen
   signs: right-up exported pixels have `x_unity > 0`, `y_unity > 0`, while
   right-down pixels have `x_unity > 0`, `y_unity < 0`.
+
+## Unity Editor Desktop Gate
+
+Before Quest runtime validation, verify the static texture contract in the
+Unity Editor on a normal desktop display:
+
+- Use two exported packages: Schwarzschild `a = 0`, `i = 90 deg`, and Kerr
+  `a = 0.9`, `i = 60 deg`.
+- Use a recognizable real-sky cubemap or equirectangular sky converted to a
+  cubemap. Do not use random stars or procedural noise for the coordinate
+  check because those can hide mirror errors.
+- Put a quad in front of the camera. The quad material uses
+  `GR-BH-XR/Kerr Lens Static Preview`; the scene skybox uses the same cubemap
+  directly.
+- In weak-deflection regions near the quad edge, stars should continue across
+  the quad boundary without a vertical flip, horizontal mirror, transpose, or
+  rotation.
+- A recognizable constellation should keep its handedness inside the lens-map
+  quad.
+- The Kerr package should show the expected asymmetric/D-shaped shadow and
+  horizontal displacement relative to the Schwarzschild package.
+
+Record the result as a dated note in this directory. Store screenshots beside
+the note when they are produced; generated Unity project state should stay out
+of Git unless it is a deliberately minimal source asset.
 
 ## Headset Runtime Protocol
 

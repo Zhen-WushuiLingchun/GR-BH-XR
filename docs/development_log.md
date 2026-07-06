@@ -19,6 +19,33 @@ from here.
 
 ## Log
 
+### 2026-07-06 - Task 5 desktop validation package prep
+
+- Goal: Prepare the Unity Editor desktop-validation inputs after the texture
+  vertical-handedness fix passed review.
+- Changed files / components: `validation/quest_pcvr/README.md`; generated
+  local packages under ignored `outputs/task5/`.
+- Academic reason: Desktop validation should use concrete, reproducible
+  texture packages and a documented visual protocol before moving to Quest
+  runtime debugging.
+- Physical correspondence: Prepared two static lens-map packages:
+  Schwarzschild `a = 0`, `i = 90 deg`, and Kerr `a = 0.9`, `i = 60 deg`. The
+  Kerr package uses `step_size = 0.025`, `steps = 16000` so the high-spin 256x256
+  center-sample map has no invalid/failure pixels.
+- Assumptions and conventions: Generated HDF5/raw texture artifacts remain
+  local under ignored `outputs/task5/`. The Unity package source remains tracked
+  under `xr/unity_frontend/`.
+- Validation: Generated both 256x256 GPU maps and exported Unity texture
+  packages. Schwarzschild package had `escape_pixels = 43988`;
+  Kerr `a = 0.9`, `i = 60 deg` package had `escape_pixels = 45554`.
+  Metadata inspection confirmed `verticalFlipApplied = true` and
+  `vToBeta = beta_max - v * (beta_max - beta_min)`.
+- References: Same Task 4/5 transfer-buffer convention; this is preparation for
+  Unity Editor validation, not headset validation.
+- Open issues / next steps: User-side Unity Editor desktop test with a
+  recognizable real-sky cubemap, then screenshots and a dated validation note
+  in `validation/quest_pcvr/`.
+
 ### 2026-07-06 - Task 5 texture vertical-handedness fix
 
 - Goal: Fix the Unity export row convention before Quest or Unity Editor
