@@ -266,7 +266,7 @@ def test_weak_deflection_export_has_correct_unity_screen_handedness(tmp_path):
     assert unity_raw[row_visual_up, col_neg, 1] > 0.0
 
 
-def test_unity_preview_shader_samples_cubemap_in_world_space():
+def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     shader = (UNITY_RUNTIME_DIR / "BlackHoleLensStaticPreview.shader").read_text(encoding="utf8")
 
     assert "unity_ObjectToWorld" in shader
@@ -274,8 +274,13 @@ def test_unity_preview_shader_samples_cubemap_in_world_space():
     assert "_WorldSpaceCameraPos" in shader
     assert "_LensScreenBounds" in shader
     assert "_LensRObs" in shader
-    assert "float beta = -_LensRObs * localRay.y / localRay.z" in shader
+    assert "_UseAngularWindow" in shader
+    assert "ZWrite On" in shader
+    assert "ComputeScreenPos" in shader
+    assert "float2 screenUv = i.screenPos.xy" in shader
+    assert "float beta = -_LensRObs * localRay.y / localForward" in shader
     assert "texCUBE(_SkyboxCubemap, worldRay)" in shader
+    assert "texCUBE(_SkyboxCubemap, worldDir)" in shader
 
 
 def test_unity_lens_map_loader_keeps_raw_textures_linear():

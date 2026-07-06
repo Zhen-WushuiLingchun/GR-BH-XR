@@ -7,12 +7,17 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
         _SkyboxCubemap ("Skybox Cubemap", Cube) = "" {}
         _LensScreenBounds ("Lens Screen Bounds", Vector) = (-8, 8, -8, 8)
         _LensRObs ("Lens Observer Radius", Float) = 100
+        _UseAngularWindow ("Use Angular Window", Float) = 0
     }
     SubShader
     {
         Tags { "RenderType"="Opaque" }
         Pass
         {
+            Cull Off
+            ZWrite On
+            ZTest Always
+
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
@@ -23,6 +28,7 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
             samplerCUBE _SkyboxCubemap;
             float4 _LensScreenBounds;
             float _LensRObs;
+            float _UseAngularWindow;
 
             struct appdata
             {
@@ -35,6 +41,7 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 float4 vertex : SV_POSITION;
                 float2 uv : TEXCOORD0;
                 float3 worldPos : TEXCOORD1;
+                float4 screenPos : TEXCOORD2;
             };
 
             v2f vert(appdata v)
@@ -43,6 +50,7 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 o.uv = v.uv;
                 o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
+                o.screenPos = ComputeScreenPos(o.vertex);
                 return o;
             }
 
@@ -57,20 +65,33 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
 
                 float2 lensUv = i.uv;
                 bool insideAngularWindow = false;
-                if (localRay.z > 1.0e-5)
+                if (_UseAngularWindow > 0.5)
                 {
-                    float alpha = _LensRObs * localRay.x / localRay.z;
-                    float beta = -_LensRObs * localRay.y / localRay.z;
-                    insideAngularWindow =
-                        alpha >= alphaMin && alpha <= alphaMax &&
-                        beta >= betaMin && beta <= betaMax;
-                    if (insideAngularWindow)
+                    float localForward = abs(localRay.z);
+                    if (localForward > 1.0e-5)
                     {
-                        lensUv = float2(
-                            (alpha - alphaMin) / max(alphaMax - alphaMin, 1.0e-5),
-                            (betaMax - beta) / max(betaMax - betaMin, 1.0e-5)
-                        );
+                        float alpha = _LensRObs * localRay.x / localForward;
+                        float beta = -_LensRObs * localRay.y / localForward;
+                        insideAngularWindow =
+                            alpha >= alphaMin && alpha <= alphaMax &&
+                            beta >= betaMin && beta <= betaMax;
+                        if (insideAngularWindow)
+                        {
+                            lensUv = float2(
+                                (alpha - alphaMin) / max(alphaMax - alphaMin, 1.0e-5),
+                                (betaMax - beta) / max(betaMax - betaMin, 1.0e-5)
+                            );
+                        }
                     }
+                }
+                else
+                {
+                    float2 screenUv = i.screenPos.xy / max(i.screenPos.w, 1.0e-5);
+                    float aspect = _ScreenParams.x / max(_ScreenParams.y, 1.0);
+                    lensUv = float2((screenUv.x - 0.5) * aspect + 0.5, screenUv.y);
+                    insideAngularWindow =
+                        lensUv.x >= 0.0 && lensUv.x <= 1.0 &&
+                        lensUv.y >= 0.0 && lensUv.y <= 1.0;
                 }
 
                 if (!insideAngularWindow)

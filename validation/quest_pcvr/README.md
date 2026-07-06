@@ -68,10 +68,14 @@ Acceptance for this gate:
   camera-to-black-hole direction to Unity `+Z`.
 - The Unity package under `xr/unity_frontend/` can load the raw bytes into
   `TextureFormat.RGBA32` and `TextureFormat.RGBAFloat` textures.
-- The Unity preview shader computes a world view ray per fragment, projects it
-  into the lens-screen local basis, maps the resulting angular coordinates to
-  `(alpha, beta)`, and samples the lens map only inside the metadata screen
-  bounds. Pixels outside the angular window sample the same cubemap directly.
+- The Unity preview shader defaults to a screen-space square gate for the
+  desktop validation pass. It samples the square lens map without stretching it
+  to the display aspect ratio; pixels outside the square gate sample the same
+  cubemap directly.
+- The shader also contains an opt-in angular-window path through
+  `_UseAngularWindow`, but that path is still experimental and must not be used
+  as evidence for headset head-motion stability until it has its own Unity
+  desktop and Quest runtime validation.
 - The Unity preview shader transforms stored local Unity escape directions by
   the lens-screen object-to-world rotation before cubemap sampling, so the
   background sky does not silently rotate with raw texture rows.
@@ -89,11 +93,11 @@ Unity Editor on a normal desktop display:
 - Use a recognizable real-sky cubemap or equirectangular sky converted to a
   cubemap. Do not use random stars or procedural noise for the coordinate
   check because those can hide mirror errors.
-- Use the angular-window preview shader rather than judging a lens map as a
-  flat billboard. A deliberately oversized screen mesh is acceptable because
-  pixels outside the metadata angular window fall back to the cubemap directly.
-  Do not stretch the angular window itself to the display aspect ratio; that
-  turns a circular/weakly D-shaped shadow into an artificial ellipse.
+- Use the screen-space square preview gate for the current desktop validation
+  pass. A deliberately oversized screen mesh is acceptable because pixels
+  outside the square gate fall back to the cubemap directly. Do not stretch the
+  square lens map itself to the display aspect ratio; that turns a circular or
+  weakly D-shaped shadow into an artificial ellipse.
 - The quad material uses `GR-BH-XR/Kerr Lens Static Preview`; the scene skybox
   uses the same cubemap directly. The main camera clear flags should be
   `Skybox`, not `Solid Color`, otherwise the area outside any preview mesh can
@@ -106,19 +110,25 @@ Unity Editor on a normal desktop display:
 
 Do not require quad-edge continuity for the current `alpha_max = beta_max = 8M`
 packages. At `r_obs = 100M`, rays at the map edge are still significantly
-deflected, so the lensed quad interior is not expected to match the unlensed
-skybox outside the angular window. Edge-continuity checks require either a much
+deflected, so the lensed square-gate interior is not expected to match the
+unlensed skybox outside the gate. Edge-continuity checks require either a much
 wider map, such as `alpha_max ~= 40-60M`, with the camera angular size
 calibrated to `2 atan(alpha_max / r_obs)`, or a full-camera transfer map.
 
-The current angular-window shader supports head rotation for the static map
-because every fragment is keyed by world view direction. It does not make a
-new physical claim for head translation: the baked map still assumes the
-single observer radius and inclination recorded in `lens_map_metadata.json`.
+The current accepted desktop gate is a screen-space static preview, not a
+Quest head-motion result. The angular-window / full-camera path is the intended
+next step for head rotation, but it remains pending until verified in Unity and
+on the headset. Any head translation remains outside the baked-map model: the
+texture still assumes the single observer radius and inclination recorded in
+`lens_map_metadata.json`.
 
 Record the result as a dated note in this directory. Store screenshots beside
 the note when they are produced; generated Unity project state should stay out
 of Git unless it is a deliberately minimal source asset.
+
+Current desktop gate note:
+
+- `2026-07-06-unity-editor-desktop-gate.md`
 
 ## Headset Runtime Protocol
 

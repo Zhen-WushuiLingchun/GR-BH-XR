@@ -29,33 +29,38 @@ from here.
 - Academic reason: The headset/Unity bridge must not introduce display-only
   coordinate rotations or aspect-ratio distortions, and Task 6 needs a
   direct/secondary disk-image diagnostic before adding emissivity or intensity.
-- Physical correspondence: The Unity preview shader now computes a world view
-  ray per fragment, projects it into the lens-screen angular basis, maps the
-  ray to `(alpha, beta)` using the metadata `r_obs` and screen bounds, and
-  samples the lens map only inside that angular window. Escaped-ray directions
-  stored in Unity local screen coordinates are then transformed by the
-  lens-screen object-to-world rotation before cubemap sampling. The
-  disk-transfer plot reads `r_m(alpha,beta)` and `g_m` from schema v2, flips
-  the raw solver beta rows into visual beta, and draws separate `m = 0` direct
-  and `m = 1` secondary equal-radius curves.
+- Physical correspondence: The accepted Unity desktop preview now uses a
+  screen-space square gate so the square `alpha/beta` transfer map is not
+  stretched into the Game-view aspect ratio. Pixels outside the square gate
+  sample the same cubemap directly, while escaped-ray directions inside the
+  gate are transformed by the lens-screen object-to-world rotation before
+  cubemap sampling. The experimental angular-window path remains in the shader
+  behind `_UseAngularWindow`, but it is not yet accepted as a head-motion
+  validation result. The disk-transfer plot reads `r_m(alpha,beta)` and `g_m`
+  from schema v2, flips the raw solver beta rows into visual beta, and draws
+  separate `m = 0` direct and `m = 1` secondary equal-radius curves.
 - Assumptions and conventions: Square `alpha/beta` maps must be consumed as
-  square angular windows unless the source HDF5 was generated with matching
-  non-square screen bounds. The current Unity texture is still a static
-  observer approximation: head rotation is handled by world-ray lookup, while
-  head translation would require a different transfer map. The Luminet-style
-  plot is a geometric transfer diagnostic, not yet a full observed-intensity
-  image. The exact `alpha = 0` column can expose the Boyer-Lindquist polar-axis
-  coordinate limitation for far-side secondary disk arcs.
-- Validation: Added tests that the Unity shader uses world-to-object angular
-  lookup, that the C# loader injects `r_obs` and screen bounds into the
-  material, that raw texture loading stays linear, and that the disk-transfer
-  plotting CLI writes a visually beta-flipped PDF from CPU transfer buffers.
+  square gates unless the source HDF5 was generated with matching non-square
+  screen bounds. The current Unity texture is still a static observer
+  approximation: the screen-space desktop gate does not close Quest
+  head-motion stability, and head translation would require a different
+  transfer map. The Luminet-style plot is a geometric transfer diagnostic, not
+  yet a full observed-intensity image. The exact `alpha = 0` column can expose
+  the Boyer-Lindquist polar-axis coordinate limitation for far-side secondary
+  disk arcs.
+- Validation: Added tests that the Unity shader keeps the screen-space square
+  gate, includes the opt-in angular path, samples cubemaps in world space, that
+  the C# loader injects `r_obs` and screen bounds into the material, that raw
+  texture loading stays linear, and that the disk-transfer plotting CLI writes
+  a visually beta-flipped PDF from CPU transfer buffers.
 - References: `luminet1979blackHoleImage`, `cunningham1975kerrDiskSpectrum`,
   and the existing Task 5 Unity texture-contract references.
 - Open issues / next steps: Re-run the Unity desktop gate with a real skybox
-  and the angular-window shader, then add disk emissivity / observed intensity
-  buffers for a full Luminet morphology comparison. A future axis-regular or
-  Kerr-Schild tracer should remove the thin `alpha = 0` disk-arc gap.
+  and the screen-space square gate, then develop a full-camera or
+  angular-window path for head-motion stability before Quest claims. Add disk
+  emissivity / observed intensity buffers for a full Luminet morphology
+  comparison. A future axis-regular or Kerr-Schild tracer should remove the
+  thin `alpha = 0` disk-arc gap.
 
 ### 2026-07-06 - Task 6 thin-disk crossing semantics v2
 
