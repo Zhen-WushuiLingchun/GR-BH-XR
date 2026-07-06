@@ -44,6 +44,8 @@ Tracked Phase 1 validation entry points:
   basic validation figures.
 - `ray_examples/README.md`: illustrative capture, near-critical, and escape ray
   paths for visual sanity checking.
+- `photon_ring_zoom/README.md`: Task 6 pre-transfer lensing-band zoom using
+  azimuthal winding and image-order proxy buffers.
 
 ## Phase 3 Quest PCVR Gate
 

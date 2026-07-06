@@ -14,7 +14,7 @@ python -m gr_bh_xr.generate_lens_map --spin 0 --inclination-deg 90 --grid 129 --
 python -m gr_bh_xr.generate_lens_map --spin 0.5 --inclination-deg 60 --grid 129 --alpha-max 8 --beta-max 8 --out outputs/phase1/lensmap_kerr_a0.5_i60.h5
 ```
 
-The file uses schema `gr-bh-xr.phase1.lens_map.v5`.
+The file uses schema `gr-bh-xr.phase1.lens_map.v6`.
 
 Datasets:
 
@@ -38,6 +38,13 @@ Datasets:
 - `q_drift_abs`: drift of the Carter constant diagnostic.
 - `disk_crossings`: number of equatorial-plane crossings observed in the traced
   state samples.
+- `azimuthal_winding`: diagnostic azimuthal winding
+  `|Delta phi| / (2 pi)` measured from the traced Boyer-Lindquist `phi`
+  coordinate.
+- `image_order`: half-orbit image-order proxy `floor(2 * azimuthal_winding)`.
+  This is a photon-ring / high-order-image diagnostic for capture/escape maps;
+  the later thin-disk transfer function will add disk-crossing order `m` and
+  per-crossing disk quantities.
 - `escape_theta`, `escape_phi`: asymptotic sky direction angles for escaped
   rays, with NaNs for non-escape pixels. These are computed from the
   contravariant ray momentum at the escape sphere, not from the ray position on
@@ -50,6 +57,9 @@ File attributes:
 
 - `M`, `a`: Kerr metric parameters in geometric units.
 - `inclination_deg`, `r_obs`, `grid`, `alpha_max`, `beta_max`.
+- `alpha_min`, `beta_min` are also stored. For symmetric maps generated
+  without explicit lower bounds, `alpha_min = -alpha_max` and
+  `beta_min = -beta_max`.
 - `max_lambda`, `horizon_eps`, `max_step`.
 - `generation_command`.
 - `coordinate_system = Boyer-Lindquist exterior`.
@@ -67,8 +77,28 @@ capture/escape shadow geometry and the momentum escape-direction map needed
 for background lensing. Position angles on a finite escape sphere are not used
 as the transfer direction because they carry an `O(b / r_escape)` impact-
 parameter bias. The maps do not yet include thin-disk transfer quantities such
-as crossing location `(r_m, phi_m)`, image order `m`, redshift factor `g_m`,
-time delay `Delta t_m`, optical depth, or observed intensity.
+as crossing location `(r_m, phi_m)`, disk image order `m`, redshift factor
+`g_m`, time delay `Delta t_m`, optical depth, or observed intensity. The
+`image_order` dataset is only a screen-ray winding diagnostic used to visualize
+photon-ring/lensing-band structure before disk transfer is implemented.
+
+## Photon-Ring / Lensing-Band Zoom
+
+The CPU lens-map generator also supports asymmetric screen windows. This is the
+cheap way to make high-order image bands visible without claiming a full
+thin-disk image:
+
+```text
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.generate_lens_map --spin 0 --inclination-deg 90 --grid 129 --alpha-min 4.8 --alpha-max 5.6 --beta-min -0.4 --beta-max 0.4 --r-obs 80 --out outputs/task6/lensing_band_zoom_schwarzschild.h5
+python -m gr_bh_xr.plot_lensing_band_zoom --input outputs/task6/lensing_band_zoom_schwarzschild.h5 --out figures/lensing_band_zoom_schwarzschild.pdf
+```
+
+The figure plots the image-order proxy, azimuthal winding, and minimum
+Boyer-Lindquist radius. The expected interpretation follows
+`gralla2019shadowsPhotonRings`: successive higher-order bands are exponentially
+compressed toward the critical curve, so they are visible only in a narrow
+screen window or with adaptive sampling.
 
 For the default odd-sized rectangular grids, the screen column `alpha = 0`
 corresponds to `L_z = 0`. Some of those meridional rays reach `theta = 0` or

@@ -66,6 +66,9 @@ def _diagnostics(
     )
     e_values = -ps[:, 0]
     lz_values = ps[:, 3]
+    delta_phi = float(xs[-1, 3] - xs[0, 3])
+    azimuthal_winding = abs(delta_phi) / (2.0 * math.pi)
+    image_order = max(0, int(math.floor(2.0 * azimuthal_winding + 1.0e-12)))
     escape_theta, escape_phi, escape_dir_x, escape_dir_y, escape_dir_z = escape_direction_or_nan(
         params, event, xs[-1], ps[-1]
     )
@@ -80,6 +83,8 @@ def _diagnostics(
         steps=int(y_values.shape[0]),
         min_r=float(np.min(xs[:, 1])),
         disk_crossings=int(disk_crossings),
+        azimuthal_winding=float(azimuthal_winding),
+        image_order=int(image_order),
         q_initial=float(q_values[0]),
         q_final=float(q_values[-1]),
         escape_theta=escape_theta,

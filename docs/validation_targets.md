@@ -97,6 +97,9 @@ Lens-map persistence target:
 - HDF5 output records `alpha`, `beta`, `event_code`, `min_r`, `h_max_abs`,
   `e_drift_abs`, `lz_drift_abs`, `q_drift_abs`, `disk_crossings`, and
   `failure_code`;
+- HDF5 output records `azimuthal_winding = |Delta phi| / (2 pi)` and
+  `image_order = floor(2 * azimuthal_winding)` as a screen-ray winding
+  diagnostic for photon-ring / high-order-image zooms;
 - event-code and failure-code mappings are stored in HDF5 attributes;
 - `axis_coordinate_singularity` is a separate failure reason for `L_z = 0`
   rays that hit the Boyer-Lindquist polar-axis coordinate singularity;
@@ -209,6 +212,9 @@ Quest 3 shows a head-stable Kerr shadow plus background lensing over PCVR.
 
 Required checks:
 
+- before adding emissivity, a critical/lensing-band zoom figure can be produced
+  from CPU lens-map buffers and shows the winding/image-order proxy near the
+  Schwarzschild critical curve;
 - disk intersection events are recorded by crossing/image order `m`;
 - `r_m`, `phi_m`, `g_m`, `Delta t_m`, and `n_m` are inspectable;
 - direct, secondary, and higher-order images can be isolated;

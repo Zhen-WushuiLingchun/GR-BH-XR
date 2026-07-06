@@ -92,6 +92,8 @@ class RayDiagnostics:
     steps: int
     min_r: float
     disk_crossings: int
+    azimuthal_winding: float
+    image_order: int
     q_initial: float
     q_final: float
     escape_theta: float = np.nan

@@ -19,6 +19,35 @@ from here.
 
 ## Log
 
+### 2026-07-06 - Task 6 photon-ring zoom pre-transfer diagnostic
+
+- Goal: Start the Task 6 physics track with a cheap visualization of
+  high-order image / photon-ring structure before adding disk emissivity.
+- Changed files / components: CPU lens-map schema, `RayDiagnostics`,
+  `generate_lens_map`, `plot_lensing_band_zoom`, tests, and validation
+  documentation.
+- Academic reason: Gralla-Holz-Wald 2019 and Gralla-Lupsasca 2020 explain why
+  higher-order image bands are exponentially compressed toward the critical
+  curve. A full-screen background lens map hides these bands at ordinary
+  resolution, so the first auditable deliverable is a zoomed transfer-buffer
+  diagnostic rather than a visual-only claim.
+- Physical correspondence: Added `azimuthal_winding = |Delta phi| / (2 pi)`
+  and `image_order = floor(2 * azimuthal_winding)` as a screen-ray winding
+  proxy. This is not the final thin-disk crossing order `m`; it is the
+  pre-transfer diagnostic that makes winding bands visible near the critical
+  curve.
+- Assumptions and conventions: The tracer remains the Phase 1 CPU
+  Boyer-Lindquist exterior solver. The lens-map generator now supports
+  asymmetric screen windows such as `alpha in [4.8M, 5.6M]`, `beta in
+  [-0.4M, 0.4M]`.
+- Validation: Added tests for schema v6, winding/image-order datasets,
+  asymmetric screen-window attributes, and rendering a lensing-band zoom PDF.
+- References: `gralla2019shadowsPhotonRings`, `gralla2020lensingKerr`, and
+  the existing Phase 1 Bardeen/Gralla-Lupsasca Kerr geodesic sources.
+- Open issues / next steps: Implement thin-disk transfer records
+  `(r_m, phi_m, g_m, Delta t_m, n_m)` and reproduce a Luminet-style direct /
+  secondary image validation target.
+
 ### 2026-07-06 - Unity direction-resample audit fields
 
 - Goal: Tighten the display-resampled Unity texture package after review of the
