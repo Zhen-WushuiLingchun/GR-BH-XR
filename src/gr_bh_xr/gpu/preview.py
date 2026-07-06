@@ -40,6 +40,8 @@ def build_config(
     step_size: float,
     steps: int,
     horizon_eps: float,
+    critical_refine_band: float,
+    critical_refine_factor: int,
 ) -> GpuTraceConfig:
     return GpuTraceConfig(
         params=MetricParams(M=mass, a=spin * mass),
@@ -51,6 +53,8 @@ def build_config(
         step_size=step_size,
         steps=steps,
         horizon_eps=horizon_eps,
+        critical_refine_band=critical_refine_band,
+        critical_refine_factor=critical_refine_factor,
     )
 
 
@@ -89,6 +93,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--step-size", type=float, default=GpuTraceConfig.step_size)
     parser.add_argument("--steps", type=int, default=GpuTraceConfig.steps)
     parser.add_argument("--horizon-eps", type=float, default=GpuTraceConfig.horizon_eps)
+    parser.add_argument("--critical-refine-band", type=float, default=0.0)
+    parser.add_argument(
+        "--critical-refine-factor", type=int, default=GpuTraceConfig.critical_refine_factor
+    )
     parser.add_argument("--save-dir", type=Path, default=Path("outputs/phase2"))
     parser.add_argument("--save-and-exit", type=Path, default=None)
     return parser
@@ -107,6 +115,8 @@ def main() -> None:
         step_size=args.step_size,
         steps=args.steps,
         horizon_eps=args.horizon_eps,
+        critical_refine_band=args.critical_refine_band,
+        critical_refine_factor=args.critical_refine_factor,
     )
     lens_map = trace_lens_map(config)
     state = PreviewState(
@@ -142,6 +152,8 @@ def main() -> None:
             step_size=args.step_size,
             steps=args.steps,
             horizon_eps=args.horizon_eps,
+            critical_refine_band=args.critical_refine_band,
+            critical_refine_factor=args.critical_refine_factor,
         )
         state.lens_map = trace_lens_map(cfg)
         state.rgba = view_rgba(state.lens_map, VIEW_NAMES[state.view_index])

@@ -26,10 +26,11 @@ Datasets:
   limitation before capture, escape, or disk crossing.
 - `failure_code`: integer failure-cause grid with attributes `code_none = 0`,
   `code_trace_exception = 1`, `code_unclassified_max_lambda = 2`, and
-  `code_solver_failure = 3`, and `code_axis_coordinate_singularity = 4`. This
-  separates solver exceptions, rays that simply reached `max_lambda`, and
-  `L_z = 0` rays that terminate at the Boyer-Lindquist polar-axis coordinate
-  singularity.
+  `code_solver_failure = 3`, `code_axis_coordinate_singularity = 4`, and the
+  GPU-reserved `code_polar_step_overshoot = 5`. This separates solver
+  exceptions, rays that simply reached `max_lambda`, `L_z = 0` rays that
+  terminate at the Boyer-Lindquist polar-axis coordinate singularity, and
+  near-polar fixed-step GPU artifacts.
 - `min_r`: minimum Boyer-Lindquist radius reached by each traced ray.
 - `h_max_abs`: maximum absolute Hamiltonian residual along each ray.
 - `e_drift_abs`: drift of `E = -p_t`.

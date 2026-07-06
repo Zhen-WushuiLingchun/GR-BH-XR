@@ -27,6 +27,7 @@ FAILURE_CODES = {
     "unclassified_max_lambda": 2,
     "solver_failure": 3,
     "axis_coordinate_singularity": 4,
+    "polar_step_overshoot": 5,
 }
 
 

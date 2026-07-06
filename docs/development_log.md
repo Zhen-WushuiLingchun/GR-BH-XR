@@ -82,6 +82,40 @@ from here.
   substepping, then implement near-critical adaptive refinement before making
   stronger high-resolution GPU claims.
 
+### 2026-07-06 - Task 4 critical-band refinement and polar substeps
+
+- Goal: Close the remaining Phase 2 GPU Kerr-lensing gate for near-critical
+  refinement and remove the 256x256 small-`|L_z|` polar fixed-step artifact.
+- Changed files / components: `src/gr_bh_xr/gpu/trace.py`,
+  `src/gr_bh_xr/gpu/generate_lens_map.py`, `src/gr_bh_xr/gpu/validate.py`,
+  `src/gr_bh_xr/gpu/preview.py`, failure-code schema, GPU tests, and GPU
+  validation documentation.
+- Academic reason: AART-style critical-curve refinement is needed before using
+  GPU lens maps as auditable texture products near the shadow boundary. The
+  previous 256x256 failures were a numerical stepping artifact, so they needed
+  either a distinct code path or mitigation before stronger GPU claims.
+- Physical correspondence: Center-ray event codes are unchanged for CPU-vs-GPU
+  comparison. The analytic critical-curve distance field marks pixels for 2x2
+  subpixel tracing and records `gpu_refinement_level`,
+  `gpu_subpixel_capture_fraction`, and `gpu_subpixel_invalid_fraction`. Near
+  the Boyer-Lindquist polar axis, small-`|L_z|` rays use local RK4 substeps and
+  reserve `polar_step_overshoot = 5` for any remaining polar step artifact.
+- Assumptions and conventions: The shader remains f32 fixed-step RK4 in
+  Boyer-Lindquist exterior coordinates. Preview disables critical-band
+  refinement by default for interactive responsiveness, while generated maps
+  and validators keep it enabled by default.
+- Validation: The 256x256 Kerr `a = 0.5`, `i = 60 deg` GPU map reported
+  `solver_failure = 0`, `unclassified_max_lambda = 0`, `invalid = 0`, and
+  `refined_pixels = 4102`. The 65x65 Kerr CPU-vs-GPU validation retained
+  `full_grid_event_agreement = 1.0`, stable agreement `1.0`, capture-fraction
+  difference `0.0`, and GPU failures outside exclusions `0`, with
+  `refined_pixels = 254`.
+- References: Same Phase 1 analytic sources and AART-inspired adaptive
+  sampling motivation listed in the project references.
+- Open issues / next steps: Move from CPU-visible HDF5/debug textures to the
+  Task 5 Unity/OpenXR texture bridge, then measure headset frame pacing,
+  stereo stability, and head-motion behavior.
+
 ### 2026-07-06 - Phase 1 closeout review
 
 - Goal: Record that Phase 1 CPU Kerr reference solver work has passed external

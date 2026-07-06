@@ -64,12 +64,17 @@ def test_gpu_schwarzschild_lens_map_schema_and_events(tmp_path):
             "gpu_h_max_abs",
             "gpu_q_drift_abs",
             "gpu_steps",
+            "gpu_refinement_level",
+            "gpu_subpixel_capture_fraction",
+            "gpu_subpixel_invalid_fraction",
             "event_rgba8",
             "debug_rgba8",
         ):
             assert dataset in handle
         assert handle["gpu_event_code"].shape == (17, 17)
+        assert handle["gpu_refinement_level"].shape == (17, 17)
         assert handle["event_rgba8"].shape == (17, 17, 4)
+        assert handle["gpu_failure_code"].attrs["code_polar_step_overshoot"] == 5
 
 
 def test_gpu_cpu_validator_writes_compare_hdf5_and_summary(tmp_path):
@@ -96,11 +101,15 @@ def test_gpu_cpu_validator_writes_compare_hdf5_and_summary(tmp_path):
     assert summary["stable_event_agreement"] >= 0.98
     assert summary["full_grid_event_agreement"] >= 0.98
     assert summary["gpu_failure_outside_exclusions"] == 0
+    assert summary["refined_pixels"] > 0
     with h5py.File(out, "r") as handle:
         for dataset in (
             "cpu_event_code",
             "cpu_failure_code",
             "cpu_min_r",
+            "gpu_refinement_level",
+            "gpu_subpixel_capture_fraction",
+            "gpu_subpixel_invalid_fraction",
             "stable_comparison_mask",
             "full_grid_event_agreement_mask",
             "excluded_critical_band",

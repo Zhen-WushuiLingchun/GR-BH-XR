@@ -144,6 +144,9 @@ Required Task 4 checks:
   used for the gate and a full-grid event-agreement field used to detect
   cancelling capture/escape count errors;
 - generated HDF5/debug texture artifacts stay under ignored `outputs/phase2/`.
+- the analytic critical-curve band is marked by a refinement buffer and
+  supersampled into subpixel capture/invalid fractions for downstream texture
+  and photon-ring work.
 
 Task 4 explicitly does not validate thin-disk transfer, redshift, time delay,
 GRRT, Quest/OpenXR runtime integration, adaptive RK, or Kerr-Schild
@@ -151,13 +154,13 @@ horizon/axis continuation. Large `gpu_h_max_abs` values near capture or failure
 pixels are audit metadata for the f32 fixed-step shader, not a replacement for
 the Phase 1 CPU Hamiltonian gate.
 
-At 256x256, small-`|L_z|` near-polar rays can expose fixed-step f32 artifacts:
-if the even grid samples columns close to but not exactly on `alpha = 0`, RK4
-may step over the narrow polar centrifugal barrier and report
-`solver_failure`, or use the shorter GPU affine-parameter budget and report
-`unclassified_max_lambda`. Treat this as a documented GPU prototype limitation
-until a polar-specific failure code, substepping, or adaptive refinement is
-implemented.
+At 256x256, small-`|L_z|` near-polar rays exposed a fixed-step f32 artifact in
+the first Task 4 commit: if the even grid sampled columns close to but not
+exactly on `alpha = 0`, RK4 could step over the narrow polar centrifugal
+barrier and report `solver_failure`, or use the shorter GPU affine-parameter
+budget and report `unclassified_max_lambda`. The follow-up shader adds
+near-polar substepping and reserves `polar_step_overshoot = 5`; the reviewed
+256x256 Kerr case now has zero solver/max-lambda failures.
 
 ## Phase 3 Quest PCVR
 

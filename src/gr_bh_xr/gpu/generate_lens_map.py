@@ -45,6 +45,24 @@ def write_gpu_lens_map(out: Path | str, lens_map: GpuLensMap, command: str = "")
         )
         handle.create_dataset("gpu_steps", data=lens_map.steps, compression="gzip", shuffle=True)
         handle.create_dataset(
+            "gpu_refinement_level",
+            data=lens_map.refinement_level,
+            compression="gzip",
+            shuffle=True,
+        )
+        handle.create_dataset(
+            "gpu_subpixel_capture_fraction",
+            data=lens_map.subpixel_capture_fraction,
+            compression="gzip",
+            shuffle=True,
+        )
+        handle.create_dataset(
+            "gpu_subpixel_invalid_fraction",
+            data=lens_map.subpixel_invalid_fraction,
+            compression="gzip",
+            shuffle=True,
+        )
+        handle.create_dataset(
             "event_rgba8", data=lens_map.event_rgba8, compression="gzip", shuffle=True
         )
         handle.create_dataset(
@@ -64,6 +82,8 @@ def generate_gpu_lens_map(
     steps: int,
     horizon_eps: float,
     out: Path | str,
+    critical_refine_band: float = GpuTraceConfig.critical_refine_band,
+    critical_refine_factor: int = GpuTraceConfig.critical_refine_factor,
     command: str = "",
 ) -> dict[str, object]:
     config = GpuTraceConfig(
@@ -76,6 +96,8 @@ def generate_gpu_lens_map(
         step_size=step_size,
         steps=steps,
         horizon_eps=horizon_eps,
+        critical_refine_band=critical_refine_band,
+        critical_refine_factor=critical_refine_factor,
     )
     lens_map = trace_lens_map(config)
     write_gpu_lens_map(out, lens_map, command=command)
@@ -90,6 +112,9 @@ def generate_gpu_lens_map(
         "grid": grid,
         "step_size": step_size,
         "steps": steps,
+        "critical_refine_band": critical_refine_band,
+        "critical_refine_factor": critical_refine_factor,
+        "refined_pixels": int(np.count_nonzero(lens_map.refinement_level > 1)),
         "event_counts": lens_map.event_counts,
         "failure_counts": lens_map.failure_counts,
         "h_max_abs": float(np.max(finite_h)) if finite_h.size else None,
@@ -108,6 +133,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--step-size", type=float, default=GpuTraceConfig.step_size)
     parser.add_argument("--steps", type=int, default=GpuTraceConfig.steps)
     parser.add_argument("--horizon-eps", type=float, default=GpuTraceConfig.horizon_eps)
+    parser.add_argument("--critical-refine-band", type=float, default=GpuTraceConfig.critical_refine_band)
+    parser.add_argument(
+        "--critical-refine-factor", type=int, default=GpuTraceConfig.critical_refine_factor
+    )
     parser.add_argument("--out", type=Path, required=True)
     return parser
 
@@ -125,6 +154,8 @@ def main() -> None:
         step_size=args.step_size,
         steps=args.steps,
         horizon_eps=args.horizon_eps,
+        critical_refine_band=args.critical_refine_band,
+        critical_refine_factor=args.critical_refine_factor,
         out=args.out,
         command=" ".join(sys.argv),
     )

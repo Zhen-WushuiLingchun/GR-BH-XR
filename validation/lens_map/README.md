@@ -27,7 +27,9 @@ Generated HDF5 and PDF outputs are intentionally written under
   counts.
 - The HDF5 file records `failure_code`, separating trace exceptions, solver
   failures, rays that reached `max_lambda` without a classified event, and
-  Boyer-Lindquist polar-axis coordinate singularities.
+  Boyer-Lindquist polar-axis coordinate singularities. The shared codebook also
+  reserves `polar_step_overshoot = 5` for GPU fixed-step near-polar artifacts;
+  Phase 1 CPU lens maps are not expected to emit that code.
 - The event-code grid contains both capture and escape samples for the default
   Schwarzschild `alpha_max = beta_max = 8M` run.
 - On odd grids, invalid pixels in the central `alpha = 0` column are expected

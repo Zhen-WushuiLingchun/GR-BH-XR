@@ -28,7 +28,9 @@ Generated GPU maps use schema `gr-bh-xr.phase2.gpu_lens_map.v1`.
 
 - axes: `alpha`, `beta`
 - GPU buffers: `gpu_event_code`, `gpu_failure_code`, `gpu_min_r`,
-  `gpu_h_max_abs`, `gpu_q_drift_abs`, `gpu_steps`
+  `gpu_h_max_abs`, `gpu_q_drift_abs`, `gpu_steps`,
+  `gpu_refinement_level`, `gpu_subpixel_capture_fraction`, and
+  `gpu_subpixel_invalid_fraction`
 - texture buffers: `event_rgba8`, `debug_rgba8`
 - comparison-only CPU buffers: `cpu_event_code`, `cpu_failure_code`,
   `cpu_min_r`
@@ -49,7 +51,8 @@ Failure codes also match Phase 1:
 
 ```text
 none=0, trace_exception=1, unclassified_max_lambda=2,
-solver_failure=3, axis_coordinate_singularity=4
+solver_failure=3, axis_coordinate_singularity=4,
+polar_step_overshoot=5
 ```
 
 ## CPU-vs-GPU Gate
@@ -67,6 +70,12 @@ Schwarzschild and Kerr `a=0.5`, `i=60 deg` 65x65 validation runs, with matching
 CPU/GPU capture fractions, full-grid event agreement of `100%`, and zero GPU
 failures outside exclusions.
 
+The default GPU map generator and validator now supersample the analytic
+critical-curve band with `critical_refine_band = 0.25 M` and
+`critical_refine_factor = 2`. Center-sample event codes remain available for
+CPU-vs-GPU comparison; the refinement data are stored separately as per-pixel
+level and subpixel fractions.
+
 ## Limitations
 
 The shader uses f32 arithmetic and fixed-step RK4. It is not expected to match
@@ -83,13 +92,14 @@ near-polar winding rays can reach the GPU budget first on finer grids.
 For the documented 256x256 Kerr example, the even grid has no exact
 `alpha = 0` column. A post-implementation review found 25 `solver_failure`
 pixels at `|alpha| ~= 0.0314` with `min_r` between roughly `2.2M` and `4.0M`,
-plus 4 nearby `unclassified_max_lambda` pixels. These are small-`|L_z|`
-near-polar fixed-step artifacts: f32 RK4 with `h = 0.05` can step over the
-narrow centrifugal barrier near the Boyer-Lindquist polar axis. They are not a
-new physical failure of Kerr lensing, and CPU DOP853 handles the same class
-with adaptive steps. Future GPU work should give this case an explicit failure
-code such as `polar_step_overshoot`, reduce/subdivide steps near the pole, or
-add adaptive refinement.
+plus 4 nearby `unclassified_max_lambda` pixels. These were small-`|L_z|`
+near-polar fixed-step artifacts: f32 RK4 with `h = 0.05` could step over the
+narrow centrifugal barrier near the Boyer-Lindquist polar axis. The follow-up
+shader adds near-polar substepping and a reserved `polar_step_overshoot` code.
+On the reviewed 256x256 Kerr case this reduced `solver_failure`,
+`unclassified_max_lambda`, and invalid counts to zero while refining 4102
+critical-band pixels. Future GPU work may still use the new code if more
+extreme parameters expose a polar overshoot.
 
 Observed f32 residual scale on the accepted 65x65 validation cases is
 diagnostic rather than pass/fail: escape-region `|H|` is around `2.4e-6`

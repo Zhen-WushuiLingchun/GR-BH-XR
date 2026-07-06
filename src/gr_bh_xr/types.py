@@ -21,6 +21,7 @@ FailureReason = Literal[
     "trace_exception",
     "unclassified_max_lambda",
     "solver_failure",
+    "polar_step_overshoot",
 ]
 FloatArray = NDArray[np.float64]
 

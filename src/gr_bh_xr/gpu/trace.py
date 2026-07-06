@@ -8,11 +8,15 @@ from typing import Any
 
 import numpy as np
 
+from gr_bh_xr.critical_curve import critical_curve_polygon
 from gr_bh_xr.gpu import SCHEMA_VERSION
 from gr_bh_xr.gpu.backend import backend_info, create_vulkan_device, require_wgpu
 from gr_bh_xr.gpu.codes import SCHEMA_EVENT_CODES, SCHEMA_FAILURE_CODES
 from gr_bh_xr.metric import horizon_radius
 from gr_bh_xr.types import MetricParams, TraceConfig
+
+
+_TRACE_CONTEXT = None
 
 
 @dataclass(frozen=True)
@@ -28,6 +32,11 @@ class GpuTraceConfig:
     horizon_eps: float = TraceConfig.horizon_eps
     axis_eps: float = TraceConfig.axis_eps
     axis_lz_tol: float = TraceConfig.axis_lz_tol
+    critical_refine_band: float = 0.25
+    critical_refine_factor: int = 2
+    polar_lz_substep_tol: float = 5.0e-2
+    polar_substep_theta: float = 2.0e-1
+    polar_substeps: int = 8
 
     def __post_init__(self) -> None:
         if self.grid < 2:
@@ -38,6 +47,16 @@ class GpuTraceConfig:
             raise ValueError("Fixed RK4 step_size must be positive.")
         if self.steps <= 0:
             raise ValueError("Fixed RK4 steps must be positive.")
+        if self.critical_refine_band < 0.0:
+            raise ValueError("critical_refine_band must be non-negative.")
+        if self.critical_refine_factor < 1:
+            raise ValueError("critical_refine_factor must be at least one.")
+        if self.polar_lz_substep_tol < 0.0:
+            raise ValueError("polar_lz_substep_tol must be non-negative.")
+        if self.polar_substep_theta < 0.0:
+            raise ValueError("polar_substep_theta must be non-negative.")
+        if self.polar_substeps < 1:
+            raise ValueError("polar_substeps must be at least one.")
 
     @property
     def theta_obs(self) -> float:
@@ -71,6 +90,11 @@ class GpuTraceConfig:
             "horizon_eps": self.horizon_eps,
             "axis_eps": self.axis_eps,
             "axis_lz_tol": self.axis_lz_tol,
+            "critical_refine_band": self.critical_refine_band,
+            "critical_refine_factor": self.critical_refine_factor,
+            "polar_lz_substep_tol": self.polar_lz_substep_tol,
+            "polar_substep_theta": self.polar_substep_theta,
+            "polar_substeps": self.polar_substeps,
             "coordinate_system": "Boyer-Lindquist exterior",
             "units": "G = c = M = 1 unless attrs[M] differs",
         }
@@ -88,6 +112,9 @@ class GpuLensMap:
     h_max_abs: np.ndarray
     q_drift_abs: np.ndarray
     steps: np.ndarray
+    refinement_level: np.ndarray
+    subpixel_capture_fraction: np.ndarray
+    subpixel_invalid_fraction: np.ndarray
     event_rgba8: np.ndarray
     debug_rgba8: np.ndarray
 
@@ -109,13 +136,51 @@ class GpuLensMap:
 def trace_lens_map(config: GpuTraceConfig) -> GpuLensMap:
     """Run the WGPU Vulkan fixed-step RK4 shader and return diagnostic buffers."""
 
-    wgpu = require_wgpu()
-    adapter, device = create_vulkan_device()
-    info = backend_info(adapter).as_dict()
     alpha, beta = config.axes()
-    n_pixels = config.grid * config.grid
+    aa, bb = np.meshgrid(alpha, beta)
+    result = _trace_screen_points(config, aa.ravel(), bb.ravel())
+    shape = (config.grid, config.grid)
+    event_code = result["event_code"].reshape(shape).astype(np.int16)
+    failure_code = result["failure_code"].reshape(shape).astype(np.int16)
+    steps = result["steps"].reshape(shape).astype(np.int32)
+    min_r = result["min_r"].reshape(shape).astype(np.float32)
+    h_max_abs = result["h_max_abs"].reshape(shape).astype(np.float32)
+    q_drift_abs = result["q_drift_abs"].reshape(shape).astype(np.float32)
+    refinement_level, subpixel_capture_fraction, subpixel_invalid_fraction = _refine_critical_band(
+        config, alpha, beta
+    )
+    event_rgba8 = event_to_rgba8(event_code, failure_code)
+    debug_rgba8 = scalar_to_rgba8(np.log10(np.maximum(h_max_abs, 1.0e-12)), invalid=event_code == 3)
 
+    return GpuLensMap(
+        config=config,
+        backend=result["backend"],
+        alpha=alpha,
+        beta=beta,
+        event_code=event_code,
+        failure_code=failure_code,
+        min_r=min_r,
+        h_max_abs=h_max_abs,
+        q_drift_abs=q_drift_abs,
+        steps=steps,
+        refinement_level=refinement_level,
+        subpixel_capture_fraction=subpixel_capture_fraction,
+        subpixel_invalid_fraction=subpixel_invalid_fraction,
+        event_rgba8=event_rgba8,
+        debug_rgba8=debug_rgba8,
+    )
+
+
+def _trace_screen_points(config: GpuTraceConfig, alpha: np.ndarray, beta: np.ndarray) -> dict[str, Any]:
+    wgpu, _adapter, device, pipeline, info = _get_trace_context()
+    points = np.stack(
+        [np.asarray(alpha, dtype=np.float32), np.asarray(beta, dtype=np.float32)], axis=1
+    ).astype(np.float32)
+    n_pixels = int(points.shape[0])
+    if n_pixels == 0:
+        return _empty_trace_result(info)
     params = _shader_params(config)
+    params[15] = float(n_pixels)
     params_buffer = device.create_buffer_with_data(
         label="gr-bh-xr gpu params",
         data=params,
@@ -131,12 +196,10 @@ def trace_lens_map(config: GpuTraceConfig) -> GpuLensMap:
         size=int(n_pixels * 3 * np.dtype(np.float32).itemsize),
         usage=wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_SRC,
     )
-
-    shader = device.create_shader_module(label="gr-bh-xr gpu rk4 shader", code=WGSL_SHADER)
-    pipeline = device.create_compute_pipeline(
-        label="gr-bh-xr gpu lens-map pipeline",
-        layout="auto",
-        compute={"module": shader, "entry_point": "main"},
+    screen_buffer = device.create_buffer_with_data(
+        label="gr-bh-xr gpu screen points",
+        data=points,
+        usage=wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST,
     )
     bind_group = device.create_bind_group(
         label="gr-bh-xr gpu lens-map bind group",
@@ -145,12 +208,13 @@ def trace_lens_map(config: GpuTraceConfig) -> GpuLensMap:
             {"binding": 0, "resource": {"buffer": params_buffer}},
             {"binding": 1, "resource": {"buffer": out_i32_buffer}},
             {"binding": 2, "resource": {"buffer": out_f32_buffer}},
+            {"binding": 3, "resource": {"buffer": screen_buffer}},
         ],
     )
     command_encoder = device.create_command_encoder(label="gr-bh-xr gpu lens-map commands")
     compute_pass = command_encoder.begin_compute_pass()
     compute_pass.set_pipeline(pipeline)
-    compute_pass.set_bind_group(0, bind_group, [], 0, 999999)
+    compute_pass.set_bind_group(0, bind_group)
     workgroups = math.ceil(n_pixels / 64)
     compute_pass.dispatch_workgroups(workgroups)
     compute_pass.end()
@@ -160,30 +224,105 @@ def trace_lens_map(config: GpuTraceConfig) -> GpuLensMap:
     out_f32 = np.frombuffer(device.queue.read_buffer(out_f32_buffer), dtype=np.float32).copy()
     out_i32 = out_i32.reshape((n_pixels, 3))
     out_f32 = out_f32.reshape((n_pixels, 3))
-    shape = (config.grid, config.grid)
-    event_code = out_i32[:, 0].reshape(shape).astype(np.int16)
-    failure_code = out_i32[:, 1].reshape(shape).astype(np.int16)
-    steps = out_i32[:, 2].reshape(shape).astype(np.int32)
-    min_r = out_f32[:, 0].reshape(shape).astype(np.float32)
-    h_max_abs = out_f32[:, 1].reshape(shape).astype(np.float32)
-    q_drift_abs = out_f32[:, 2].reshape(shape).astype(np.float32)
-    event_rgba8 = event_to_rgba8(event_code, failure_code)
-    debug_rgba8 = scalar_to_rgba8(np.log10(np.maximum(h_max_abs, 1.0e-12)), invalid=event_code == 3)
+    return {
+        "backend": info,
+        "event_code": out_i32[:, 0],
+        "failure_code": out_i32[:, 1],
+        "steps": out_i32[:, 2],
+        "min_r": out_f32[:, 0],
+        "h_max_abs": out_f32[:, 1],
+        "q_drift_abs": out_f32[:, 2],
+    }
 
-    return GpuLensMap(
-        config=config,
-        backend=info,
-        alpha=alpha,
-        beta=beta,
-        event_code=event_code,
-        failure_code=failure_code,
-        min_r=min_r,
-        h_max_abs=h_max_abs,
-        q_drift_abs=q_drift_abs,
-        steps=steps,
-        event_rgba8=event_rgba8,
-        debug_rgba8=debug_rgba8,
+
+def _empty_trace_result(info: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "backend": info,
+        "event_code": np.empty(0, dtype=np.int32),
+        "failure_code": np.empty(0, dtype=np.int32),
+        "steps": np.empty(0, dtype=np.int32),
+        "min_r": np.empty(0, dtype=np.float32),
+        "h_max_abs": np.empty(0, dtype=np.float32),
+        "q_drift_abs": np.empty(0, dtype=np.float32),
+    }
+
+
+def _get_trace_context():
+    global _TRACE_CONTEXT
+    if _TRACE_CONTEXT is None:
+        wgpu = require_wgpu()
+        adapter, device = create_vulkan_device()
+        shader = device.create_shader_module(label="gr-bh-xr gpu rk4 shader", code=WGSL_SHADER)
+        pipeline = device.create_compute_pipeline(
+            label="gr-bh-xr gpu lens-map pipeline",
+            layout="auto",
+            compute={"module": shader, "entry_point": "main"},
+        )
+        _TRACE_CONTEXT = (wgpu, adapter, device, pipeline, backend_info(adapter).as_dict())
+    return _TRACE_CONTEXT
+
+
+def _refine_critical_band(
+    config: GpuTraceConfig, alpha: np.ndarray, beta: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    shape = (config.grid, config.grid)
+    refinement_level = np.ones(shape, dtype=np.int16)
+    capture_fraction = np.zeros(shape, dtype=np.float32)
+    invalid_fraction = np.zeros(shape, dtype=np.float32)
+    if config.critical_refine_band <= 0.0 or config.critical_refine_factor <= 1:
+        return refinement_level, capture_fraction, invalid_fraction
+    mask = critical_band_mask(
+        config.params, config.theta_obs, alpha, beta, config.critical_refine_band
     )
+    if not np.any(mask):
+        return refinement_level, capture_fraction, invalid_fraction
+    alpha_step = 2.0 * config.alpha_max / float(config.grid - 1)
+    beta_step = 2.0 * config.beta_max / float(config.grid - 1)
+    factor = config.critical_refine_factor
+    offsets = (np.arange(factor, dtype=np.float32) + 0.5) / float(factor) - 0.5
+    aa, bb = np.meshgrid(alpha, beta)
+    sample_alpha: list[float] = []
+    sample_beta: list[float] = []
+    rows, cols = np.nonzero(mask)
+    for row, col in zip(rows, cols):
+        for db in offsets:
+            for da in offsets:
+                sample_alpha.append(float(aa[row, col] + da * alpha_step))
+                sample_beta.append(float(bb[row, col] + db * beta_step))
+    result = _trace_screen_points(
+        config, np.asarray(sample_alpha, dtype=np.float32), np.asarray(sample_beta, dtype=np.float32)
+    )
+    events = result["event_code"].reshape((rows.size, factor * factor))
+    refinement_level[mask] = factor
+    capture_fraction[mask] = np.mean(events == SCHEMA_EVENT_CODES["capture"], axis=1)
+    invalid_fraction[mask] = np.mean(events == SCHEMA_EVENT_CODES["invalid"], axis=1)
+    return refinement_level, capture_fraction, invalid_fraction
+
+
+def critical_band_mask(
+    params: MetricParams, theta_obs: float, alpha: np.ndarray, beta: np.ndarray, band: float
+) -> np.ndarray:
+    aa, bb = np.meshgrid(alpha, beta)
+    if band <= 0.0:
+        return np.zeros(aa.shape, dtype=bool)
+    if abs(params.a) <= 1.0e-12:
+        radius = np.sqrt(aa * aa + bb * bb)
+        return np.abs(radius - 3.0 * math.sqrt(3.0) * params.M) <= band
+    polygon = critical_curve_polygon(params, theta_obs, samples=1024)
+    points = np.stack([aa.ravel(), bb.ravel()], axis=1)
+    dist = np.full(points.shape[0], np.inf, dtype=np.float64)
+    for idx in range(polygon.shape[0]):
+        p = polygon[idx]
+        q = polygon[(idx + 1) % polygon.shape[0]]
+        segment = q - p
+        seg_len2 = float(segment @ segment)
+        if seg_len2 <= 0.0:
+            continue
+        rel = points - p
+        t = np.clip((rel @ segment) / seg_len2, 0.0, 1.0)
+        closest = p + t[:, None] * segment
+        dist = np.minimum(dist, np.linalg.norm(points - closest, axis=1))
+    return dist.reshape(aa.shape) <= band
 
 
 def _shader_params(config: GpuTraceConfig) -> np.ndarray:
@@ -206,8 +345,11 @@ def _shader_params(config: GpuTraceConfig) -> np.ndarray:
             config.axis_eps,
             config.axis_lz_tol,
             math.pi,
-            float(config.grid),
+            0.0,
             horizon_radius(config.params),
+            config.polar_lz_substep_tol,
+            config.polar_substep_theta,
+            float(config.polar_substeps),
         ],
         dtype=np.float32,
     )
@@ -225,6 +367,8 @@ def event_to_rgba8(event_code: np.ndarray, failure_code: np.ndarray) -> np.ndarr
     rgba[invalid] = np.array([210, 48, 64, 255], dtype=np.uint8)
     axis = invalid & (failure_code == SCHEMA_FAILURE_CODES["axis_coordinate_singularity"])
     rgba[axis] = np.array([255, 190, 32, 255], dtype=np.uint8)
+    polar = invalid & (failure_code == SCHEMA_FAILURE_CODES["polar_step_overshoot"])
+    rgba[polar] = np.array([188, 88, 255, 255], dtype=np.uint8)
     return rgba
 
 
@@ -258,10 +402,12 @@ const FAILURE_NONE: i32 = 0;
 const FAILURE_UNCLASSIFIED_MAX_LAMBDA: i32 = 2;
 const FAILURE_SOLVER_FAILURE: i32 = 3;
 const FAILURE_AXIS_COORDINATE_SINGULARITY: i32 = 4;
+const FAILURE_POLAR_STEP_OVERSHOOT: i32 = 5;
 
 @group(0) @binding(0) var<storage, read> params: array<f32>;
 @group(0) @binding(1) var<storage, read_write> out_i32: array<i32>;
 @group(0) @binding(2) var<storage, read_write> out_f32: array<f32>;
+@group(0) @binding(3) var<storage, read> screen_points: array<vec2<f32>>;
 
 struct State {
     t: f32,
@@ -431,6 +577,14 @@ fn rk4_step(s: State, h: f32) -> State {
     );
 }
 
+fn substep_count(s: State) -> u32 {
+    let pole_dist = min(s.th, params[14] - s.th);
+    if (abs(s.pph) <= params[17] && pole_dist <= params[18]) {
+        return max(1u, u32(params[19]));
+    }
+    return 1u;
+}
+
 fn initial_state(alpha: f32, beta: f32) -> State {
     let m = params[0];
     let a = params[1];
@@ -467,16 +621,13 @@ fn state_is_bad(s: State) -> bool {
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let grid = u32(params[15]);
-    let pixel_count = grid * grid;
+    let pixel_count = u32(params[15]);
     let idx = gid.x;
     if (idx >= pixel_count) {
         return;
     }
-    let row = idx / grid;
-    let col = idx - row * grid;
-    let alpha = params[4] + f32(col) * params[6];
-    let beta = params[5] + f32(row) * params[7];
+    let alpha = screen_points[idx].x;
+    let beta = screen_points[idx].y;
     let h = params[10];
     let max_steps = u32(params[11]);
     let axis_eps = params[12];
@@ -494,40 +645,61 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var q0 = carter_q(s);
     var qmin = q0;
     var qmax = q0;
+    var min_pole = min(s.th, pi - s.th);
     if (state_is_bad(s)) {
         failure = FAILURE_SOLVER_FAILURE;
     } else {
         for (var i = 0u; i < max_steps; i = i + 1u) {
-            s = rk4_step(s, h);
-            step_count = i + 1u;
-            if (state_is_bad(s) || s.r <= 0.0) {
-                failure = FAILURE_SOLVER_FAILURE;
+            let substeps = substep_count(s);
+            let dh = h / f32(substeps);
+            for (var sub = 0u; sub < substeps; sub = sub + 1u) {
+                s = rk4_step(s, dh);
+                step_count = step_count + 1u;
+                if (state_is_bad(s) || s.r <= 0.0) {
+                    failure = FAILURE_SOLVER_FAILURE;
+                    break;
+                }
+                min_r = min(min_r, s.r);
+                min_pole = min(min_pole, min(s.th, pi - s.th));
+                if (abs(s.pph) <= axis_lz_tol && min(s.th, pi - s.th) <= axis_eps) {
+                    failure = FAILURE_AXIS_COORDINATE_SINGULARITY;
+                    break;
+                }
+                if (s.th <= 0.0 || s.th >= pi) {
+                    if (abs(s.pph) <= params[17]) {
+                        failure = FAILURE_POLAR_STEP_OVERSHOOT;
+                    } else {
+                        failure = FAILURE_SOLVER_FAILURE;
+                    }
+                    break;
+                }
+                h_abs = abs(hamiltonian(s));
+                h_max = max(h_max, h_abs);
+                let qv = carter_q(s);
+                qmin = min(qmin, qv);
+                qmax = max(qmax, qv);
+                if (s.r <= capture_r) {
+                    event = EVENT_CAPTURE;
+                    failure = FAILURE_NONE;
+                    break;
+                }
+                if (s.r >= escape_r) {
+                    event = EVENT_ESCAPE;
+                    failure = FAILURE_NONE;
+                    break;
+                }
+            }
+            if (failure != FAILURE_UNCLASSIFIED_MAX_LAMBDA || event != EVENT_INVALID) {
                 break;
             }
-            min_r = min(min_r, s.r);
-            if (abs(s.pph) <= axis_lz_tol && min(s.th, pi - s.th) <= axis_eps) {
-                failure = FAILURE_AXIS_COORDINATE_SINGULARITY;
-                break;
-            }
-            if (s.th <= 0.0 || s.th >= pi) {
-                failure = FAILURE_SOLVER_FAILURE;
-                break;
-            }
-            h_abs = abs(hamiltonian(s));
-            h_max = max(h_max, h_abs);
-            let qv = carter_q(s);
-            qmin = min(qmin, qv);
-            qmax = max(qmax, qv);
-            if (s.r <= capture_r) {
-                event = EVENT_CAPTURE;
-                failure = FAILURE_NONE;
-                break;
-            }
-            if (s.r >= escape_r) {
-                event = EVENT_ESCAPE;
-                failure = FAILURE_NONE;
-                break;
-            }
+        }
+        if (
+            event == EVENT_INVALID
+            && failure == FAILURE_UNCLASSIFIED_MAX_LAMBDA
+            && abs(s.pph) <= params[17]
+            && min_pole <= params[18]
+        ) {
+            failure = FAILURE_POLAR_STEP_OVERSHOOT;
         }
     }
     let ibase = idx * 3u;

@@ -12,11 +12,10 @@ import tempfile
 import h5py
 import numpy as np
 
-from gr_bh_xr.critical_curve import critical_curve_polygon
 from gr_bh_xr.generate_lens_map import EVENT_CODES, FAILURE_CODES, generate_lens_map
 from gr_bh_xr.gpu.codes import SCHEMA_EVENT_CODES, SCHEMA_FAILURE_CODES
 from gr_bh_xr.gpu.generate_lens_map import write_gpu_lens_map
-from gr_bh_xr.gpu.trace import GpuLensMap, GpuTraceConfig, trace_lens_map
+from gr_bh_xr.gpu.trace import GpuLensMap, GpuTraceConfig, critical_band_mask, trace_lens_map
 from gr_bh_xr.metric import horizon_radius
 from gr_bh_xr.types import MetricParams
 
@@ -34,6 +33,8 @@ def validate_cpu_vs_gpu(
     horizon_eps: float,
     critical_band: float,
     out: Path | str,
+    critical_refine_band: float = GpuTraceConfig.critical_refine_band,
+    critical_refine_factor: int = GpuTraceConfig.critical_refine_factor,
     command: str = "",
 ) -> dict[str, object]:
     out = Path(out)
@@ -48,6 +49,8 @@ def validate_cpu_vs_gpu(
         step_size=step_size,
         steps=steps,
         horizon_eps=horizon_eps,
+        critical_refine_band=critical_refine_band,
+        critical_refine_factor=critical_refine_factor,
     )
     gpu_map = trace_lens_map(gpu_config)
     cpu = _generate_cpu_reference(
@@ -86,6 +89,9 @@ def validate_cpu_vs_gpu(
         "inclination_deg": inclination_deg,
         "grid": grid,
         "critical_band": critical_band,
+        "critical_refine_band": critical_refine_band,
+        "critical_refine_factor": critical_refine_factor,
+        "refined_pixels": int(np.count_nonzero(gpu_map.refinement_level > 1)),
         "backend": gpu_map.backend,
         "cpu_event_counts": _counts(cpu["event_code"], EVENT_CODES),
         "cpu_failure_counts": _counts(cpu["failure_code"], FAILURE_CODES),
@@ -146,8 +152,9 @@ def _compare(
     horizon_eps: float,
     critical_band: float,
 ) -> dict[str, object]:
-    aa, bb = np.meshgrid(alpha, beta)
-    critical_mask = _critical_band_mask(params, math.radians(inclination_deg), aa, bb, critical_band)
+    critical_mask = critical_band_mask(
+        params, math.radians(inclination_deg), alpha, beta, critical_band
+    )
     near_capture_radius = horizon_radius(params) + max(0.1 * params.M, 2.0 * horizon_eps)
     near_capture = cpu_min_r <= near_capture_radius
     cpu_ok = cpu_failure == FAILURE_CODES["none"]
@@ -188,31 +195,6 @@ def _compare(
         "near_capture_mask": near_capture.astype(np.uint8),
         "summary": summary,
     }
-
-
-def _critical_band_mask(
-    params: MetricParams, theta_obs: float, alpha: np.ndarray, beta: np.ndarray, band: float
-) -> np.ndarray:
-    if band <= 0.0:
-        return np.zeros(alpha.shape, dtype=bool)
-    if abs(params.a) <= 1.0e-12:
-        radius = np.sqrt(alpha * alpha + beta * beta)
-        return np.abs(radius - 3.0 * math.sqrt(3.0) * params.M) <= band
-    polygon = critical_curve_polygon(params, theta_obs, samples=1024)
-    points = np.stack([alpha.ravel(), beta.ravel()], axis=1)
-    dist = np.full(points.shape[0], np.inf, dtype=np.float64)
-    for idx in range(polygon.shape[0]):
-        p = polygon[idx]
-        q = polygon[(idx + 1) % polygon.shape[0]]
-        segment = q - p
-        seg_len2 = float(segment @ segment)
-        if seg_len2 <= 0.0:
-            continue
-        rel = points - p
-        t = np.clip((rel @ segment) / seg_len2, 0.0, 1.0)
-        closest = p + t[:, None] * segment
-        dist = np.minimum(dist, np.linalg.norm(points - closest, axis=1))
-    return dist.reshape(alpha.shape) <= band
 
 
 def _write_compare_file(
@@ -283,6 +265,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--steps", type=int, default=GpuTraceConfig.steps)
     parser.add_argument("--horizon-eps", type=float, default=GpuTraceConfig.horizon_eps)
     parser.add_argument("--critical-band", type=float, default=0.25)
+    parser.add_argument("--critical-refine-band", type=float, default=GpuTraceConfig.critical_refine_band)
+    parser.add_argument(
+        "--critical-refine-factor", type=int, default=GpuTraceConfig.critical_refine_factor
+    )
     parser.add_argument("--out", type=Path, required=True)
     return parser
 
@@ -301,6 +287,8 @@ def main() -> None:
         steps=args.steps,
         horizon_eps=args.horizon_eps,
         critical_band=args.critical_band,
+        critical_refine_band=args.critical_refine_band,
+        critical_refine_factor=args.critical_refine_factor,
         out=args.out,
         command=" ".join(sys.argv),
     )
