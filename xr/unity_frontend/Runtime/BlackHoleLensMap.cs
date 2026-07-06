@@ -16,6 +16,7 @@ namespace GRBHXR
         public ScreenConvention screenConvention;
         public ScreenBounds screen;
         public UnityBasis unityBasisInBhCoordinates;
+        public SourceAttributes sourceAttributes;
     }
 
     [Serializable]
@@ -56,6 +57,12 @@ namespace GRBHXR
         public float[] upBh;
         public float[] forwardBh;
         public string mapping;
+    }
+
+    [Serializable]
+    public sealed class SourceAttributes
+    {
+        public float r_obs;
     }
 
     public sealed class BlackHoleLensMap : MonoBehaviour
@@ -119,6 +126,28 @@ namespace GRBHXR
             }
             material.SetTexture("_EventTex", EventTexture);
             material.SetTexture("_EscapeDirTex", EscapeDirectionTexture);
+            if (Metadata.screen != null)
+            {
+                material.SetVector(
+                    "_LensScreenBounds",
+                    new Vector4(
+                        Metadata.screen.alphaMin,
+                        Metadata.screen.alphaMax,
+                        Metadata.screen.betaMin,
+                        Metadata.screen.betaMax
+                    )
+                );
+            }
+            material.SetFloat("_LensRObs", ObserverRadiusOrDefault());
+        }
+
+        private float ObserverRadiusOrDefault()
+        {
+            if (Metadata != null && Metadata.sourceAttributes != null && Metadata.sourceAttributes.r_obs > 0.0f)
+            {
+                return Metadata.sourceAttributes.r_obs;
+            }
+            return 100.0f;
         }
 
         private static Texture2D LoadRawTexture(

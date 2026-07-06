@@ -176,3 +176,4 @@ def test_plot_disk_transfer_renders_luminet_style_pdf(tmp_path):
     assert summary["schema"] == SCHEMA
     assert summary["valid_by_order"][0] > 0
     assert len(summary["valid_by_order"]) == 2
+    assert summary["visual_beta_flipped"] is True

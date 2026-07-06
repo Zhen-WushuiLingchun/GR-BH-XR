@@ -64,11 +64,26 @@ For the first PCVR pass:
    `GR-BH-XR/Kerr Lens Static Preview`.
 6. Assign a test cubemap to `_SkyboxCubemap`.
 
-The preview shader samples the Unity-space direction texture for escaped rays
-and falls back to `event_rgba8` for capture or invalid pixels. The sampled
-direction is transformed by the lens-screen object's world rotation before
-the cubemap lookup, so the texture package can be placed on a rotated screen
-or used during headset motion without silently rotating the background sky.
+The preview shader treats the lens screen as an angular window, not as a
+physical photograph on a billboard. For each fragment it computes the world
+view ray, transforms that ray into the lens-screen object's local basis, maps
+the local angular coordinates to `(alpha, beta)`, and samples the lens map only
+inside the metadata screen bounds. Pixels outside that angular window sample
+the cubemap directly. This removes the obvious perspective ellipse that appears
+when a flat quad is viewed at an angle.
+
+For capture/invalid pixels inside the angular window, the shader falls back to
+`event_rgba8`. For escaped rays, the sampled Unity-local escape direction is
+transformed by the lens-screen object's world rotation before the cubemap
+lookup, so the cubemap axis stays tied to the scene instead of to raw texture
+rows.
+
+This is still a static-observer approximation. The angular lookup assumes the
+metadata `r_obs`, spin, inclination, and screen bounds used when the texture was
+generated. Head rotation is appropriate for the desktop/PCVR gate; physical
+head translation would require regenerating or interpolating a different
+transfer map.
+
 During display resampling, direction vectors are bilinearly interpolated and
 renormalized. If interpolation cancels to a near-zero vector, the exporter marks
 that texel invalid instead of writing a direction that would normalize to NaN.
@@ -133,9 +148,12 @@ choice prevents silent left-right mirror errors when the texture is consumed in
 Unity.
 
 Square exported screen windows, such as `alpha,beta in [-8M, 8M]`, should be
-displayed on a square quad unless the HDF5 source was generated with matching
-non-square screen bounds. Stretching a square lens map to a 16:9 display turns
-the shadow into an artificial ellipse and is not a physics result.
+displayed with a square angular window unless the HDF5 source was generated
+with matching non-square screen bounds. Stretching a square lens map to a 16:9
+display turns the shadow into an artificial ellipse and is not a physics
+result. In the provided desktop setup, the mesh is deliberately oversized so it
+acts as a screen-space pass; the shader's angular window decides where the lens
+map is active.
 
 ## Current Scope
 

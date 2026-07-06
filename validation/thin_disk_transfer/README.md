@@ -44,10 +44,32 @@ python -m gr_bh_xr.generate_disk_transfer --spin 0 --inclination-deg 80 --grid 6
 python -m gr_bh_xr.plot_disk_transfer --input outputs/task6/disk_transfer_luminet_i80.h5 --out outputs/task6/luminet_equal_radius_i80.pdf
 ```
 
+For the formal Luminet-orientation check, prefer an even grid or a small
+`alpha` offset so the grid does not sample `alpha = 0` exactly:
+
+```text
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.generate_disk_transfer --spin 0 --inclination-deg 80 --grid 64 --alpha-max 30 --beta-max 30 --r-out 30 --max-order 2 --out outputs/task6/disk_transfer_luminet_i80_64_even.h5
+python -m gr_bh_xr.plot_disk_transfer --input outputs/task6/disk_transfer_luminet_i80_64_even.h5 --out outputs/task6/luminet_equal_radius_i80_64_even.pdf
+```
+
 This figure is a geometric transfer diagnostic: it shows direct (`m = 0`) and
 secondary (`m = 1`) equal-radius curves plus the direct-image redshift buffer.
 It is not yet a Luminet intensity image because emissivity, optical depth, and
 observed intensity are still deferred.
+
+`plot_disk_transfer` displays the vertical axis as visual beta, matching the
+Unity export convention. The raw solver coordinate `+beta` increases
+Boyer-Lindquist `theta`, which is visually downward on the observer screen, so
+the plot reverses the raw beta rows and labels the axis as
+`visual beta / M (up = - solver beta)`.
+
+The Boyer-Lindquist exterior solver still terminates `L_z = 0` rays at the
+polar-axis coordinate singularity. In a high-inclination Schwarzschild disk
+plot this can remove a narrow far-side secondary arch near `alpha = 0`.
+Avoiding an exact `alpha = 0` sample makes the surrounding arch visible, but it
+does not remove the underlying coordinate limitation; an axis-regular or
+Kerr-Schild continuation remains the physical fix.
 
 ## HDF5 Schema
 

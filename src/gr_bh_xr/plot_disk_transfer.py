@@ -41,11 +41,21 @@ def plot_disk_transfer(
         raise ValueError("disk_r_m must have shape (max_order, grid, grid).")
 
     max_order = disk_r.shape[0]
-    extent = [float(alpha[0]), float(alpha[-1]), float(beta[0]), float(beta[-1])]
+    visual_beta = -beta[::-1]
+    visual_disk_r = disk_r[:, ::-1, :]
+    visual_disk_g = disk_g[:, ::-1, :]
+    extent = [
+        float(alpha[0]),
+        float(alpha[-1]),
+        float(visual_beta[0]),
+        float(visual_beta[-1]),
+    ]
     levels = np.linspace(r_in, r_out, contour_count)
-    order0 = disk_r[0] if max_order >= 1 else np.full((len(beta), len(alpha)), np.nan)
-    order1 = disk_r[1] if max_order >= 2 else np.full_like(order0, np.nan)
-    g0 = disk_g[0] if max_order >= 1 else np.full_like(order0, np.nan)
+    order0 = (
+        visual_disk_r[0] if max_order >= 1 else np.full((len(visual_beta), len(alpha)), np.nan)
+    )
+    order1 = visual_disk_r[1] if max_order >= 2 else np.full_like(order0, np.nan)
+    g0 = visual_disk_g[0] if max_order >= 1 else np.full_like(order0, np.nan)
 
     fig, axes = plt.subplots(1, 3, figsize=(15.0, 4.8), constrained_layout=True)
     fig.suptitle(
@@ -56,7 +66,7 @@ def plot_disk_transfer(
     _plot_equal_radius_panel(
         axes[0],
         alpha,
-        beta,
+        visual_beta,
         order0,
         levels,
         title="m=0 direct image: equal r_m",
@@ -64,7 +74,7 @@ def plot_disk_transfer(
     _plot_equal_radius_panel(
         axes[1],
         alpha,
-        beta,
+        visual_beta,
         order1,
         levels,
         title="m=1 secondary image: equal r_m",
@@ -80,7 +90,7 @@ def plot_disk_transfer(
     )
     axes[2].set_title("m=0 redshift factor g")
     axes[2].set_xlabel("alpha / M")
-    axes[2].set_ylabel("beta / M")
+    axes[2].set_ylabel("visual beta / M (up = - solver beta)")
     fig.colorbar(g_image, ax=axes[2], label="g")
 
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -95,6 +105,7 @@ def plot_disk_transfer(
             int(np.count_nonzero(np.isfinite(disk_r[order]))) for order in range(max_order)
         ],
         "levels": [float(value) for value in levels],
+        "visual_beta_flipped": True,
     }
 
 
@@ -127,7 +138,7 @@ def _plot_equal_radius_panel(
             axis.clabel(contour, inline=True, fontsize=7, fmt="%.1f")
     axis.set_title(title)
     axis.set_xlabel("alpha / M")
-    axis.set_ylabel("beta / M")
+    axis.set_ylabel("visual beta / M (up = - solver beta)")
     axis.set_aspect("equal", adjustable="box")
 
 

@@ -270,13 +270,22 @@ def test_unity_preview_shader_samples_cubemap_in_world_space():
     shader = (UNITY_RUNTIME_DIR / "BlackHoleLensStaticPreview.shader").read_text(encoding="utf8")
 
     assert "unity_ObjectToWorld" in shader
-    assert "texCUBE(_SkyboxCubemap, worldDir)" in shader
+    assert "unity_WorldToObject" in shader
+    assert "_WorldSpaceCameraPos" in shader
+    assert "_LensScreenBounds" in shader
+    assert "_LensRObs" in shader
+    assert "float beta = -_LensRObs * localRay.y / localRay.z" in shader
+    assert "texCUBE(_SkyboxCubemap, worldRay)" in shader
 
 
 def test_unity_lens_map_loader_keeps_raw_textures_linear():
     source = (UNITY_RUNTIME_DIR / "BlackHoleLensMap.cs").read_text(encoding="utf8")
 
     assert "new Texture2D(width, height, format, mipChain: false, linear: true)" in source
+    assert "sourceAttributes" in source
+    assert "SetVector(" in source
+    assert '"_LensScreenBounds"' in source
+    assert '"_LensRObs"' in source
 
 
 def _unity_to_bh(

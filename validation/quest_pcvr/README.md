@@ -68,9 +68,13 @@ Acceptance for this gate:
   camera-to-black-hole direction to Unity `+Z`.
 - The Unity package under `xr/unity_frontend/` can load the raw bytes into
   `TextureFormat.RGBA32` and `TextureFormat.RGBAFloat` textures.
-- The Unity preview shader transforms stored local Unity directions by the
-  lens-screen object-to-world rotation before cubemap sampling, so head motion
-  or a rotated quad does not silently rotate the sampled sky.
+- The Unity preview shader computes a world view ray per fragment, projects it
+  into the lens-screen local basis, maps the resulting angular coordinates to
+  `(alpha, beta)`, and samples the lens map only inside the metadata screen
+  bounds. Pixels outside the angular window sample the same cubemap directly.
+- The Unity preview shader transforms stored local Unity escape directions by
+  the lens-screen object-to-world rotation before cubemap sampling, so the
+  background sky does not silently rotate with raw texture rows.
 - A weak-deflection directional regression test confirms the right/top screen
   signs: right-up exported pixels have `x_unity > 0`, `y_unity > 0`, while
   right-down pixels have `x_unity > 0`, `y_unity < 0`.
@@ -85,11 +89,15 @@ Unity Editor on a normal desktop display:
 - Use a recognizable real-sky cubemap or equirectangular sky converted to a
   cubemap. Do not use random stars or procedural noise for the coordinate
   check because those can hide mirror errors.
-- Put a square quad in front of the camera for square `alpha/beta` packages.
-  Do not stretch a square lens map to the display aspect ratio; that turns a
-  circular/weakly D-shaped shadow into an artificial ellipse.
+- Use the angular-window preview shader rather than judging a lens map as a
+  flat billboard. A deliberately oversized screen mesh is acceptable because
+  pixels outside the metadata angular window fall back to the cubemap directly.
+  Do not stretch the angular window itself to the display aspect ratio; that
+  turns a circular/weakly D-shaped shadow into an artificial ellipse.
 - The quad material uses `GR-BH-XR/Kerr Lens Static Preview`; the scene skybox
-  uses the same cubemap directly.
+  uses the same cubemap directly. The main camera clear flags should be
+  `Skybox`, not `Solid Color`, otherwise the area outside any preview mesh can
+  appear black even when the material is correctly bound.
 - A recognizable constellation should keep its handedness inside the lens-map
   quad.
 - The Kerr package should show the expected asymmetric/D-shaped shadow and
@@ -99,9 +107,14 @@ Unity Editor on a normal desktop display:
 Do not require quad-edge continuity for the current `alpha_max = beta_max = 8M`
 packages. At `r_obs = 100M`, rays at the map edge are still significantly
 deflected, so the lensed quad interior is not expected to match the unlensed
-skybox outside the quad. Edge-continuity checks require either a full-camera
-lens-map pass or a much wider map, such as `alpha_max ~= 40-60M`, with the
-quad/camera angular size calibrated to `2 atan(alpha_max / r_obs)`.
+skybox outside the angular window. Edge-continuity checks require either a much
+wider map, such as `alpha_max ~= 40-60M`, with the camera angular size
+calibrated to `2 atan(alpha_max / r_obs)`, or a full-camera transfer map.
+
+The current angular-window shader supports head rotation for the static map
+because every fragment is keyed by world view direction. It does not make a
+new physical claim for head translation: the baked map still assumes the
+single observer radius and inclination recorded in `lens_map_metadata.json`.
 
 Record the result as a dated note in this directory. Store screenshots beside
 the note when they are produced; generated Unity project state should stay out
