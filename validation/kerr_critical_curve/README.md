@@ -67,7 +67,7 @@ primary pass/fail condition for this curve comparison.
 The pass/fail criterion for this validator is the capture/escape boundary error
 and invalid-event count. The JSON keeps the legacy aggregate
 `worst_diagnostics` field and also writes `diagnostic_groups.outer` and
-`diagnostic_groups.outer` and `diagnostic_groups.near_capture`, split at:
+`diagnostic_groups.near_capture`, split at:
 
 ```text
 min_r <= r_+ + max(0.1 M, 2 horizon_eps)

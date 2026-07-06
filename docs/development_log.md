@@ -19,6 +19,26 @@ from here.
 
 ## Log
 
+### 2026-07-06 - Phase 1 closeout review
+
+- Goal: Record that Phase 1 CPU Kerr reference solver work has passed external
+  review and can close before Task 4 GPU work begins.
+- Changed files / components: Documentation only.
+- Academic reason: Preserve the review boundary between the auditable CPU
+  baseline and the upcoming GPU real-time Kerr lensing implementation.
+- Physical correspondence: No equations or solver behavior changed. The review
+  independently checked the analytic inverse-metric derivatives, axis failure
+  classification, Kerr critical-curve validation, and lens-map audit outputs.
+- Assumptions and conventions: Phase 1 remains a Python Boyer-Lindquist
+  exterior reference solver. Axis-regular or Kerr-Schild continuation is
+  deferred and is not blocking Task 4 CPU-vs-GPU fixed-case comparison work.
+- Validation: External review accepted `96e0c35`; local docs check pending for
+  this closeout note.
+- References: Same Phase 1 analytic sources listed in `docs/equations.md`.
+- Open issues / next steps: Begin Task 4 GPU Kerr lensing planning and
+  implementation. Remaining non-blocking Phase 1 follow-ups are
+  winding/image-order diagnostics and future axis-regular continuation.
+
 ### 2026-07-06 - Phase 1.2 axis classification and analytic derivatives
 
 - Goal: Close the remaining Phase 1 audit issues before GPU work by correcting
