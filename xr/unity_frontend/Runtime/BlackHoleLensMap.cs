@@ -82,6 +82,8 @@ namespace GRBHXR
         [SerializeField] private TextAsset fullSkyMetadataJson;
         [SerializeField] private TextAsset eventCubeRgba8Bytes;
         [SerializeField] private TextAsset escapeDirectionUnityCubeRgba32fBytes;
+        [SerializeField] private TextAsset diskOrder0TransferCubeRgba16fBytes;
+        [SerializeField] private TextAsset diskOrder1TransferCubeRgba16fBytes;
 
         public LensMapMetadata Metadata { get; private set; }
         public FullSkyTransferMetadata FullSkyMetadata { get; private set; }
@@ -89,6 +91,8 @@ namespace GRBHXR
         public Texture2D EscapeDirectionTexture { get; private set; }
         public Cubemap EventCube { get; private set; }
         public Cubemap EscapeDirectionCube { get; private set; }
+        public Cubemap DiskOrder0Cube { get; private set; }
+        public Cubemap DiskOrder1Cube { get; private set; }
 
         private void Awake()
         {
@@ -150,6 +154,15 @@ namespace GRBHXR
             {
                 material.SetTexture("_EscapeDirCube", EscapeDirectionCube);
             }
+            material.SetFloat("_UseDiskTransfer", DiskOrder0Cube != null ? 1.0f : 0.0f);
+            if (DiskOrder0Cube != null)
+            {
+                material.SetTexture("_DiskOrder0Cube", DiskOrder0Cube);
+            }
+            if (DiskOrder1Cube != null)
+            {
+                material.SetTexture("_DiskOrder1Cube", DiskOrder1Cube);
+            }
             if (Metadata.screen != null)
             {
                 material.SetVector(
@@ -197,6 +210,8 @@ namespace GRBHXR
                 FullSkyMetadata = null;
                 EventCube = null;
                 EscapeDirectionCube = null;
+                DiskOrder0Cube = null;
+                DiskOrder1Cube = null;
                 return;
             }
 
@@ -219,6 +234,22 @@ namespace GRBHXR
                 TextureFormat.RGBAFloat,
                 expectedBytesPerPixel: 16,
                 name: "GR-BH-XR full-sky escape_dir_unity_cube_rgba32f",
+                filterMode: FilterMode.Bilinear
+            );
+            DiskOrder0Cube = LoadOptionalRawCubemap(
+                diskOrder0TransferCubeRgba16fBytes,
+                FullSkyMetadata.faceSize,
+                TextureFormat.RGBAHalf,
+                expectedBytesPerPixel: 8,
+                name: "GR-BH-XR full-sky disk_order0_transfer_cube_rgba16f",
+                filterMode: FilterMode.Bilinear
+            );
+            DiskOrder1Cube = LoadOptionalRawCubemap(
+                diskOrder1TransferCubeRgba16fBytes,
+                FullSkyMetadata.faceSize,
+                TextureFormat.RGBAHalf,
+                expectedBytesPerPixel: 8,
+                name: "GR-BH-XR full-sky disk_order1_transfer_cube_rgba16f",
                 filterMode: FilterMode.Bilinear
             );
         }
@@ -303,6 +334,22 @@ namespace GRBHXR
             }
             texture.Apply(updateMipmaps: false, makeNoLongerReadable: true);
             return texture;
+        }
+
+        private static Cubemap LoadOptionalRawCubemap(
+            TextAsset bytes,
+            int faceSize,
+            TextureFormat format,
+            int expectedBytesPerPixel,
+            string name,
+            FilterMode filterMode
+        )
+        {
+            if (bytes == null)
+            {
+                return null;
+            }
+            return LoadRawCubemap(bytes, faceSize, format, expectedBytesPerPixel, name, filterMode);
         }
     }
 }

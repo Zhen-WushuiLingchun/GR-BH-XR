@@ -73,11 +73,34 @@ observer tetrad and writes:
 - `full_sky_transfer_metadata.json`;
 - `event_cube_rgba8.bytes`;
 - `escape_dir_unity_cube_rgba32f.bytes`.
+- optional Task 6 disk-transfer cubemaps
+  `disk_order0_transfer_cube_rgba16f.bytes` and
+  `disk_order1_transfer_cube_rgba16f.bytes`.
 
 The 2026-07-07 local RTX 5080 Laptop GPU run at `face-size = 1024` produced
 `6291456` cubemap texels with `capture = 2023`, `escape = 6289433`, and
 `invalid = 0`. The event cube was `25165824` bytes and the Unity escape-
 direction cube was `100663296` bytes.
+
+When the disk-transfer cubemaps are present, each order stores one raw
+little-endian `RGBAHalf` cubemap with channels
+`(r_m, sin(phi_m), cos(phi_m), g_m)`. A zero texel means there was no finite
+annulus hit for that true equatorial crossing order. The order index is the
+crossing order `m`, not the count of hits that survived the annulus filter.
+This keeps the full-sky package compatible with the thin-disk shader path
+without introducing a second finite `alpha,beta` window.
+
+The first local disk-capable full-sky smoke/display package used
+`face-size = 512`, Kerr `a = 0.9`, `i = 60 deg`, and `r_obs = 100M`:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.gpu.generate_transfer_cubemap --spin 0.9 --inclination-deg 60 --face-size 512 --r-obs 100 --steps 8000 --out-dir outputs/task6/fullsky_disk_kerr_a0.9_i60_512
+```
+
+It produced `1572864` cubemap texels with `capture = 510`, `escape = 1572354`,
+`invalid = 0`, disk valid counts `[11826, 335]` for `m = 0, 1`, one
+`25165824` byte escape-direction cube, and two `12582912` byte disk cubes.
 
 The finite-observer tetrad path has its own CPU-vs-GPU gate because it does
 not share the Bardeen screen initialization used by the local `alpha,beta`

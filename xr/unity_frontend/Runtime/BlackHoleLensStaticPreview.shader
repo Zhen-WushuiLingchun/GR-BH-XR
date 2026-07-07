@@ -6,11 +6,15 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
         _EscapeDirTex ("Escape Direction Texture", 2D) = "black" {}
         _EventCube ("Full-Sky Event Cube", Cube) = "" {}
         _EscapeDirCube ("Full-Sky Escape Direction Cube", Cube) = "" {}
+        _DiskOrder0Cube ("Disk Order 0 Transfer Cube", Cube) = "" {}
+        _DiskOrder1Cube ("Disk Order 1 Transfer Cube", Cube) = "" {}
         _SkyboxCubemap ("Skybox Cubemap", Cube) = "" {}
         _LensScreenBounds ("Lens Screen Bounds", Vector) = (-8, 8, -8, 8)
         _LensRObs ("Lens Observer Radius", Float) = 100
         _UseAngularWindow ("Use Angular Window", Float) = 0
         _UseFullSkyTransfer ("Use Full-Sky Transfer", Float) = 0
+        _UseDiskTransfer ("Use Disk Transfer", Float) = 0
+        _DiskAuditMode ("Disk Audit Mode", Float) = 0
         _ProbeMode ("Probe Mode", Float) = 0
         _LensWorldRight ("Lens World Right", Vector) = (1, 0, 0, 0)
         _LensWorldUp ("Lens World Up", Vector) = (0, 1, 0, 0)
@@ -35,11 +39,15 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
             sampler2D _EscapeDirTex;
             samplerCUBE _EventCube;
             samplerCUBE _EscapeDirCube;
+            samplerCUBE _DiskOrder0Cube;
+            samplerCUBE _DiskOrder1Cube;
             samplerCUBE _SkyboxCubemap;
             float4 _LensScreenBounds;
             float _LensRObs;
             float _UseAngularWindow;
             float _UseFullSkyTransfer;
+            float _UseDiskTransfer;
+            float _DiskAuditMode;
             float _ProbeMode;
             float4 _LensWorldRight;
             float4 _LensWorldUp;
@@ -100,6 +108,30 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 return fixed4(encoded, 0.0, 1.0 - encoded, 1.0);
             }
 
+            bool diskSampleValid(float4 disk)
+            {
+                return disk.x > 0.0 && disk.w > 0.0;
+            }
+
+            fixed4 diskAuditColor(float4 disk, float order)
+            {
+                if (!diskSampleValid(disk))
+                {
+                    return fixed4(0.0, 0.0, 0.0, 1.0);
+                }
+                float g = saturate((disk.w - 0.45) / 0.95);
+                float3 color = lerp(float3(0.08, 0.22, 1.0), float3(1.0, 0.18, 0.04), g);
+                if (order > 0.5)
+                {
+                    color = lerp(color, float3(1.0, 0.15, 0.95), 0.35);
+                }
+                float radiusPhase = frac(disk.x / 2.0);
+                float radiusDistance = min(radiusPhase, 1.0 - radiusPhase);
+                float radialLine = smoothstep(0.015, 0.055, radiusDistance);
+                color = lerp(float3(0.0, 0.0, 0.0), color, radialLine);
+                return fixed4(color, 1.0);
+            }
+
             fixed4 frag(v2f i) : SV_Target
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
@@ -109,6 +141,12 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 float alphaMax = _LensScreenBounds.y;
                 float betaMin = _LensScreenBounds.z;
                 float betaMax = _LensScreenBounds.w;
+                if (_UseDiskTransfer > 0.5 && _DiskAuditMode > 0.5)
+                {
+                    float4 disk0 = texCUBE(_DiskOrder0Cube, localRay);
+                    float4 disk1 = texCUBE(_DiskOrder1Cube, localRay);
+                    return _DiskAuditMode > 1.5 ? diskAuditColor(disk1, 1.0) : diskAuditColor(disk0, 0.0);
+                }
 
                 fixed4 fullSkyColor = fixed4(0.0, 0.0, 0.0, 1.0);
                 if (_UseFullSkyTransfer > 0.5)

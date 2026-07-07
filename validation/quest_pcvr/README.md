@@ -221,6 +221,41 @@ needs either a much higher-resolution all-sky map, such as 32K/64K class, a
 high-resolution local sky patch, or a procedural/catalog starfield designed for
 the chosen angular FOV.
 
+## Thin-Disk Unity Audit Gate
+
+Task 6 disk transfer enters Unity first as an audit visualization, not as a
+finished accretion-disk beauty shader. The full-sky transfer package may include
+two optional `RGBAHalf` cubemaps:
+
+- `disk_order0_transfer_cube_rgba16f.bytes`
+- `disk_order1_transfer_cube_rgba16f.bytes`
+
+Their channels are `(r_m, sin(phi_m), cos(phi_m), g_m)`. A zero `r_m` / `g_m`
+texel means that order has no finite emitting-annulus hit. The shader audit
+mode renders `g_m` as a blue-to-red false color and overlays equal-`r_m` bands,
+so it can be compared against CPU Luminet-style transfer plots before any
+emissivity, color temperature, or animation is added.
+
+Local 2026-07-07 disk audit commands:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.gpu.generate_transfer_cubemap --spin 0.9 --inclination-deg 60 --face-size 512 --r-obs 100 --steps 8000 --out-dir outputs/task6/fullsky_disk_kerr_a0.9_i60_512
+
+$unity = 'D:\unity\Hub\Editor\6000.5.2f1\Editor\Unity.exe'
+$proj = 'F:\UnityProjects\GRBHXR_PCVR_Gate\GRBHXR_PCVR_Gate'
+& $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRGateAutomation.BatchCaptureFullSkyDiskAuditGate -grbhxrCaptureDir 'F:\UnityProjects\GRBHXR_PCVR_Gate\unity_gate_fullsky_disk_audit_512' -grbhxrFullSkyTransferDir Assets/GRBHXR/FullSkyTransferDisk512
+```
+
+The 512-face package had disk valid counts `[11826, 335]` for `m = 0, 1` and
+zero invalid rays. The Unity audit run wrote
+`unity_gate_fullsky_disk_audit_m0_square_1024.png` and
+`unity_gate_fullsky_disk_audit_m1_square_1024.png`. The `m = 0` image shows a
+continuous equal-radius field around the Kerr shadow; the `m = 1` image isolates
+the secondary-image band near the shadow edge. These screenshots are still
+audit artifacts: the visual disk shader with `g^p` weighting, blackbody color,
+Keplerian pattern advection, and time-delay use remains a later step.
+
 ## Headset Runtime Protocol
 
 The following checks are still pending and must be recorded before claiming a

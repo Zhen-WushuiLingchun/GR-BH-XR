@@ -291,6 +291,10 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     assert "_UseFullSkyTransfer" in shader
     assert "_EscapeDirCube" in shader
     assert "_EventCube" in shader
+    assert "_DiskOrder0Cube" in shader
+    assert "_DiskOrder1Cube" in shader
+    assert "_UseDiskTransfer" in shader
+    assert "_DiskAuditMode" in shader
     assert "_ProbeMode" in shader
     assert "_LensWorldRight" in shader
     assert "_LensWorldUp" in shader
@@ -310,6 +314,9 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     assert "worldDirectionToLens(worldRay)" in shader
     assert "lensDirectionToWorld(dir.xyz)" in shader
     assert "if (_UseFullSkyTransfer > 0.5)" in shader
+    assert "diskAuditColor" in shader
+    assert "texCUBE(_DiskOrder0Cube, localRay)" in shader
+    assert "texCUBE(_DiskOrder1Cube, localRay)" in shader
     assert "texCUBE(_EscapeDirCube, localRay)" in shader
     assert "texCUBE(_EventCube, localRay)" in shader
     assert "fullSkyColor" in shader
@@ -331,10 +338,16 @@ def test_unity_lens_map_loader_keeps_raw_textures_linear():
     assert "sourceAttributes" in source
     assert "FullSkyTransferMetadata" in source
     assert "LoadFullSkyCubemapIfPresent" in source
+    assert "diskOrder0TransferCubeRgba16fBytes" in source
+    assert "diskOrder1TransferCubeRgba16fBytes" in source
+    assert "TextureFormat.RGBAHalf" in source
     assert "SetVector(" in source
     assert '"_UseFullSkyTransfer"' in source
     assert '"_EscapeDirCube"' in source
     assert '"_EventCube"' in source
+    assert '"_DiskOrder0Cube"' in source
+    assert '"_DiskOrder1Cube"' in source
+    assert '"_UseDiskTransfer"' in source
     assert '"_LensScreenBounds"' in source
     assert '"_LensRObs"' in source
     assert '"_LensWorldRight"' in source
@@ -358,14 +371,18 @@ def test_unity_editor_gate_automation_is_versioned():
     assert "BatchCaptureProtractorBands" in source
     assert "BatchCaptureAngularWindowYawGate" in source
     assert "BatchCaptureFullSkyProtractorYawGate" in source
+    assert "BatchCaptureFullSkyDiskAuditGate" in source
     assert "CaptureYaw" in source
     assert "FullSkyTransferDir" in source
     assert "-grbhxrFullSkyTransferDir" in source
     assert "full_sky_transfer_metadata.json" in source
     assert "event_cube_rgba8.bytes" in source
     assert "escape_dir_unity_cube_rgba32f.bytes" in source
+    assert "disk_order0_transfer_cube_rgba16f.bytes" in source
+    assert "disk_order1_transfer_cube_rgba16f.bytes" in source
     assert '"_UseFullSkyTransfer"' in source
     assert '"_ProbeMode"' in source
+    assert '"_DiskAuditMode"' in source
     assert "unity_gate_square_2048.png" in source
     assert "unity_gate_quadrant_square_1024.png" in source
     assert "unity_gate_protractor_square_1024.png" in source
@@ -375,6 +392,8 @@ def test_unity_editor_gate_automation_is_versioned():
     assert "unity_gate_fullsky_protractor_yaw_000_square_1024.png" in source
     assert "unity_gate_fullsky_protractor_yaw_002_square_1024.png" in source
     assert "unity_gate_fullsky_protractor_yaw_004_square_1024.png" in source
+    assert "unity_gate_fullsky_disk_audit_m0_square_1024.png" in source
+    assert "unity_gate_fullsky_disk_audit_m1_square_1024.png" in source
     assert "new Vector3(20.0f, 20.0f, 20.0f)" in source
     assert "new Vector3(20.0f, 20.0f, 1.0f)" not in source
     assert "GRBHXR.Editor" in asmdef

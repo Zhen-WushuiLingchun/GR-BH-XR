@@ -19,6 +19,42 @@ from here.
 
 ## Log
 
+### 2026-07-07 - Full-sky thin-disk audit cubemaps
+
+- Goal: Start the Unity thin-disk path with an audit visualization before any
+  visual emissivity or animation shader is added.
+- Changed files / components: Extended the full-sky transfer cubemap exporter
+  to write optional `disk_order0/1_transfer_cube_rgba16f.bytes`; extended the
+  Unity loader to bind optional disk cubemaps; added shader-side disk audit
+  mode and Unity batch capture automation for `m = 0` and `m = 1` disk-transfer
+  views.
+- Academic reason: Thin-disk rendering must consume transfer quantities
+  `(r_m, phi_m, g_m)` rather than painting a visual disk over the shadow. The
+  first Unity gate should therefore show `g_m` false color and equal-`r_m`
+  bands that can be compared against CPU Luminet-style transfer plots.
+- Physical correspondence: The disk cubemap is indexed by finite-observer
+  view direction and stores `(r_m, sin(phi_m), cos(phi_m), g_m)` for the first
+  two true equatorial crossing orders. Zero texels mean no finite annulus hit
+  for that order. The package remains a static transfer-map cache for one Kerr
+  observer, not per-frame geodesic integration.
+- Assumptions and conventions: `r_in` is the Kerr ISCO from the GPU trace
+  configuration and `r_out = 30M`; `g_m` is the Cunningham redshift factor from
+  the existing disk-transfer shader path. Visual intensity weighting `g^p`,
+  blackbody color, Keplerian pattern advection, and time-delay use are deferred.
+- Validation: `python -m gr_bh_xr.gpu.generate_transfer_cubemap --spin 0.9
+  --inclination-deg 60 --face-size 512 --r-obs 100 --steps 8000` produced
+  `1572864` texels with `capture = 510`, `escape = 1572354`, `invalid = 0`,
+  and disk valid counts `[11826, 335]` for `m = 0, 1`. Unity batch disk audit
+  captured `unity_gate_fullsky_disk_audit_m0_square_1024.png` and
+  `unity_gate_fullsky_disk_audit_m1_square_1024.png`; the `m = 0` image shows
+  continuous equal-radius bands and the `m = 1` image isolates the secondary
+  band near the shadow edge.
+- References: Existing Luminet/Cunningham/Bardeen disk-transfer references in
+  `references/references.md`; no new disk emissivity model is introduced here.
+- Open issues / next steps: Add a formal CPU-vs-Unity audit comparison for the
+  disk cubemap, then implement the visual disk shader with documented `g^p`
+  weighting and Page-Thorne emissivity.
+
 ### 2026-07-07 - Full-sky tetrad and seam validation
 
 - Goal: Close the post-full-sky P1 evidence gaps before using the cubemap path

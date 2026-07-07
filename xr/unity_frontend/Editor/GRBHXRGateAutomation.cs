@@ -83,6 +83,25 @@ namespace GRBHXR.EditorTools
             AssetDatabase.Refresh();
         }
 
+        [MenuItem("GR-BH-XR/Gate/Capture Full-Sky Disk Audit Gate")]
+        public static void CaptureFullSkyDiskAuditGate()
+        {
+            var options = GateOptions.FromCommandLine();
+            options.UseAngularWindow = true;
+            options.DiskAuditMode = 1.0f;
+            ConfigurePreview(options, GateSkyboxKind.Nasa);
+            CaptureYaw(options, 0.0f, "unity_gate_fullsky_disk_audit_m0_square_1024.png", 1024, 1024);
+            var material = AssetDatabase.LoadAssetAtPath<Material>(options.MaterialPath);
+            if (material == null)
+            {
+                throw new MissingReferenceException($"Material not found: {options.MaterialPath}");
+            }
+            material.SetFloat("_DiskAuditMode", 2.0f);
+            EditorUtility.SetDirty(material);
+            CaptureYaw(options, 0.0f, "unity_gate_fullsky_disk_audit_m1_square_1024.png", 1024, 1024);
+            AssetDatabase.Refresh();
+        }
+
         public static void BatchConfigureAndCapture()
         {
             ConfigureAndCapture();
@@ -108,6 +127,11 @@ namespace GRBHXR.EditorTools
             CaptureFullSkyProtractorYawGate();
         }
 
+        public static void BatchCaptureFullSkyDiskAuditGate()
+        {
+            CaptureFullSkyDiskAuditGate();
+        }
+
         private static void ConfigurePreview(GateOptions options, GateSkyboxKind skyboxKind)
         {
             AssetDatabase.Refresh();
@@ -118,12 +142,20 @@ namespace GRBHXR.EditorTools
             TextAsset fullSkyMetadata = null;
             TextAsset eventCubeBytes = null;
             TextAsset escapeCubeBytes = null;
+            TextAsset diskOrder0CubeBytes = null;
+            TextAsset diskOrder1CubeBytes = null;
             bool useFullSkyTransfer = !string.IsNullOrWhiteSpace(options.FullSkyTransferDir);
             if (useFullSkyTransfer)
             {
                 fullSkyMetadata = LoadRequired<TextAsset>($"{options.FullSkyTransferDir}/full_sky_transfer_metadata.json");
                 eventCubeBytes = LoadRequired<TextAsset>($"{options.FullSkyTransferDir}/event_cube_rgba8.bytes");
                 escapeCubeBytes = LoadRequired<TextAsset>($"{options.FullSkyTransferDir}/escape_dir_unity_cube_rgba32f.bytes");
+                diskOrder0CubeBytes = AssetDatabase.LoadAssetAtPath<TextAsset>(
+                    $"{options.FullSkyTransferDir}/disk_order0_transfer_cube_rgba16f.bytes"
+                );
+                diskOrder1CubeBytes = AssetDatabase.LoadAssetAtPath<TextAsset>(
+                    $"{options.FullSkyTransferDir}/disk_order1_transfer_cube_rgba16f.bytes"
+                );
             }
             var metadata = JsonUtility.FromJson<LensMapMetadata>(metadataAsset.text);
             if (metadata == null || metadata.screen == null)
@@ -167,6 +199,7 @@ namespace GRBHXR.EditorTools
             material.SetTexture("_SkyboxCubemap", cubemap);
             material.SetFloat("_UseAngularWindow", options.UseAngularWindow ? 1.0f : 0.0f);
             material.SetFloat("_UseFullSkyTransfer", useFullSkyTransfer ? 1.0f : 0.0f);
+            material.SetFloat("_DiskAuditMode", options.DiskAuditMode);
             material.SetFloat("_ProbeMode", skyboxKind == GateSkyboxKind.Protractor ? 1.0f : 0.0f);
             EditorUtility.SetDirty(material);
 
@@ -192,6 +225,8 @@ namespace GRBHXR.EditorTools
             AssignSerializedObject(lensMap, "fullSkyMetadataJson", fullSkyMetadata);
             AssignSerializedObject(lensMap, "eventCubeRgba8Bytes", eventCubeBytes);
             AssignSerializedObject(lensMap, "escapeDirectionUnityCubeRgba32fBytes", escapeCubeBytes);
+            AssignSerializedObject(lensMap, "diskOrder0TransferCubeRgba16fBytes", diskOrder0CubeBytes);
+            AssignSerializedObject(lensMap, "diskOrder1TransferCubeRgba16fBytes", diskOrder1CubeBytes);
 
             var binder = screen.GetComponent<BlackHoleLensMaterialBinder>();
             if (binder == null)
@@ -236,6 +271,7 @@ namespace GRBHXR.EditorTools
                 $"skyboxKind={skyboxKind}, angularWindow={options.UseAngularWindow}, " +
                 $"fullSkyTransfer={useFullSkyTransfer}, fullSkyDir={options.FullSkyTransferDir}, " +
                 $"lossyScale={screen.transform.lossyScale}, probeMode={material.GetFloat("_ProbeMode"):F1}, " +
+                $"diskAuditMode={material.GetFloat("_DiskAuditMode"):F1}, " +
                 $"basisR={material.GetVector("_LensWorldRight")}, " +
                 $"basisU={material.GetVector("_LensWorldUp")}, " +
                 $"basisF={material.GetVector("_LensWorldForward")}."
@@ -485,6 +521,7 @@ namespace GRBHXR.EditorTools
             public string FullSkyTransferDir = DefaultFullSkyTransferDir;
             public string CaptureDir = DefaultCaptureDir;
             public bool UseAngularWindow;
+            public float DiskAuditMode;
 
             public static GateOptions FromCommandLine()
             {
@@ -501,6 +538,7 @@ namespace GRBHXR.EditorTools
                 options.FullSkyTransferDir = CommandLineValue("-grbhxrFullSkyTransferDir", options.FullSkyTransferDir);
                 options.CaptureDir = CommandLineValue("-grbhxrCaptureDir", options.CaptureDir);
                 options.UseAngularWindow = CommandLineFlag("-grbhxrUseAngularWindow");
+                options.DiskAuditMode = CommandLineFloat("-grbhxrDiskAuditMode", options.DiskAuditMode);
                 return options;
             }
 
@@ -515,6 +553,16 @@ namespace GRBHXR.EditorTools
                     }
                 }
                 return fallback;
+            }
+
+            private static float CommandLineFloat(string key, float fallback)
+            {
+                string value = CommandLineValue(key, "");
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    return fallback;
+                }
+                return float.TryParse(value, out float parsed) ? parsed : fallback;
             }
 
             private static bool CommandLineFlag(string key)

@@ -20,6 +20,7 @@ from gr_bh_xr.xr.export_unity_textures import unity_basis_from_inclination
 
 FULL_SKY_PACKAGE_SCHEMA = "gr-bh-xr.task5.full_sky_transfer_cubemap.v1"
 UNITY_CUBE_FACES = ("PositiveX", "NegativeX", "PositiveY", "NegativeY", "PositiveZ", "NegativeZ")
+DISK_TRANSFER_ORDER_COUNT = 2
 
 
 def generate_transfer_cubemap(
@@ -62,15 +63,21 @@ def generate_transfer_cubemap(
     total_pixels = pixels_per_face * len(UNITY_CUBE_FACES)
     event_cube = np.zeros((len(UNITY_CUBE_FACES), face_size, face_size, 4), dtype=np.uint8)
     dir_cube = np.zeros((len(UNITY_CUBE_FACES), face_size, face_size, 4), dtype=np.float32)
+    disk_cube = np.zeros(
+        (DISK_TRANSFER_ORDER_COUNT, len(UNITY_CUBE_FACES), face_size, face_size, 4),
+        dtype=np.float16,
+    )
 
     backend: dict[str, Any] | None = None
     event_counts = {name: 0 for name in SCHEMA_EVENT_CODES}
     failure_counts: dict[str, int] = {}
+    disk_valid_by_order = [0 for _ in range(DISK_TRANSFER_ORDER_COUNT)]
     for face_index, face_name in enumerate(UNITY_CUBE_FACES):
         directions = _face_directions(face_name, face_size)
         face_event = np.zeros((pixels_per_face,), dtype=np.int16)
         face_failure = np.zeros((pixels_per_face,), dtype=np.int16)
         face_dir = np.zeros((pixels_per_face, 4), dtype=np.float32)
+        face_disk = np.zeros((DISK_TRANSFER_ORDER_COUNT, pixels_per_face, 4), dtype=np.float32)
         for start in range(0, pixels_per_face, chunk_size):
             end = min(start + chunk_size, pixels_per_face)
             result = trace_unity_direction_points(config, directions[start:end])
@@ -98,6 +105,24 @@ def generate_transfer_cubemap(
             face_event[start:end] = event_code
             face_failure[start:end] = failure_code
             face_dir[start:end] = packed
+            for order in range(DISK_TRANSFER_ORDER_COUNT):
+                disk_r = result["disk_r_m"][:, order]
+                disk_phi = result["disk_phi_m"][:, order]
+                disk_g = result["disk_g_m"][:, order]
+                disk_valid = (
+                    np.isfinite(disk_r)
+                    & np.isfinite(disk_phi)
+                    & np.isfinite(disk_g)
+                    & (disk_r > 0.0)
+                    & (disk_g > 0.0)
+                )
+                disk_packed = np.zeros((end - start, 4), dtype=np.float32)
+                disk_packed[disk_valid, 0] = disk_r[disk_valid]
+                disk_packed[disk_valid, 1] = np.sin(disk_phi[disk_valid])
+                disk_packed[disk_valid, 2] = np.cos(disk_phi[disk_valid])
+                disk_packed[disk_valid, 3] = disk_g[disk_valid]
+                face_disk[order, start:end] = disk_packed
+                disk_valid_by_order[order] += int(np.count_nonzero(disk_valid))
             for name, code in SCHEMA_EVENT_CODES.items():
                 event_counts[name] += int(np.count_nonzero(event_code == code))
             for code in np.unique(failure_code):
@@ -109,12 +134,20 @@ def generate_transfer_cubemap(
             face_failure.reshape((face_size, face_size)),
         )
         dir_cube[face_index] = face_dir.reshape((face_size, face_size, 4))
+        for order in range(DISK_TRANSFER_ORDER_COUNT):
+            disk_cube[order, face_index] = face_disk[order].reshape((face_size, face_size, 4))
 
     event_path = out_dir / "event_cube_rgba8.bytes"
     dir_path = out_dir / "escape_dir_unity_cube_rgba32f.bytes"
+    disk_paths = [
+        out_dir / f"disk_order{order}_transfer_cube_rgba16f.bytes"
+        for order in range(DISK_TRANSFER_ORDER_COUNT)
+    ]
     metadata_path = out_dir / "full_sky_transfer_metadata.json"
     event_cube.tofile(event_path)
     dir_cube.astype("<f4", copy=False).tofile(dir_path)
+    for order, disk_path in enumerate(disk_paths):
+        disk_cube[order].astype("<f2", copy=False).tofile(disk_path)
     metadata = {
         "schema": FULL_SKY_PACKAGE_SCHEMA,
         "generationCommand": command,
@@ -122,9 +155,11 @@ def generate_transfer_cubemap(
         "faceOrder": list(UNITY_CUBE_FACES),
         "eventCubeRgba8": event_path.name,
         "escapeDirUnityCubeRgba32f": dir_path.name,
+        "diskTransferCubesRgba16f": [path.name for path in disk_paths],
         "bytes": {
             "eventCubeRgba8": int(event_cube.nbytes),
             "escapeDirUnityCubeRgba32f": int(dir_cube.nbytes),
+            "diskTransferCubesRgba16f": [int(disk_cube[order].nbytes) for order in range(DISK_TRANSFER_ORDER_COUNT)],
         },
         "metric": {"M": params.M, "a": params.a},
         "observer": {
@@ -142,6 +177,16 @@ def generate_transfer_cubemap(
         "backend": backend,
         "eventCounts": event_counts,
         "failureCountsByCode": failure_counts,
+        "diskTransfer": {
+            "orderCount": DISK_TRANSFER_ORDER_COUNT,
+            "channels": "r_m, sin(phi_m), cos(phi_m), g_m",
+            "format": "raw little-endian RGBAHalf cubemap per order",
+            "validity": "valid when r_m > 0 and g_m > 0; zero texel means no finite disk hit for that order",
+            "r_in": float(config.attrs()["disk_r_in"]),
+            "r_out": float(config.disk_r_out),
+            "imageOrder": "order index is the true equatorial crossing order m, not the annulus-hit count",
+            "validByOrder": disk_valid_by_order,
+        },
         "totalPixels": total_pixels,
         "validEscapePixels": int(np.count_nonzero(dir_cube[..., 3] >= 0.5)),
         "boundaryNote": (

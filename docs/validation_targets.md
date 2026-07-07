@@ -309,8 +309,13 @@ Current CPU transfer v2 target:
 - Schwarzschild checks include `r_ISCO = 6M` and `g(L_z=0) = sqrt(1 - 3M/r)`;
 - the first Luminet-style diagnostic is an equal-radius transfer plot that
   separates direct (`m = 0`) and secondary (`m = 1`) Schwarzschild disk images;
-- emission profile, observed intensity, optical depth, and GPU/Unity texture
-  integration remain deferred until the CPU transfer buffers pass review.
+- the first Unity disk integration is an audit mode, not a beauty shader:
+  full-sky disk-transfer cubemaps store `(r_m, sin(phi_m), cos(phi_m), g_m)` as
+  `RGBAHalf` for the first two true equatorial crossing orders, and the shader
+  displays `g_m` false color plus equal-`r_m` bands;
+- emission profile, observed intensity, optical depth, and visual disk
+  animation remain deferred until the disk audit mode can be compared against
+  CPU Luminet-style transfer plots.
 
 Current GPU transfer v3 comparison target:
 
