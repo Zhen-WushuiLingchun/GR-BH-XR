@@ -209,6 +209,11 @@ Unity textures:
   the positive-`alpha` direction;
 - Unity consumes `event_rgba8` plus `escape_dir_unity_rgba32f`, not a visual
   RGB-only render;
+- background-lensing claims use a full-sky transfer cubemap generated from the
+  finite-radius static observer tetrad. A finite `alpha,beta` lens texture may
+  be used as a higher-resolution central patch, but it must blend into the
+  full-sky transfer map rather than falling back to an unlensed skybox at the
+  screen-window edge;
 - Unity shaders use explicit lens-screen world basis vectors for physical
   directions and must not use scale-bearing object matrices for escaped-ray
   cubemap lookup or angular-window ray projection;
@@ -226,6 +231,9 @@ Required checks:
   capture that compares screenshot color bands against `escape_dir_unity`;
 - the angular-window path is tested on desktop at yaw `0 deg`, `2 deg`, and
   `4 deg` before it is used as evidence for head-rotation stability;
+- the full-sky path is tested on desktop at yaw `0 deg`, `2 deg`, and `4 deg`
+  with `-grbhxrFullSkyTransferDir`, and the validation image must not show the
+  square hard boundary produced by unlensed-skybox fallback;
 - the Unity shader includes single-pass instanced stereo macros so Quest/OpenXR
   does not render a missing or eye-shifted lens map in one eye;
 - the angular-window yaw test is interpreted only as head-rotation anchoring

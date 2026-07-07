@@ -52,6 +52,33 @@ per-frame geodesic integration. Quest Tier 0 still consumes cached textures;
 Tier 1 must explicitly report update latency whenever spin, inclination,
 observer, or screen-window controls trigger a new transfer map.
 
+## Full-Sky Transfer Cubemap
+
+The finite `alpha,beta` lens maps are local transfer patches. They are useful
+for shadow validation and high-resolution central rendering, but they are not a
+complete background-lensing model. A Unity shader that falls back from the edge
+of `alpha,beta in [-8M, 8M]` to an unlensed skybox creates a square hard
+boundary because the edge is still strongly deflected at `r_obs = 100M`.
+
+Use `generate_transfer_cubemap` when the renderer needs a full camera sky:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.gpu.generate_transfer_cubemap --spin 0.9 --inclination-deg 60 --face-size 1024 --r-obs 100 --steps 8000 --out-dir outputs/task5/fullsky_kerr_a0.9_i60_1024
+```
+
+This traces one ray per Unity cubemap texel from the finite-radius static
+observer tetrad and writes:
+
+- `full_sky_transfer_metadata.json`;
+- `event_cube_rgba8.bytes`;
+- `escape_dir_unity_cube_rgba32f.bytes`.
+
+The 2026-07-07 local RTX 5080 Laptop GPU run at `face-size = 1024` produced
+`6291456` cubemap texels with `capture = 2023`, `escape = 6289433`, and
+`invalid = 0`. The event cube was `25165824` bytes and the Unity escape-
+direction cube was `100663296` bytes.
+
 ## HDF5 Schema
 
 Generated GPU maps use schema `gr-bh-xr.phase2.gpu_lens_map.v3`.

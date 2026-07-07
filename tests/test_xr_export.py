@@ -284,6 +284,9 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     assert "_LensScreenBounds" in shader
     assert "_LensRObs" in shader
     assert "_UseAngularWindow" in shader
+    assert "_UseFullSkyTransfer" in shader
+    assert "_EscapeDirCube" in shader
+    assert "_EventCube" in shader
     assert "_ProbeMode" in shader
     assert "_LensWorldRight" in shader
     assert "_LensWorldUp" in shader
@@ -302,6 +305,12 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     assert "abs(localRay.z)" not in shader
     assert "worldDirectionToLens(worldRay)" in shader
     assert "lensDirectionToWorld(dir.xyz)" in shader
+    assert "if (_UseFullSkyTransfer > 0.5)" in shader
+    assert "texCUBE(_EscapeDirCube, localRay)" in shader
+    assert "texCUBE(_EventCube, localRay)" in shader
+    assert "fullSkyColor" in shader
+    assert "smoothstep(0.0, 0.04, edgeDistance)" in shader
+    assert "lerp(fullSkyColor, localColor, localWeight)" in shader
     assert "mul((float3x3)unity_ObjectToWorld, dir.xyz)" not in shader
     assert "mul((float3x3)unity_WorldToObject, worldRay)" not in shader
     assert "protractorProbe(worldDir)" in shader
@@ -314,8 +323,14 @@ def test_unity_lens_map_loader_keeps_raw_textures_linear():
     binder = (UNITY_RUNTIME_DIR / "BlackHoleLensMaterialBinder.cs").read_text(encoding="utf8")
 
     assert "new Texture2D(width, height, format, mipChain: false, linear: true)" in source
+    assert "new Cubemap(faceSize, format, mipChain: false)" in source
     assert "sourceAttributes" in source
+    assert "FullSkyTransferMetadata" in source
+    assert "LoadFullSkyCubemapIfPresent" in source
     assert "SetVector(" in source
+    assert '"_UseFullSkyTransfer"' in source
+    assert '"_EscapeDirCube"' in source
+    assert '"_EventCube"' in source
     assert '"_LensScreenBounds"' in source
     assert '"_LensRObs"' in source
     assert '"_LensWorldRight"' in source
@@ -339,6 +354,12 @@ def test_unity_editor_gate_automation_is_versioned():
     assert "BatchCaptureProtractorBands" in source
     assert "BatchCaptureAngularWindowYawGate" in source
     assert "CaptureYaw" in source
+    assert "FullSkyTransferDir" in source
+    assert "-grbhxrFullSkyTransferDir" in source
+    assert "full_sky_transfer_metadata.json" in source
+    assert "event_cube_rgba8.bytes" in source
+    assert "escape_dir_unity_cube_rgba32f.bytes" in source
+    assert '"_UseFullSkyTransfer"' in source
     assert '"_ProbeMode"' in source
     assert "unity_gate_square_2048.png" in source
     assert "unity_gate_quadrant_square_1024.png" in source

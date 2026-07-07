@@ -11,8 +11,9 @@ from gr_bh_xr.geodesic import trace_ray
 from gr_bh_xr.gpu.backend import backend_info, select_vulkan_adapter
 from gr_bh_xr.gpu.benchmark_latency import _case_summary, build_parser
 from gr_bh_xr.gpu.generate_lens_map import generate_gpu_lens_map
+from gr_bh_xr.gpu.generate_transfer_cubemap import generate_transfer_cubemap
 from gr_bh_xr.gpu.preview import preview_envelope_warning
-from gr_bh_xr.gpu.trace import GpuTraceConfig, trace_screen_points
+from gr_bh_xr.gpu.trace import GpuTraceConfig, trace_screen_points, trace_unity_direction_points
 from gr_bh_xr.gpu.validate import validate_cpu_vs_gpu
 from gr_bh_xr.gpu.validate_disk_transfer import validate_disk_transfer_cpu_vs_gpu
 from gr_bh_xr.types import CameraConfig, MetricParams, TraceConfig
@@ -77,6 +78,62 @@ def test_gpu_latency_parser_accepts_grid_list():
     assert args.inclination_deg == pytest.approx(60.0)
     assert args.grids == [256, 512]
     assert args.iterations == 2
+
+
+def test_gpu_unity_direction_points_capture_and_escape():
+    _require_vulkan_adapter()
+    config = GpuTraceConfig(
+        params=MetricParams(M=1.0, a=0.0),
+        inclination_deg=60.0,
+        grid=2,
+        alpha_max=8.0,
+        beta_max=8.0,
+        r_obs=80.0,
+        step_size=0.05,
+        steps=4000,
+        critical_refine_band=0.0,
+    )
+    result = trace_unity_direction_points(
+        config,
+        np.asarray(
+            [
+                [0.0, 0.0, 1.0],
+                [0.0, 0.0, -1.0],
+            ],
+            dtype=np.float32,
+        ),
+    )
+
+    assert result["event_code"][0] == EVENT_CODES["capture"]
+    assert result["event_code"][1] == EVENT_CODES["escape"]
+    assert np.all(result["failure_code"] == FAILURE_CODES["none"])
+
+
+def test_gpu_full_sky_transfer_cubemap_writes_boundary_free_package(tmp_path):
+    _require_vulkan_adapter()
+    out_dir = tmp_path / "full_sky_cube"
+
+    summary = generate_transfer_cubemap(
+        params=MetricParams(M=1.0, a=0.0),
+        inclination_deg=90.0,
+        face_size=4,
+        out_dir=out_dir,
+        r_obs=80.0,
+        step_size=0.05,
+        steps=8000,
+        horizon_eps=0.3,
+        chunk_size=32,
+        command="pytest full sky cubemap",
+    )
+
+    assert summary["schema"] == "gr-bh-xr.task5.full_sky_transfer_cubemap.v1"
+    assert summary["faceSize"] == 4
+    assert summary["totalPixels"] == 6 * 4 * 4
+    assert summary["validEscapePixels"] > 0
+    assert "no alpha/beta window fallback" in summary["boundaryNote"]
+    assert (out_dir / "full_sky_transfer_metadata.json").exists()
+    assert (out_dir / "event_cube_rgba8.bytes").stat().st_size == 6 * 4 * 4 * 4
+    assert (out_dir / "escape_dir_unity_cube_rgba32f.bytes").stat().st_size == 6 * 4 * 4 * 16
 
 
 def test_gpu_schwarzschild_lens_map_schema_and_events(tmp_path):

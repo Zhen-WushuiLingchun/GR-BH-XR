@@ -41,6 +41,18 @@ The exporter writes:
 - `event_preview.png`: human preview only; the raw `.bytes` files are the
   authoritative Unity inputs.
 
+For background-lensing validation, also export a full-sky transfer cubemap:
+
+```powershell
+python -m gr_bh_xr.gpu.generate_transfer_cubemap --spin 0.9 --inclination-deg 60 --face-size 1024 --r-obs 100 --steps 8000 --out-dir outputs/task5/fullsky_kerr_a0.9_i60_1024
+```
+
+The full-sky package writes `full_sky_transfer_metadata.json`,
+`event_cube_rgba8.bytes`, and `escape_dir_unity_cube_rgba32f.bytes`. It traces
+one finite-radius static-observer ray per Unity cubemap texel. This is the
+background path for Quest validation; the finite `alpha,beta` texture is only a
+high-resolution local patch around the shadow.
+
 ## Unity Import
 
 Install this directory as a local Unity Package Manager package:
@@ -59,24 +71,31 @@ For the first PCVR pass:
 4. Add `BlackHoleLensMap` to a scene object and assign:
    - `lens_map_metadata.json`;
    - `event_rgba8.bytes`;
-   - `escape_dir_unity_rgba32f.bytes`.
+   - `escape_dir_unity_rgba32f.bytes`;
+   - optionally, for full-sky background lensing,
+     `full_sky_transfer_metadata.json`, `event_cube_rgba8.bytes`, and
+     `escape_dir_unity_cube_rgba32f.bytes`.
 5. Add `BlackHoleLensMaterialBinder` and assign a material using
    `GR-BH-XR/Kerr Lens Static Preview`.
 6. Assign a test cubemap to `_SkyboxCubemap`.
 
-The preview shader defaults to a screen-space square gate for the current
-Unity Editor desktop validation pass. The lens screen mesh should be oversized
-so it covers the camera; the shader then uses screen-space coordinates to
-sample a square `alpha/beta` map without stretching it to the display aspect
-ratio. Pixels outside the square gate sample the cubemap directly. This is the
-accepted desktop gate for checking import, cubemap binding, handedness, and
-Kerr shadow morphology.
+The preview shader supports three paths. The screen-space square gate is a
+debug path for import, cubemap binding, handedness, and Kerr shadow morphology.
+The angular-window path maps world rays into local `(alpha,beta)` coordinates.
+The full-sky path is the background-lensing path: it samples a traced full-sky
+transfer cubemap everywhere, then blends the high-resolution local
+`alpha/beta` texture over the central angular window for shadow-edge clarity.
+Pixels outside the local patch must not fall back to the raw skybox for
+background-lensing claims.
 
 The shader still contains an opt-in `_UseAngularWindow` mode that computes the
 world view ray, transforms that ray into the lens-screen object's local basis,
 maps the local angular coordinates to `(alpha, beta)`, and samples the lens map
-only inside the metadata screen bounds. Treat this angular mode as
-experimental until it has its own Unity desktop and Quest runtime validation.
+only inside the metadata screen bounds. Treat standalone angular-window
+fallback to raw skybox as a debug path, not a background-lensing result. The
+current desktop background-lensing precheck uses this angular mapping only to
+position the high-resolution local patch while the full-sky transfer cubemap
+remains active outside it.
 The angular path uses the signed local forward component and ignores fragments
 with `localRay.z <= 0`, so a back-facing screen cannot show a parity-flipped
 ghost lens. Its screen mapping is the tangent-plane relation
@@ -100,10 +119,10 @@ vectors in the material.
 
 This is still a static-observer approximation. The texture assumes the metadata
 `r_obs`, spin, inclination, and screen bounds used when it was generated. The
-current accepted desktop gate is screen-space and does not close the Quest
-head-motion-stability requirement. A full-camera or angular-window pass must be
-validated before making head-rotation claims; physical head translation would
-require regenerating or interpolating a different transfer map.
+current accepted desktop precheck for background lensing uses the full-sky
+transfer cubemap with yaw `0/2/4 deg` captures. It still does not close the
+Quest headset-runtime requirement; physical head translation would require
+regenerating or interpolating a different transfer map.
 
 The package does not perform real-time geodesic integration. It renders a
 precomputed transfer map in real time:
@@ -192,13 +211,12 @@ direction. For `i = 60 deg`, this makes `right_BH = (0, -1, 0)`. This explicit
 choice prevents silent left-right mirror errors when the texture is consumed in
 Unity.
 
-Square exported screen windows, such as `alpha,beta in [-8M, 8M]`, should be
-displayed through a square gate unless the HDF5 source was generated with
-matching non-square screen bounds. Stretching a square lens map to a 16:9
-display turns the shadow into an artificial ellipse and is not a physics
-result. In the provided desktop setup, the mesh is deliberately oversized so it
-acts as a screen-space pass; the shader's square gate decides where the lens map
-is active.
+Square exported screen windows, such as `alpha,beta in [-8M, 8M]`, should not
+be stretched to a 16:9 display; that turns the shadow into an artificial
+ellipse and is not a physics result. For background lensing, the finite square
+window is only the central high-resolution patch. The full-sky cubemap remains
+active outside that patch so the renderer does not introduce a square
+unlensed-skybox discontinuity.
 
 ## Current Scope
 
@@ -222,11 +240,16 @@ $unity = 'D:\unity\Hub\Editor\6000.5.2f1\Editor\Unity.exe'
 $proj = 'F:\UnityProjects\GRBHXR_PCVR_Gate\GRBHXR_PCVR_Gate'
 & $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRGateAutomation.BatchConfigureAndCapture
 & $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRGateAutomation.BatchCaptureQuadrantHandedness
+& $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRGateAutomation.BatchCaptureAngularWindowYawGate -grbhxrFullSkyTransferDir Assets/GRBHXR/FullSkyTransfer1024
 ```
 
 The second command generates a procedural four-quadrant cubemap and captures a
 screen-space square-gate image used to check that the RenderTexture screenshot
 path has not flipped the new `ComputeScreenPos` sampling vertically.
+
+The third command is the current background-lensing desktop precheck. The
+`-grbhxrFullSkyTransferDir` package supplies the traced cubemap for every view
+ray, while the angular window positions the high-resolution local patch.
 
 For a magnitude-sensitive direction check, run:
 

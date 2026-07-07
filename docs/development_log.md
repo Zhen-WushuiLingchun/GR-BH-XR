@@ -19,6 +19,41 @@ from here.
 
 ## Log
 
+### 2026-07-07 - Full-sky background transfer cubemap
+
+- Goal: Remove the unphysical square boundary discovered in the Unity yaw gate,
+  where the finite `alpha,beta in [-8M, 8M]` lens patch fell back directly to an
+  unlensed skybox outside the patch.
+- Changed files / components: Added the GPU full-sky transfer cubemap exporter,
+  finite-radius static-observer direction initialization, WGSL direction-input
+  tracing, Unity full-sky cubemap loading, full-sky shader sampling, editor
+  automation flags, tests, and validation documentation.
+- Academic reason: A physics-auditable renderer cannot present a model-switch
+  edge as gravitational lensing. At `r_obs = 100M`, the `8M` patch edge remains
+  strongly deflected, so direct skybox fallback creates a visible square
+  discontinuity unrelated to the Kerr geometry.
+- Physical correspondence: Each full-sky cubemap texel is traced from a
+  finite-radius static observer tetrad. Unity now samples this traced cubemap
+  for the whole view and blends the 4K local `alpha,beta` patch over the
+  central angular window only to preserve shadow-edge resolution.
+- Assumptions and conventions: This remains Tier 0 static transfer-map playback
+  for one Kerr metric and observer. It does not perform per-frame geodesic
+  integration, and it must not be reused for BBH, multi-black-hole, or
+  gravitational-wave lensing without time-dependent maps or validated
+  surrogates.
+- Validation: `python -m gr_bh_xr.gpu.generate_transfer_cubemap --spin 0.9
+  --inclination-deg 60 --face-size 1024 --r-obs 100 --steps 8000` wrote
+  `6291456` cubemap texels with `capture = 2023`, `escape = 6289433`, and
+  `invalid = 0`. Formal Unity batch captures with
+  `-grbhxrFullSkyTransferDir Assets/GRBHXR/FullSkyTransfer1024` produced yaw
+  `0/2/4 deg` screenshots; the `4 deg` capture no longer shows the square hard
+  boundary from unlensed-skybox fallback.
+- References: Same Kerr geodesic and Task 5 Unity texture-contract references;
+  this is a renderer-domain transfer-map fix, not a new metric model.
+- Open issues / next steps: Native 4K or tiled full-sky transfer generation and
+  catalog/procedural star layers are still needed for higher VR angular
+  fidelity. Quest runtime frame pacing and stereo validation remain pending.
+
 ### 2026-07-07 - Tier 1 GPU trace latency benchmark
 
 - Goal: Quantify whether the WGPU Vulkan tracer is currently a slider-update,

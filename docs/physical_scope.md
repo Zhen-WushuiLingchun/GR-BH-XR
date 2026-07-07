@@ -102,6 +102,17 @@ and `653 ms` at `1024x1024` without critical-band refinement. With the existing
 interactive updates for single-Kerr maps, but it is still not 72/90 Hz
 per-frame geodesic integration.
 
+The Task 5 background-lensing playback path now separates two texture roles.
+The old `alpha,beta in [-8M, 8M]` texture is a high-resolution local transfer
+patch around the shadow. It is not a complete sky model: at `r_obs = 100M`,
+the window edge is still inside the strong-lensing region, so falling back from
+that edge to an unlensed skybox produces an unphysical square discontinuity.
+For background lensing claims, Unity must consume a full-sky transfer cubemap
+whose texels are traced from the finite-radius static observer tetrad. The
+local 4K patch may be blended over the central angular region to preserve
+shadow-edge resolution, but pixels outside it must still sample a traced
+full-sky transfer map, not the raw skybox.
+
 This shortcut is valid only for the stated model. A non-axisymmetric thin-disk
 emissivity pattern can rotate without re-tracing geodesics by advecting the
 emission coordinates in the disk frame:

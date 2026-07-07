@@ -19,6 +19,7 @@ namespace GRBHXR.EditorTools
         private const string DefaultProtractorSkyboxMaterialPath = "Assets/GRBHXR/Skyboxes/M_GRBHXR_ProtractorBands_Skybox.mat";
         private const string DefaultMaterialPath = "Assets/GRBHXR/Materials/M_KerrLensPreview.mat";
         private const string DefaultScenePath = "Assets/Scenes/GRBHXR_KerrLensPreview.unity";
+        private const string DefaultFullSkyTransferDir = "";
         private const string DefaultCaptureDir = "F:/学习和研究/GR-BH-XR/outputs/task5/unity_gate";
 
         [MenuItem("GR-BH-XR/Gate/Configure Screen-Space Gate Preview")]
@@ -97,6 +98,16 @@ namespace GRBHXR.EditorTools
             var metadataAsset = LoadRequired<TextAsset>($"{options.LensMapDir}/lens_map_metadata.json");
             var eventBytes = LoadRequired<TextAsset>($"{options.LensMapDir}/event_rgba8.bytes");
             var escapeBytes = LoadRequired<TextAsset>($"{options.LensMapDir}/escape_dir_unity_rgba32f.bytes");
+            TextAsset fullSkyMetadata = null;
+            TextAsset eventCubeBytes = null;
+            TextAsset escapeCubeBytes = null;
+            bool useFullSkyTransfer = !string.IsNullOrWhiteSpace(options.FullSkyTransferDir);
+            if (useFullSkyTransfer)
+            {
+                fullSkyMetadata = LoadRequired<TextAsset>($"{options.FullSkyTransferDir}/full_sky_transfer_metadata.json");
+                eventCubeBytes = LoadRequired<TextAsset>($"{options.FullSkyTransferDir}/event_cube_rgba8.bytes");
+                escapeCubeBytes = LoadRequired<TextAsset>($"{options.FullSkyTransferDir}/escape_dir_unity_cube_rgba32f.bytes");
+            }
             var metadata = JsonUtility.FromJson<LensMapMetadata>(metadataAsset.text);
             if (metadata == null || metadata.screen == null)
             {
@@ -138,6 +149,7 @@ namespace GRBHXR.EditorTools
             material.shader = shader;
             material.SetTexture("_SkyboxCubemap", cubemap);
             material.SetFloat("_UseAngularWindow", options.UseAngularWindow ? 1.0f : 0.0f);
+            material.SetFloat("_UseFullSkyTransfer", useFullSkyTransfer ? 1.0f : 0.0f);
             material.SetFloat("_ProbeMode", skyboxKind == GateSkyboxKind.Protractor ? 1.0f : 0.0f);
             EditorUtility.SetDirty(material);
 
@@ -160,6 +172,9 @@ namespace GRBHXR.EditorTools
             AssignSerializedObject(lensMap, "metadataJson", metadataAsset);
             AssignSerializedObject(lensMap, "eventRgba8Bytes", eventBytes);
             AssignSerializedObject(lensMap, "escapeDirectionUnityRgba32fBytes", escapeBytes);
+            AssignSerializedObject(lensMap, "fullSkyMetadataJson", fullSkyMetadata);
+            AssignSerializedObject(lensMap, "eventCubeRgba8Bytes", eventCubeBytes);
+            AssignSerializedObject(lensMap, "escapeDirectionUnityCubeRgba32fBytes", escapeCubeBytes);
 
             var binder = screen.GetComponent<BlackHoleLensMaterialBinder>();
             if (binder == null)
@@ -202,6 +217,7 @@ namespace GRBHXR.EditorTools
                 $"GR-BH-XR gate configured: fov={camera.fieldOfView:F4} deg, " +
                 $"r_obs={rObs:F3}, beta=[{metadata.screen.betaMin:F3},{metadata.screen.betaMax:F3}], " +
                 $"skyboxKind={skyboxKind}, angularWindow={options.UseAngularWindow}, " +
+                $"fullSkyTransfer={useFullSkyTransfer}, fullSkyDir={options.FullSkyTransferDir}, " +
                 $"lossyScale={screen.transform.lossyScale}, probeMode={material.GetFloat("_ProbeMode"):F1}, " +
                 $"basisR={material.GetVector("_LensWorldRight")}, " +
                 $"basisU={material.GetVector("_LensWorldUp")}, " +
@@ -449,6 +465,7 @@ namespace GRBHXR.EditorTools
             public string ProtractorSkyboxMaterialPath = DefaultProtractorSkyboxMaterialPath;
             public string MaterialPath = DefaultMaterialPath;
             public string ScenePath = DefaultScenePath;
+            public string FullSkyTransferDir = DefaultFullSkyTransferDir;
             public string CaptureDir = DefaultCaptureDir;
             public bool UseAngularWindow;
 
@@ -464,6 +481,7 @@ namespace GRBHXR.EditorTools
                 options.ProtractorSkyboxMaterialPath = CommandLineValue("-grbhxrProtractorSkyboxMaterialPath", options.ProtractorSkyboxMaterialPath);
                 options.MaterialPath = CommandLineValue("-grbhxrMaterialPath", options.MaterialPath);
                 options.ScenePath = CommandLineValue("-grbhxrScenePath", options.ScenePath);
+                options.FullSkyTransferDir = CommandLineValue("-grbhxrFullSkyTransferDir", options.FullSkyTransferDir);
                 options.CaptureDir = CommandLineValue("-grbhxrCaptureDir", options.CaptureDir);
                 options.UseAngularWindow = CommandLineFlag("-grbhxrUseAngularWindow");
                 return options;

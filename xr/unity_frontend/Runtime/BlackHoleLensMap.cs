@@ -20,6 +20,13 @@ namespace GRBHXR
     }
 
     [Serializable]
+    public sealed class FullSkyTransferMetadata
+    {
+        public string schema;
+        public int faceSize;
+    }
+
+    [Serializable]
     public sealed class ResolutionMetadata
     {
         public int sourceWidth;
@@ -71,10 +78,17 @@ namespace GRBHXR
         [SerializeField] private TextAsset metadataJson;
         [SerializeField] private TextAsset eventRgba8Bytes;
         [SerializeField] private TextAsset escapeDirectionUnityRgba32fBytes;
+        [Header("Optional full-sky transfer cubemap")]
+        [SerializeField] private TextAsset fullSkyMetadataJson;
+        [SerializeField] private TextAsset eventCubeRgba8Bytes;
+        [SerializeField] private TextAsset escapeDirectionUnityCubeRgba32fBytes;
 
         public LensMapMetadata Metadata { get; private set; }
+        public FullSkyTransferMetadata FullSkyMetadata { get; private set; }
         public Texture2D EventTexture { get; private set; }
         public Texture2D EscapeDirectionTexture { get; private set; }
+        public Cubemap EventCube { get; private set; }
+        public Cubemap EscapeDirectionCube { get; private set; }
 
         private void Awake()
         {
@@ -112,6 +126,7 @@ namespace GRBHXR
                 name: "GR-BH-XR escape_dir_unity_rgba32f",
                 filterMode: FilterMode.Bilinear
             );
+            LoadFullSkyCubemapIfPresent();
         }
 
         public void ApplyToMaterial(Material material)
@@ -126,6 +141,15 @@ namespace GRBHXR
             }
             material.SetTexture("_EventTex", EventTexture);
             material.SetTexture("_EscapeDirTex", EscapeDirectionTexture);
+            material.SetFloat("_UseFullSkyTransfer", EscapeDirectionCube != null ? 1.0f : 0.0f);
+            if (EventCube != null)
+            {
+                material.SetTexture("_EventCube", EventCube);
+            }
+            if (EscapeDirectionCube != null)
+            {
+                material.SetTexture("_EscapeDirCube", EscapeDirectionCube);
+            }
             if (Metadata.screen != null)
             {
                 material.SetVector(
@@ -166,6 +190,39 @@ namespace GRBHXR
             return 100.0f;
         }
 
+        private void LoadFullSkyCubemapIfPresent()
+        {
+            if (fullSkyMetadataJson == null || eventCubeRgba8Bytes == null || escapeDirectionUnityCubeRgba32fBytes == null)
+            {
+                FullSkyMetadata = null;
+                EventCube = null;
+                EscapeDirectionCube = null;
+                return;
+            }
+
+            FullSkyMetadata = JsonUtility.FromJson<FullSkyTransferMetadata>(fullSkyMetadataJson.text);
+            if (FullSkyMetadata == null || FullSkyMetadata.faceSize <= 0)
+            {
+                throw new InvalidOperationException("Full-sky transfer metadata is missing faceSize.");
+            }
+            EventCube = LoadRawCubemap(
+                eventCubeRgba8Bytes,
+                FullSkyMetadata.faceSize,
+                TextureFormat.RGBA32,
+                expectedBytesPerPixel: 4,
+                name: "GR-BH-XR full-sky event_cube_rgba8",
+                filterMode: FilterMode.Point
+            );
+            EscapeDirectionCube = LoadRawCubemap(
+                escapeDirectionUnityCubeRgba32fBytes,
+                FullSkyMetadata.faceSize,
+                TextureFormat.RGBAFloat,
+                expectedBytesPerPixel: 16,
+                name: "GR-BH-XR full-sky escape_dir_unity_cube_rgba32f",
+                filterMode: FilterMode.Bilinear
+            );
+        }
+
         private static Texture2D LoadRawTexture(
             TextAsset bytes,
             int width,
@@ -196,6 +253,54 @@ namespace GRBHXR
                 filterMode = filterMode
             };
             texture.LoadRawTextureData(bytes.bytes);
+            texture.Apply(updateMipmaps: false, makeNoLongerReadable: true);
+            return texture;
+        }
+
+        private static Cubemap LoadRawCubemap(
+            TextAsset bytes,
+            int faceSize,
+            TextureFormat format,
+            int expectedBytesPerPixel,
+            string name,
+            FilterMode filterMode
+        )
+        {
+            if (bytes == null)
+            {
+                throw new InvalidOperationException($"{name} bytes are not assigned.");
+            }
+
+            int faceBytes = faceSize * faceSize * expectedBytesPerPixel;
+            int expected = faceBytes * 6;
+            if (bytes.bytes.Length != expected)
+            {
+                throw new InvalidOperationException(
+                    $"{name} has {bytes.bytes.Length} bytes; expected {expected}."
+                );
+            }
+
+            var texture = new Cubemap(faceSize, format, mipChain: false)
+            {
+                name = name,
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = filterMode
+            };
+            var faces = new[]
+            {
+                CubemapFace.PositiveX,
+                CubemapFace.NegativeX,
+                CubemapFace.PositiveY,
+                CubemapFace.NegativeY,
+                CubemapFace.PositiveZ,
+                CubemapFace.NegativeZ
+            };
+            for (int face = 0; face < faces.Length; face++)
+            {
+                var faceData = new byte[faceBytes];
+                Buffer.BlockCopy(bytes.bytes, face * faceBytes, faceData, 0, faceBytes);
+                texture.SetPixelData(faceData, 0, faces[face]);
+            }
             texture.Apply(updateMipmaps: false, makeNoLongerReadable: true);
             return texture;
         }

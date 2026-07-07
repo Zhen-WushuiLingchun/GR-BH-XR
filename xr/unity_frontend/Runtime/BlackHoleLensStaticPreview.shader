@@ -4,10 +4,13 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
     {
         _EventTex ("Event Texture", 2D) = "black" {}
         _EscapeDirTex ("Escape Direction Texture", 2D) = "black" {}
+        _EventCube ("Full-Sky Event Cube", Cube) = "" {}
+        _EscapeDirCube ("Full-Sky Escape Direction Cube", Cube) = "" {}
         _SkyboxCubemap ("Skybox Cubemap", Cube) = "" {}
         _LensScreenBounds ("Lens Screen Bounds", Vector) = (-8, 8, -8, 8)
         _LensRObs ("Lens Observer Radius", Float) = 100
         _UseAngularWindow ("Use Angular Window", Float) = 0
+        _UseFullSkyTransfer ("Use Full-Sky Transfer", Float) = 0
         _ProbeMode ("Probe Mode", Float) = 0
         _LensWorldRight ("Lens World Right", Vector) = (1, 0, 0, 0)
         _LensWorldUp ("Lens World Up", Vector) = (0, 1, 0, 0)
@@ -30,10 +33,13 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
 
             sampler2D _EventTex;
             sampler2D _EscapeDirTex;
+            samplerCUBE _EventCube;
+            samplerCUBE _EscapeDirCube;
             samplerCUBE _SkyboxCubemap;
             float4 _LensScreenBounds;
             float _LensRObs;
             float _UseAngularWindow;
+            float _UseFullSkyTransfer;
             float _ProbeMode;
             float4 _LensWorldRight;
             float4 _LensWorldUp;
@@ -104,6 +110,24 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 float betaMin = _LensScreenBounds.z;
                 float betaMax = _LensScreenBounds.w;
 
+                fixed4 fullSkyColor = fixed4(0.0, 0.0, 0.0, 1.0);
+                if (_UseFullSkyTransfer > 0.5)
+                {
+                    float4 cubeDir = texCUBE(_EscapeDirCube, localRay);
+                    fixed4 cubeEvent = texCUBE(_EventCube, localRay);
+                    if (cubeDir.a < 0.5)
+                    {
+                        fullSkyColor = cubeEvent;
+                    }
+                    else
+                    {
+                        float3 cubeWorldDir = lensDirectionToWorld(cubeDir.xyz);
+                        fullSkyColor = _ProbeMode > 0.5
+                            ? protractorProbe(cubeWorldDir)
+                            : texCUBE(_SkyboxCubemap, cubeWorldDir);
+                    }
+                }
+
                 float2 lensUv = float2(0.0, 0.0);
                 bool insideAngularWindow = false;
                 if (_UseAngularWindow > 0.5)
@@ -136,7 +160,7 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
 
                 if (!insideAngularWindow)
                 {
-                    return texCUBE(_SkyboxCubemap, worldRay);
+                    return _UseFullSkyTransfer > 0.5 ? fullSkyColor : texCUBE(_SkyboxCubemap, worldRay);
                 }
 
                 float4 dir = tex2D(_EscapeDirTex, lensUv);
@@ -150,7 +174,14 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 {
                     return protractorProbe(worldDir);
                 }
-                return texCUBE(_SkyboxCubemap, worldDir);
+                fixed4 localColor = texCUBE(_SkyboxCubemap, worldDir);
+                if (_UseFullSkyTransfer > 0.5)
+                {
+                    float edgeDistance = min(min(lensUv.x, 1.0 - lensUv.x), min(lensUv.y, 1.0 - lensUv.y));
+                    float localWeight = smoothstep(0.0, 0.04, edgeDistance);
+                    return lerp(fullSkyColor, localColor, localWeight);
+                }
+                return localColor;
             }
             ENDCG
         }

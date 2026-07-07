@@ -21,7 +21,7 @@ from gr_bh_xr.types import MetricParams, TraceConfig
 
 _TRACE_CONTEXT = None
 GPU_DISK_MAX_ORDER = 2
-F32_OUTPUTS_PER_PIXEL = 9 + 4 * GPU_DISK_MAX_ORDER
+F32_OUTPUTS_PER_PIXEL = 10 + 4 * GPU_DISK_MAX_ORDER
 
 
 @dataclass(frozen=True)
@@ -175,6 +175,7 @@ def trace_lens_map(config: GpuTraceConfig) -> GpuLensMap:
     final_r = result["final_r"].reshape(shape).astype(np.float32)
     final_theta = result["final_theta"].reshape(shape).astype(np.float32)
     final_phi = result["final_phi"].reshape(shape).astype(np.float32)
+    final_p_t = result["final_p_t"].reshape(shape).astype(np.float32)
     final_p_r = result["final_p_r"].reshape(shape).astype(np.float32)
     final_p_theta = result["final_p_theta"].reshape(shape).astype(np.float32)
     final_p_phi = result["final_p_phi"].reshape(shape).astype(np.float32)
@@ -195,7 +196,7 @@ def trace_lens_map(config: GpuTraceConfig) -> GpuLensMap:
         r=final_r,
         theta=final_theta,
         phi=final_phi,
-        p_t=-1.0,
+        p_t=final_p_t,
         p_r=final_p_r,
         p_theta=final_p_theta,
         p_phi=final_p_phi,
@@ -247,16 +248,41 @@ def trace_screen_points(config: GpuTraceConfig, alpha: np.ndarray, beta: np.ndar
     return _trace_screen_points(config, alpha, beta)
 
 
+def trace_unity_direction_points(config: GpuTraceConfig, directions_unity: np.ndarray) -> dict[str, Any]:
+    """Trace explicit Unity local view directions with the cached WGPU pipeline.
+
+    The Unity local convention matches the Task 5 texture package: `+z` looks
+    toward the black hole, `+x` is screen right / positive alpha, and `+y` is
+    visually up. Initial momenta are launched from a finite-radius static
+    observer tetrad at `(r_obs, theta_obs, phi=0)`.
+    """
+
+    directions = np.asarray(directions_unity, dtype=np.float32)
+    if directions.ndim != 2 or directions.shape[1] != 3:
+        raise ValueError("directions_unity must have shape (N, 3).")
+    points = np.zeros((directions.shape[0], 4), dtype=np.float32)
+    points[:, :3] = directions
+    return _trace_points(config, points, input_mode=1.0)
+
+
 def _trace_screen_points(config: GpuTraceConfig, alpha: np.ndarray, beta: np.ndarray) -> dict[str, Any]:
+    points = np.zeros((np.asarray(alpha).size, 4), dtype=np.float32)
+    points[:, 0] = np.asarray(alpha, dtype=np.float32).ravel()
+    points[:, 1] = np.asarray(beta, dtype=np.float32).ravel()
+    return _trace_points(config, points, input_mode=0.0)
+
+
+def _trace_points(config: GpuTraceConfig, points: np.ndarray, input_mode: float) -> dict[str, Any]:
     wgpu, _adapter, device, pipeline, info = _get_trace_context()
-    points = np.stack(
-        [np.asarray(alpha, dtype=np.float32), np.asarray(beta, dtype=np.float32)], axis=1
-    ).astype(np.float32)
+    points = np.asarray(points, dtype=np.float32)
+    if points.ndim != 2 or points.shape[1] != 4:
+        raise ValueError("GPU trace points must have shape (N, 4).")
     n_pixels = int(points.shape[0])
     if n_pixels == 0:
         return _empty_trace_result(info)
     params = _shader_params(config)
     params[15] = float(n_pixels)
+    params[23] = float(input_mode)
     params_buffer = device.create_buffer_with_data(
         label="gr-bh-xr gpu params",
         data=params,
@@ -273,7 +299,7 @@ def _trace_screen_points(config: GpuTraceConfig, alpha: np.ndarray, beta: np.nda
         usage=wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_SRC,
     )
     screen_buffer = device.create_buffer_with_data(
-        label="gr-bh-xr gpu screen points",
+        label="gr-bh-xr gpu ray inputs",
         data=points,
         usage=wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST,
     )
@@ -311,13 +337,14 @@ def _trace_screen_points(config: GpuTraceConfig, alpha: np.ndarray, beta: np.nda
         "final_r": out_f32[:, 3],
         "final_theta": out_f32[:, 4],
         "final_phi": out_f32[:, 5],
-        "final_p_r": out_f32[:, 6],
-        "final_p_theta": out_f32[:, 7],
-        "final_p_phi": out_f32[:, 8],
-        "disk_r_m": np.stack([out_f32[:, 9], out_f32[:, 13]], axis=1),
-        "disk_phi_m": np.stack([out_f32[:, 10], out_f32[:, 14]], axis=1),
-        "disk_t_m": np.stack([out_f32[:, 11], out_f32[:, 15]], axis=1),
-        "disk_g_m": np.stack([out_f32[:, 12], out_f32[:, 16]], axis=1),
+        "final_p_t": out_f32[:, 6],
+        "final_p_r": out_f32[:, 7],
+        "final_p_theta": out_f32[:, 8],
+        "final_p_phi": out_f32[:, 9],
+        "disk_r_m": np.stack([out_f32[:, 10], out_f32[:, 14]], axis=1),
+        "disk_phi_m": np.stack([out_f32[:, 11], out_f32[:, 15]], axis=1),
+        "disk_t_m": np.stack([out_f32[:, 12], out_f32[:, 16]], axis=1),
+        "disk_g_m": np.stack([out_f32[:, 13], out_f32[:, 17]], axis=1),
     }
 
 
@@ -333,6 +360,7 @@ def _empty_trace_result(info: dict[str, Any]) -> dict[str, Any]:
         "final_r": np.empty(0, dtype=np.float32),
         "final_theta": np.empty(0, dtype=np.float32),
         "final_phi": np.empty(0, dtype=np.float32),
+        "final_p_t": np.empty(0, dtype=np.float32),
         "final_p_r": np.empty(0, dtype=np.float32),
         "final_p_theta": np.empty(0, dtype=np.float32),
         "final_p_phi": np.empty(0, dtype=np.float32),
@@ -442,6 +470,7 @@ def _shader_params(config: GpuTraceConfig) -> np.ndarray:
             isco_radius(config.params),
             config.disk_r_out,
             float(config.disk_max_order),
+            0.0,
         ],
         dtype=np.float32,
     )
@@ -495,13 +524,13 @@ const FAILURE_UNCLASSIFIED_MAX_LAMBDA: i32 = 2;
 const FAILURE_SOLVER_FAILURE: i32 = 3;
 const FAILURE_AXIS_COORDINATE_SINGULARITY: i32 = 4;
 const FAILURE_POLAR_STEP_OVERSHOOT: i32 = 5;
-const F32_OUTPUTS_PER_PIXEL_WGSL: u32 = 17u;
+const F32_OUTPUTS_PER_PIXEL_WGSL: u32 = 18u;
 const EQUATOR_THETA: f32 = 1.5707963267948966;
 
 @group(0) @binding(0) var<storage, read> params: array<f32>;
 @group(0) @binding(1) var<storage, read_write> out_i32: array<i32>;
 @group(0) @binding(2) var<storage, read_write> out_f32: array<f32>;
-@group(0) @binding(3) var<storage, read> screen_points: array<vec2<f32>>;
+@group(0) @binding(3) var<storage, read> ray_inputs: array<vec4<f32>>;
 
 struct State {
     t: f32,
@@ -580,7 +609,7 @@ fn disk_omega(r: f32) -> f32 {
     return orbit_sign * sqrt_m / (pow(r, 1.5) + orbit_sign * a * sqrt_m);
 }
 
-fn disk_redshift(r: f32, pph: f32) -> f32 {
+fn disk_redshift(r: f32, pt: f32, pph: f32) -> f32 {
     let m = params[0];
     let a = params[1];
     let a2 = a * a;
@@ -603,11 +632,12 @@ fn disk_redshift(r: f32, pph: f32) -> f32 {
         return -1.0;
     }
     let u_t = 1.0 / sqrt(norm);
-    let denom = u_t * (1.0 - omega * pph);
+    let energy = -pt;
+    let denom = u_t * (energy - omega * pph);
     if (denom <= 0.0 || is_bad(denom)) {
         return -1.0;
     }
-    return 1.0 / denom;
+    return energy / denom;
 }
 
 fn rhs(s: State) -> State {
@@ -749,6 +779,59 @@ fn initial_state(alpha: f32, beta: f32) -> State {
     return s;
 }
 
+fn initial_state_direction(direction_unity: vec3<f32>) -> State {
+    let m = params[0];
+    let a = params[1];
+    let theta = params[2];
+    let r_obs = params[3];
+    var direction = direction_unity;
+    let direction_norm = length(direction);
+    if (direction_norm <= 0.0 || is_bad(direction_norm)) {
+        direction = vec3<f32>(0.0, 0.0, 1.0);
+    } else {
+        direction = direction / direction_norm;
+    }
+
+    // Unity local +z looks toward the black hole. Static-observer tetrad
+    // components use +r outward, +theta toward increasing BL theta, and +phi.
+    let n_r = -direction.z;
+    let n_th = -direction.y;
+    let n_ph = -direction.x;
+
+    let sn = sin(theta);
+    let s2 = clamp_s2(sn * sn);
+    let sig = sigma(r_obs, theta, a);
+    let dlt = delta(r_obs, m, a);
+    let a2 = a * a;
+    let rp = r_obs * r_obs + a2;
+    let shell = rp * rp - a2 * dlt * s2;
+
+    let gtt = -(1.0 - 2.0 * m * r_obs / sig);
+    let gtph = -2.0 * m * a * r_obs * s2 / sig;
+    let grr_cov = sig / dlt;
+    let gth_cov = sig;
+    let gph_cov = shell * s2 / sig;
+
+    let u_t = 1.0 / sqrt(max(-gtt, 1.0e-20));
+    let e_r_r = 1.0 / sqrt(max(grr_cov, 1.0e-20));
+    let e_th_th = 1.0 / sqrt(max(gth_cov, 1.0e-20));
+    let omega_phi_t = -gtph / gtt;
+    let phi_norm_sq = gph_cov - gtph * gtph / gtt;
+    let e_ph_ph = 1.0 / sqrt(max(phi_norm_sq, 1.0e-20));
+    let e_ph_t = omega_phi_t * e_ph_ph;
+
+    let pcon_t = u_t + n_ph * e_ph_t;
+    let pcon_r = n_r * e_r_r;
+    let pcon_th = n_th * e_th_th;
+    let pcon_ph = n_ph * e_ph_ph;
+
+    let pt = gtt * pcon_t + gtph * pcon_ph;
+    let pr = grr_cov * pcon_r;
+    let pth = gth_cov * pcon_th;
+    let pph = gtph * pcon_t + gph_cov * pcon_ph;
+    return State(0.0, r_obs, theta, 0.0, pt, pr, pth, pph);
+}
+
 fn state_is_bad(s: State) -> bool {
     return is_bad(s.t) || is_bad(s.r) || is_bad(s.th) || is_bad(s.ph)
         || is_bad(s.pt) || is_bad(s.pr) || is_bad(s.pth) || is_bad(s.pph);
@@ -761,8 +844,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (idx >= pixel_count) {
         return;
     }
-    let alpha = screen_points[idx].x;
-    let beta = screen_points[idx].y;
+    let input = ray_inputs[idx];
+    let alpha = input.x;
+    let beta = input.y;
     let h = params[10];
     let max_steps = u32(params[11]);
     let axis_eps = params[12];
@@ -774,6 +858,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let disk_r_out = params[21];
     let disk_max_order = u32(params[22]);
     var s = initial_state(alpha, beta);
+    if (params[23] > 0.5) {
+        s = initial_state_direction(input.xyz);
+    }
     var event = EVENT_INVALID;
     var failure = FAILURE_UNCLASSIFIED_MAX_LAMBDA;
     var step_count: u32 = 0u;
@@ -838,7 +925,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
                     if (disk_order < disk_max_order && rc >= disk_r_in && rc <= disk_r_out) {
                         let phc = prev.ph + frac * (s.ph - prev.ph);
                         let tc = prev.t + frac * (s.t - prev.t);
-                        let gc = disk_redshift(rc, s.pph);
+                        let gc = disk_redshift(rc, s.pt, s.pph);
                         if (disk_order == 0u) {
                             disk_r0 = rc;
                             disk_phi0 = phc;
@@ -888,16 +975,17 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     out_f32[fbase + 3u] = s.r;
     out_f32[fbase + 4u] = s.th;
     out_f32[fbase + 5u] = s.ph;
-    out_f32[fbase + 6u] = s.pr;
-    out_f32[fbase + 7u] = s.pth;
-    out_f32[fbase + 8u] = s.pph;
-    out_f32[fbase + 9u] = disk_r0;
-    out_f32[fbase + 10u] = disk_phi0;
-    out_f32[fbase + 11u] = disk_t0;
-    out_f32[fbase + 12u] = disk_g0;
-    out_f32[fbase + 13u] = disk_r1;
-    out_f32[fbase + 14u] = disk_phi1;
-    out_f32[fbase + 15u] = disk_t1;
-    out_f32[fbase + 16u] = disk_g1;
+    out_f32[fbase + 6u] = s.pt;
+    out_f32[fbase + 7u] = s.pr;
+    out_f32[fbase + 8u] = s.pth;
+    out_f32[fbase + 9u] = s.pph;
+    out_f32[fbase + 10u] = disk_r0;
+    out_f32[fbase + 11u] = disk_phi0;
+    out_f32[fbase + 12u] = disk_t0;
+    out_f32[fbase + 13u] = disk_g0;
+    out_f32[fbase + 14u] = disk_r1;
+    out_f32[fbase + 15u] = disk_phi1;
+    out_f32[fbase + 16u] = disk_t1;
+    out_f32[fbase + 17u] = disk_g1;
 }
 """
