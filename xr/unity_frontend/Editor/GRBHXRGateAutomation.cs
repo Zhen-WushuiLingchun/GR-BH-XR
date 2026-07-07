@@ -102,6 +102,16 @@ namespace GRBHXR.EditorTools
             AssetDatabase.Refresh();
         }
 
+        [MenuItem("GR-BH-XR/Gate/Configure PCVR Sky-Shell First Run")]
+        public static void ConfigurePcvrSkyShellFirstRun()
+        {
+            var options = GateOptions.FromCommandLine();
+            options.UseAngularWindow = true;
+            options.UseSkyShell = true;
+            ConfigurePreview(options, GateSkyboxKind.Nasa);
+            AssetDatabase.Refresh();
+        }
+
         public static void BatchConfigureAndCapture()
         {
             ConfigureAndCapture();
@@ -130,6 +140,11 @@ namespace GRBHXR.EditorTools
         public static void BatchCaptureFullSkyDiskAuditGate()
         {
             CaptureFullSkyDiskAuditGate();
+        }
+
+        public static void BatchConfigurePcvrSkyShellFirstRun()
+        {
+            ConfigurePcvrSkyShellFirstRun();
         }
 
         private static void ConfigurePreview(GateOptions options, GateSkyboxKind skyboxKind)
@@ -204,20 +219,48 @@ namespace GRBHXR.EditorTools
             EditorUtility.SetDirty(material);
 
             var screen = GameObject.Find("LensScreen");
-            if (screen == null)
+            var skyShell = GameObject.Find("LensSkyShell");
+            GameObject previewObject;
+            if (options.UseSkyShell)
             {
-                screen = GameObject.CreatePrimitive(PrimitiveType.Quad);
-                screen.name = "LensScreen";
+                if (skyShell == null)
+                {
+                    skyShell = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    skyShell.name = "LensSkyShell";
+                }
+                if (screen != null)
+                {
+                    screen.SetActive(false);
+                }
+                skyShell.SetActive(true);
+                previewObject = skyShell;
+                previewObject.transform.position = Vector3.zero;
+                previewObject.transform.rotation = Quaternion.identity;
+                previewObject.transform.localScale = new Vector3(200.0f, 200.0f, 200.0f);
             }
-            screen.transform.position = Vector3.zero;
-            screen.transform.rotation = Quaternion.identity;
-            screen.transform.localScale = new Vector3(20.0f, 20.0f, 20.0f);
-            screen.GetComponent<MeshRenderer>().sharedMaterial = material;
+            else
+            {
+                if (screen == null)
+                {
+                    screen = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                    screen.name = "LensScreen";
+                }
+                if (skyShell != null)
+                {
+                    skyShell.SetActive(false);
+                }
+                screen.SetActive(true);
+                previewObject = screen;
+                previewObject.transform.position = Vector3.zero;
+                previewObject.transform.rotation = Quaternion.identity;
+                previewObject.transform.localScale = new Vector3(20.0f, 20.0f, 20.0f);
+            }
+            previewObject.GetComponent<MeshRenderer>().sharedMaterial = material;
 
-            var lensMap = screen.GetComponent<BlackHoleLensMap>();
+            var lensMap = previewObject.GetComponent<BlackHoleLensMap>();
             if (lensMap == null)
             {
-                lensMap = screen.AddComponent<BlackHoleLensMap>();
+                lensMap = previewObject.AddComponent<BlackHoleLensMap>();
             }
             AssignSerializedObject(lensMap, "metadataJson", metadataAsset);
             AssignSerializedObject(lensMap, "eventRgba8Bytes", eventBytes);
@@ -228,10 +271,10 @@ namespace GRBHXR.EditorTools
             AssignSerializedObject(lensMap, "diskOrder0TransferCubeRgba16fBytes", diskOrder0CubeBytes);
             AssignSerializedObject(lensMap, "diskOrder1TransferCubeRgba16fBytes", diskOrder1CubeBytes);
 
-            var binder = screen.GetComponent<BlackHoleLensMaterialBinder>();
+            var binder = previewObject.GetComponent<BlackHoleLensMaterialBinder>();
             if (binder == null)
             {
-                binder = screen.AddComponent<BlackHoleLensMaterialBinder>();
+                binder = previewObject.AddComponent<BlackHoleLensMaterialBinder>();
             }
             AssignSerializedObject(binder, "targetMaterial", material);
             lensMap.Load();
@@ -252,6 +295,32 @@ namespace GRBHXR.EditorTools
             camera.nearClipPlane = 0.01f;
             camera.farClipPlane = 1000.0f;
 
+            var lensAnchor = GameObject.Find("BlackHoleLensAnchor");
+            if (lensAnchor == null)
+            {
+                lensAnchor = new GameObject("BlackHoleLensAnchor");
+            }
+            lensAnchor.transform.position = Vector3.zero;
+            lensAnchor.transform.rotation = Quaternion.identity;
+            lensAnchor.transform.localScale = Vector3.one;
+
+            if (options.UseSkyShell)
+            {
+                var skyShellComponent = previewObject.GetComponent<BlackHoleXrSkyShell>();
+                if (skyShellComponent == null)
+                {
+                    skyShellComponent = previewObject.AddComponent<BlackHoleXrSkyShell>();
+                }
+                AssignSerializedObject(skyShellComponent, "targetCamera", camera);
+                AssignSerializedObject(skyShellComponent, "lensAnchor", lensAnchor.transform);
+                AssignSerializedObject(skyShellComponent, "lensMap", lensMap);
+                AssignSerializedObject(skyShellComponent, "targetMaterial", material);
+                AssignSerializedFloat(skyShellComponent, "shellDiameter", 200.0f);
+                AssignSerializedBool(skyShellComponent, "followCameraPosition", true);
+                AssignSerializedBool(skyShellComponent, "refreshBasisEveryFrame", true);
+                skyShellComponent.SyncNow();
+            }
+
             float rObs = metadata.sourceAttributes != null && metadata.sourceAttributes.r_obs > 0.0f
                 ? metadata.sourceAttributes.r_obs
                 : 100.0f;
@@ -269,8 +338,9 @@ namespace GRBHXR.EditorTools
                 $"GR-BH-XR gate configured: fov={camera.fieldOfView:F4} deg, " +
                 $"r_obs={rObs:F3}, beta=[{metadata.screen.betaMin:F3},{metadata.screen.betaMax:F3}], " +
                 $"skyboxKind={skyboxKind}, angularWindow={options.UseAngularWindow}, " +
+                $"skyShell={options.UseSkyShell}, " +
                 $"fullSkyTransfer={useFullSkyTransfer}, fullSkyDir={options.FullSkyTransferDir}, " +
-                $"lossyScale={screen.transform.lossyScale}, probeMode={material.GetFloat("_ProbeMode"):F1}, " +
+                $"lossyScale={previewObject.transform.lossyScale}, probeMode={material.GetFloat("_ProbeMode"):F1}, " +
                 $"diskAuditMode={material.GetFloat("_DiskAuditMode"):F1}, " +
                 $"basisR={material.GetVector("_LensWorldRight")}, " +
                 $"basisU={material.GetVector("_LensWorldUp")}, " +
@@ -285,12 +355,23 @@ namespace GRBHXR.EditorTools
             {
                 throw new MissingReferenceException("Main Camera not found.");
             }
-            var screen = GameObject.Find("LensScreen");
-            if (screen != null)
+
+            foreach (var skyShell in UnityEngine.Object.FindObjectsByType<BlackHoleXrSkyShell>())
             {
-                var renderer = screen.GetComponent<MeshRenderer>();
-                var lensMap = screen.GetComponent<BlackHoleLensMap>();
-                if (renderer != null && renderer.sharedMaterial != null && lensMap != null)
+                if (skyShell != null && skyShell.gameObject.activeInHierarchy)
+                {
+                    skyShell.SyncNow();
+                }
+            }
+
+            foreach (var lensMap in UnityEngine.Object.FindObjectsByType<BlackHoleLensMap>())
+            {
+                if (lensMap == null || !lensMap.gameObject.activeInHierarchy)
+                {
+                    continue;
+                }
+                var renderer = lensMap.GetComponent<MeshRenderer>();
+                if (renderer != null && renderer.sharedMaterial != null)
                 {
                     lensMap.ApplyToMaterial(renderer.sharedMaterial);
                 }
@@ -487,6 +568,32 @@ namespace GRBHXR.EditorTools
             EditorUtility.SetDirty(target);
         }
 
+        private static void AssignSerializedBool(UnityEngine.Object target, string fieldName, bool value)
+        {
+            var serializedObject = new SerializedObject(target);
+            var property = serializedObject.FindProperty(fieldName);
+            if (property == null)
+            {
+                throw new MissingReferenceException($"Serialized field not found: {target.GetType().Name}.{fieldName}");
+            }
+            property.boolValue = value;
+            serializedObject.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+
+        private static void AssignSerializedFloat(UnityEngine.Object target, string fieldName, float value)
+        {
+            var serializedObject = new SerializedObject(target);
+            var property = serializedObject.FindProperty(fieldName);
+            if (property == null)
+            {
+                throw new MissingReferenceException($"Serialized field not found: {target.GetType().Name}.{fieldName}");
+            }
+            property.floatValue = value;
+            serializedObject.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+
         private static void EnsureFolder(string path)
         {
             if (string.IsNullOrEmpty(path) || AssetDatabase.IsValidFolder(path))
@@ -521,6 +628,7 @@ namespace GRBHXR.EditorTools
             public string FullSkyTransferDir = DefaultFullSkyTransferDir;
             public string CaptureDir = DefaultCaptureDir;
             public bool UseAngularWindow;
+            public bool UseSkyShell;
             public float DiskAuditMode;
 
             public static GateOptions FromCommandLine()
@@ -538,6 +646,7 @@ namespace GRBHXR.EditorTools
                 options.FullSkyTransferDir = CommandLineValue("-grbhxrFullSkyTransferDir", options.FullSkyTransferDir);
                 options.CaptureDir = CommandLineValue("-grbhxrCaptureDir", options.CaptureDir);
                 options.UseAngularWindow = CommandLineFlag("-grbhxrUseAngularWindow");
+                options.UseSkyShell = CommandLineFlag("-grbhxrUseSkyShell");
                 options.DiskAuditMode = CommandLineFloat("-grbhxrDiskAuditMode", options.DiskAuditMode);
                 return options;
             }

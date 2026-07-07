@@ -256,6 +256,47 @@ the secondary-image band near the shadow edge. These screenshots are still
 audit artifacts: the visual disk shader with `g^p` weighting, blackbody color,
 Keplerian pattern advection, and time-delay use remains a later step.
 
+## PCVR Sky-Shell First-Run Scene
+
+The Quest first-run scene should use the full-sky transfer map on a camera-
+centered sky shell, not a flat near-field quad. `BlackHoleXrSkyShell` keeps the
+mesh centered on the active camera position and refreshes the lens basis from a
+separate `BlackHoleLensAnchor`. The shell does not follow camera rotation, so
+head yaw/pitch samples new world directions instead of looking at a tilted
+billboard.
+
+This is still MR-0 / PCVR static playback. It shows a virtual, world-anchored
+black-hole lens over the rendered skybox and does not bend real Quest
+passthrough camera pixels.
+
+Configure the formal Unity project:
+
+```powershell
+$unity = 'D:\unity\Hub\Editor\6000.5.2f1\Editor\Unity.exe'
+$proj = 'F:\UnityProjects\GRBHXR_PCVR_Gate\GRBHXR_PCVR_Gate'
+& $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRGateAutomation.BatchConfigurePcvrSkyShellFirstRun -grbhxrFullSkyTransferDir Assets/GRBHXR/FullSkyTransfer1024 -grbhxrUseSkyShell -logFile 'F:\UnityProjects\GRBHXR_PCVR_Gate\pcvr_sky_shell_setup.log'
+```
+
+Run the read-only local preflight before connecting a headset or starting the
+OpenXR runtime:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File validation\quest_pcvr\scripts\quest_pcvr_preflight.ps1
+```
+
+The preflight checks for the configured Unity executable, the formal Unity
+project, required full-sky transfer bytes, ADB availability, and Quest USB PnP
+presence. It does not install an APK, change headset settings, or modify the
+Unity project.
+
+Local 2026-07-07 preflight result: Unity `6000.5.2f1`, the formal Unity
+project, and `Assets/GRBHXR/FullSkyTransfer1024` were present; ADB was found at
+`C:\Users\hydro\AppData\Local\Android\Sdk\platform-tools\adb.exe`; Windows PnP
+reported Quest USB interfaces with vendor ID `VID_2833`. `adb devices -l`
+started the daemon but did not list an authorized device yet, so the headset
+side USB-debugging authorization prompt still needs to be accepted during
+runtime hookup.
+
 ## Headset Runtime Protocol
 
 The following checks are still pending and must be recorded before claiming a

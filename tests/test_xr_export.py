@@ -30,6 +30,13 @@ PROTRACTOR_SCRIPT = (
     / "scripts"
     / "compare_protractor_gate.py"
 )
+PCVR_PREFLIGHT_SCRIPT = (
+    Path(__file__).resolve().parents[1]
+    / "validation"
+    / "quest_pcvr"
+    / "scripts"
+    / "quest_pcvr_preflight.ps1"
+)
 
 
 def test_unity_basis_maps_positive_alpha_to_unity_right():
@@ -362,6 +369,24 @@ def test_unity_lens_map_loader_keeps_raw_textures_linear():
     assert "lensMap.ApplyBasisToMaterial(targetMaterial)" in binder
 
 
+def test_unity_xr_sky_shell_runtime_is_versioned():
+    source = (UNITY_RUNTIME_DIR / "BlackHoleXrSkyShell.cs").read_text(encoding="utf8")
+
+    assert "[ExecuteAlways]" in source
+    assert "RequireComponent(typeof(Renderer))" in source
+    assert "RequireComponent(typeof(BlackHoleLensMap))" in source
+    assert "targetCamera" in source
+    assert "lensAnchor" in source
+    assert "followCameraPosition" in source
+    assert "refreshBasisEveryFrame" in source
+    assert "public void SyncNow()" in source
+    assert "Camera.main" in source
+    assert "transform.position = targetCamera.transform.position" in source
+    assert "transform.rotation = lensAnchor.rotation" in source
+    assert "Vector3(diameter, diameter, diameter)" in source
+    assert "lensMap.ApplyBasisToMaterial(ResolvedMaterial())" in source
+
+
 def test_unity_editor_gate_automation_is_versioned():
     source = (UNITY_EDITOR_DIR / "GRBHXRGateAutomation.cs").read_text(encoding="utf8")
     asmdef = (UNITY_EDITOR_DIR / "GRBHXR.Editor.asmdef").read_text(encoding="utf8")
@@ -372,9 +397,12 @@ def test_unity_editor_gate_automation_is_versioned():
     assert "BatchCaptureAngularWindowYawGate" in source
     assert "BatchCaptureFullSkyProtractorYawGate" in source
     assert "BatchCaptureFullSkyDiskAuditGate" in source
+    assert "BatchConfigurePcvrSkyShellFirstRun" in source
+    assert "ConfigurePcvrSkyShellFirstRun" in source
     assert "CaptureYaw" in source
     assert "FullSkyTransferDir" in source
     assert "-grbhxrFullSkyTransferDir" in source
+    assert "-grbhxrUseSkyShell" in source
     assert "full_sky_transfer_metadata.json" in source
     assert "event_cube_rgba8.bytes" in source
     assert "escape_dir_unity_cube_rgba32f.bytes" in source
@@ -394,11 +422,38 @@ def test_unity_editor_gate_automation_is_versioned():
     assert "unity_gate_fullsky_protractor_yaw_004_square_1024.png" in source
     assert "unity_gate_fullsky_disk_audit_m0_square_1024.png" in source
     assert "unity_gate_fullsky_disk_audit_m1_square_1024.png" in source
+    assert "LensSkyShell" in source
+    assert "BlackHoleLensAnchor" in source
+    assert "BlackHoleXrSkyShell" in source
+    assert "PrimitiveType.Sphere" in source
+    assert "AssignSerializedObject(skyShellComponent, \"targetCamera\", camera)" in source
+    assert "AssignSerializedObject(skyShellComponent, \"lensAnchor\", lensAnchor.transform)" in source
+    assert "AssignSerializedFloat(skyShellComponent, \"shellDiameter\", 200.0f)" in source
+    assert "AssignSerializedBool(skyShellComponent, \"followCameraPosition\", true)" in source
+    assert "skyShellComponent.SyncNow()" in source
     assert "new Vector3(20.0f, 20.0f, 20.0f)" in source
     assert "new Vector3(20.0f, 20.0f, 1.0f)" not in source
     assert "GRBHXR.Editor" in asmdef
     assert '"includePlatforms"' in asmdef
     assert '"Editor"' in asmdef
+
+
+def test_quest_pcvr_preflight_is_read_only_and_checks_assets():
+    source = PCVR_PREFLIGHT_SCRIPT.read_text(encoding="utf8")
+
+    assert "D:\\unity\\Hub\\Editor\\6000.5.2f1\\Editor\\Unity.exe" in source
+    assert "F:\\UnityProjects\\GRBHXR_PCVR_Gate\\GRBHXR_PCVR_Gate" in source
+    assert "Assets\\GRBHXR\\FullSkyTransfer1024" in source
+    assert "full_sky_transfer_metadata.json" in source
+    assert "event_cube_rgba8.bytes" in source
+    assert "escape_dir_unity_cube_rgba32f.bytes" in source
+    assert "adb devices -l" in source
+    assert "Get-PnpDevice" in source
+    assert "VID_2833" in source
+    assert "ConvertTo-Json" in source
+    assert "adb install" not in source
+    assert "adb push" not in source
+    assert "Set-" not in source
 
 
 def _unity_to_bh(

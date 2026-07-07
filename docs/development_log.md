@@ -19,6 +19,39 @@ from here.
 
 ## Log
 
+### 2026-07-07 - Quest PCVR sky-shell first-run scaffold
+
+- Goal: Start the Quest PCVR line without overstating mixed-reality
+  passthrough physics.
+- Changed files / components: Added a Unity `BlackHoleXrSkyShell` runtime
+  helper, extended gate automation with a PCVR sky-shell configuration entry,
+  added a read-only Quest PCVR preflight script, and expanded the XR/MR scope
+  documentation.
+- Academic reason: The verified full-sky transfer cubemap should be consumed
+  as an angular radiance field around the observer, not as a flat near-field
+  billboard. Mixed-reality claims also need an explicit distinction between
+  compositor overlay, cached room radiance, depth/mesh reprojection, and
+  camera-frame lensing.
+- Physical correspondence: The sky shell follows the camera position while
+  the lens basis is refreshed from a separate black-hole anchor, so head
+  rotation changes the sampled view direction without creating artificial
+  billboard perspective. This remains Tier 0 static transfer-map playback for
+  one observer; it does not trace geodesics per frame and does not bend real
+  passthrough camera pixels.
+- Assumptions and conventions: PCVR first-run is MR-0. MR-1 uses a static room
+  cubemap captured on standalone Quest, MR-2 adds finite-distance depth/mesh
+  reprojection, and MR-3 may add calibrated rear or external cameras. A forward
+  passthrough camera cannot observe the behind-the-user radiance that a real
+  black hole can lens into the Einstein ring.
+- Validation: Source-level tests check that the sky-shell runtime is versioned
+  and that editor automation exposes the batch first-run configuration. The
+  `quest_pcvr_preflight.ps1` script performs local read-only checks for Unity,
+  the formal project, transfer-map assets, ADB, and Quest USB visibility.
+- References: Existing Task 5 full-sky transfer validation and Quest PCVR
+  validation notes; no new physics reference is introduced.
+- Open issues / next steps: Run the preflight and OpenXR headset protocol with
+  the device connected; separately continue disk visual-mode shader work.
+
 ### 2026-07-07 - Full-sky thin-disk audit cubemaps
 
 - Goal: Start the Unity thin-disk path with an audit visualization before any

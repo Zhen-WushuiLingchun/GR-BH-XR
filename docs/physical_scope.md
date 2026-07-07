@@ -184,16 +184,56 @@ The shadow / critical curve / lensing ring / photon ring distinction follows
 
 ## XR Scope
 
-Quest 3 is introduced first as a PCVR/MR viewer:
+Quest 3 is introduced first as a PCVR viewer for the validated static Kerr
+transfer-map renderer:
 
 ```text
 PC GPU -> stereo textures -> Quest Link/Air Link -> head-pose feedback
 ```
 
-MR is staged:
+The current PCVR path is `MR-0`: a compositor or scene overlay, not true
+camera-frame passthrough lensing. Under Quest Link / Air Link, the application
+can render a world-anchored black-hole layer and can be visually composed with
+Meta passthrough by the runtime, but it must not claim to bend the real
+passthrough camera pixels unless those pixels are exposed to the application.
 
-- MR-1: passthrough background plus virtual black-hole layer plus Depth API
-  occlusion.
-- MR-2: approximate environment-texture or room-mesh lensing.
-- MR-3: true camera-frame lensing only when passthrough camera-frame access is
-  available.
+Mixed reality is staged as follows:
+
+- MR-0: PCVR composite overlay. The black hole and lensed astronomical sky are
+  virtual content. Real-room passthrough, if enabled by the runtime, is a
+  background layer that is not sampled by the lens shader.
+- MR-1: standalone guided room-radiance capture. At startup, the user turns in
+  place and the application builds a static cubemap of the room from
+  passthrough-camera frames with camera intrinsics and poses. Runtime lensing
+  samples live forward-camera pixels inside the currently observed cone when
+  available, and falls back to the cached cubemap outside that cone. The cached
+  cubemap assumes the room is static at the capture time.
+- MR-2: finite-distance room correction. A Scene mesh, depth map, or
+  reconstructed room texture is used to reproject the cached room radiance so
+  nearby furniture is not treated as an object at infinity. Disocclusion holes,
+  temporal mismatch, and unobserved surfaces remain explicit limitations.
+- MR-3: external or rear-camera coverage. A calibrated rear-facing or
+  multi-camera rig can provide live pixels for the high-value directions that
+  a real black hole would bend into the Einstein ring from behind the observer.
+  On PCVR this may be possible with user-owned UVC cameras connected to the
+  PC; on standalone Quest hardware support, permissions, synchronization, and
+  power are separate engineering risks.
+
+The physical limitation is important: a real black hole can bend light from
+behind the observer into the Einstein ring, but a forward-facing passthrough
+camera cannot observe those pixels. A room cubemap fills that missing angular
+radiance only under a static-scene assumption. A rear-camera rig improves
+time coverage for the back cone but does not remove the need for calibration,
+latency compensation, and a fallback for side directions.
+
+Room-scale lensing is also not the same as lensed starlight at infinity. The
+current Kerr transfer map stores escaped directions and is exact for distant
+background radiance under the fixed-observer approximation. Nearby room
+objects require ray/scene intersection or depth-aware reprojection using the
+escaped position and direction; otherwise the room is approximated as an
+infinite cubemap. This approximation must be marked whenever MR-1 visuals are
+shown.
+
+For near-term execution, MR-0 is the Quest PCVR first-run target. MR-1 is the
+first physically meaningful true-passthrough lensing target. MR-3 is deferred
+until MR-1 is useful enough to justify custom camera hardware.
