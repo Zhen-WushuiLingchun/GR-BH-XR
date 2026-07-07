@@ -19,6 +19,36 @@ from here.
 
 ## Log
 
+### 2026-07-07 - Quest interaction control scaffold
+
+- Goal: Add a first interaction layer for Quest/desktop debugging without
+  violating the static-transfer-map boundary.
+- Changed files / components: Added `BlackHoleLensAnchorControls` for
+  yaw/pitch drag, independent roll control, reset, and stale-transfer marking;
+  added `BlackHoleLensFloatingPanel` as a lightweight world-space status HUD;
+  extended Unity gate automation to attach the controls and panel to the
+  PCVR sky-shell scene.
+- Academic reason: Moving a distant black-hole transfer map on the sky is a
+  rigid rotation of the observer basis, not a new geodesic solve. The UI must
+  make this distinction visible before exposing more ambitious parameter
+  controls.
+- Physical correspondence: Dragging changes the Unity lens basis
+  `(right, up, forward)` and therefore re-aims the fixed full-sky transfer
+  map. Roll changes the position angle around the line of sight. Spin,
+  inclination, observer radius, apparent size, and binary phase remain locked
+  unless a matching transfer map is generated or selected.
+- Assumptions and conventions: Legacy mouse/keyboard bindings are development
+  aids only; XR controller rays or UI buttons should call the same public
+  methods. Apparent-size requests only set a stale flag and log that Tier 1
+  regeneration is required.
+- Validation: Source tests assert that the control methods, stale-transfer
+  guard, floating panel, and editor scene wiring are present. Unity batch
+  recompilation is still required in the formal project before headset use.
+- References: Existing static-Kerr transfer-map boundary in
+  `docs/physical_scope.md`.
+- Open issues / next steps: Wire controller ray/button input in the OpenXR
+  scene and record headset behavior with the panel visible.
+
 ### 2026-07-07 - Quest PCVR sky-shell first-run scaffold
 
 - Goal: Start the Quest PCVR line without overstating mixed-reality

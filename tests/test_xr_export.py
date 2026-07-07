@@ -387,6 +387,47 @@ def test_unity_xr_sky_shell_runtime_is_versioned():
     assert "lensMap.ApplyBasisToMaterial(ResolvedMaterial())" in source
 
 
+def test_unity_lens_anchor_controls_runtime_is_versioned():
+    source = (UNITY_RUNTIME_DIR / "BlackHoleLensAnchorControls.cs").read_text(encoding="utf8")
+
+    assert "public enum DragMode" in source
+    assert "YawPitch" in source
+    assert "YawOnly" in source
+    assert "ApplyScreenDrag" in source
+    assert "AddYawDegrees" in source
+    assert "AddPitchDegrees" in source
+    assert "AddRollDegrees" in source
+    assert "SetRollDegrees" in source
+    assert "RequestObserverRadiusChange" in source
+    assert "transferMapStale = true" in source
+    assert "Observer-radius or apparent-size changes require a new transfer map" in source
+    assert "Quaternion.Euler(pitchDegrees, yawDegrees, rollDegrees)" in source
+    assert "skyShell.SyncNow()" in source
+    assert "Size/r_obs: locked" in source
+    assert "Input.GetMouseButtonDown" in source
+    assert "KeyCode.Q" in source
+    assert "KeyCode.E" in source
+    assert "KeyCode.R" in source
+    assert "FindAnyObjectByType<BlackHoleXrSkyShell>()" in source
+
+
+def test_unity_lens_floating_panel_runtime_is_versioned():
+    source = (UNITY_RUNTIME_DIR / "BlackHoleLensFloatingPanel.cs").read_text(encoding="utf8")
+
+    assert "[ExecuteAlways]" in source
+    assert "targetCamera" in source
+    assert "BlackHoleLensAnchorControls" in source
+    assert "cameraLocalOffset" in source
+    assert "public void SetVisible" in source
+    assert "public void RefreshNow()" in source
+    assert "targetCamera.transform.TransformPoint(cameraLocalOffset)" in source
+    assert "transform.rotation = targetCamera.transform.rotation" in source
+    assert "controls.StatusText()" in source
+    assert "TextMesh" in source
+    assert "StatusText" in source
+    assert "FindAnyObjectByType<BlackHoleLensAnchorControls>()" in source
+
+
 def test_unity_editor_gate_automation_is_versioned():
     source = (UNITY_EDITOR_DIR / "GRBHXRGateAutomation.cs").read_text(encoding="utf8")
     asmdef = (UNITY_EDITOR_DIR / "GRBHXR.Editor.asmdef").read_text(encoding="utf8")
@@ -425,12 +466,20 @@ def test_unity_editor_gate_automation_is_versioned():
     assert "LensSkyShell" in source
     assert "BlackHoleLensAnchor" in source
     assert "BlackHoleXrSkyShell" in source
+    assert "BlackHoleLensAnchorControls" in source
+    assert "BlackHoleLensFloatingPanel" in source
+    assert "LensControlPanel" in source
     assert "PrimitiveType.Sphere" in source
     assert "AssignSerializedObject(skyShellComponent, \"targetCamera\", camera)" in source
     assert "AssignSerializedObject(skyShellComponent, \"lensAnchor\", lensAnchor.transform)" in source
     assert "AssignSerializedFloat(skyShellComponent, \"shellDiameter\", 200.0f)" in source
     assert "AssignSerializedBool(skyShellComponent, \"followCameraPosition\", true)" in source
     assert "skyShellComponent.SyncNow()" in source
+    assert "AssignSerializedObject(controls, \"lensAnchor\", lensAnchor.transform)" in source
+    assert "AssignSerializedObject(controls, \"skyShell\", skyShellComponent)" in source
+    assert "AssignSerializedObject(panel, \"targetCamera\", camera)" in source
+    assert "AssignSerializedObject(panel, \"controls\", controls)" in source
+    assert "panel.RefreshNow()" in source
     assert "new Vector3(20.0f, 20.0f, 20.0f)" in source
     assert "new Vector3(20.0f, 20.0f, 1.0f)" not in source
     assert "GRBHXR.Editor" in asmdef

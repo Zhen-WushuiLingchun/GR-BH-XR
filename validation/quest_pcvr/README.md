@@ -297,6 +297,32 @@ started the daemon but did not list an authorized device yet, so the headset
 side USB-debugging authorization prompt still needs to be accepted during
 runtime hookup.
 
+## Interaction Scaffold
+
+The first interaction layer treats the black hole as a distant, static transfer
+map with a movable angular basis:
+
+- Dragging calls `BlackHoleLensAnchorControls.ApplyScreenDrag()` and rotates
+  the `BlackHoleLensAnchor` yaw/pitch basis. This is a rigid sky rotation, not
+  a change in observer position.
+- Rolling the black hole is a separate operation through `AddRollDegrees()` or
+  `SetRollDegrees()`. Desktop development bindings use `Q/E`; an XR controller
+  twist or floating-panel button can call the same public methods.
+- `R` resets yaw, pitch, and roll.
+- Apparent-size, `r_obs`, spin, inclination, and disk geometry are locked in
+  the static package. Calling `RequestObserverRadiusChange()` only marks the
+  current transfer map as stale; it does not rescale or pretend to update the
+  physics.
+- `BlackHoleLensFloatingPanel` is a lightweight world-space status panel. It is
+  intended as a first Quest debug HUD and as the target for future controller
+  buttons/sliders. It should display the current yaw/pitch/roll and the locked
+  size / stale-transfer status.
+
+For the first Quest run, use this as a debug and validation control surface.
+Do not present it as a complete parameter editor: changing Kerr spin,
+inclination, observer radius, or binary phase needs Tier 1 transfer-map
+selection or regeneration.
+
 ## Headset Runtime Protocol
 
 The following checks are still pending and must be recorded before claiming a

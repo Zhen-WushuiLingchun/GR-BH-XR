@@ -319,6 +319,31 @@ namespace GRBHXR.EditorTools
                 AssignSerializedBool(skyShellComponent, "followCameraPosition", true);
                 AssignSerializedBool(skyShellComponent, "refreshBasisEveryFrame", true);
                 skyShellComponent.SyncNow();
+
+                var controls = lensAnchor.GetComponent<BlackHoleLensAnchorControls>();
+                if (controls == null)
+                {
+                    controls = lensAnchor.AddComponent<BlackHoleLensAnchorControls>();
+                }
+                AssignSerializedObject(controls, "lensAnchor", lensAnchor.transform);
+                AssignSerializedObject(controls, "skyShell", skyShellComponent);
+                AssignSerializedBool(controls, "enableMouseKeyboardInput", true);
+
+                var panelObject = GameObject.Find("LensControlPanel");
+                if (panelObject == null)
+                {
+                    panelObject = new GameObject("LensControlPanel");
+                }
+                var panel = panelObject.GetComponent<BlackHoleLensFloatingPanel>();
+                if (panel == null)
+                {
+                    panel = panelObject.AddComponent<BlackHoleLensFloatingPanel>();
+                }
+                AssignSerializedObject(panel, "targetCamera", camera);
+                AssignSerializedObject(panel, "controls", controls);
+                AssignSerializedBool(panel, "followCamera", true);
+                AssignSerializedBool(panel, "visible", true);
+                panel.RefreshNow();
             }
 
             float rObs = metadata.sourceAttributes != null && metadata.sourceAttributes.r_obs > 0.0f

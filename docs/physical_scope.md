@@ -92,6 +92,17 @@ rendering of an offline geodesic transfer map. Any UI that exposes spin,
 inclination, observer position, or binary phase must either regenerate/select a
 matching transfer map or visibly mark the output as a stale/approximate preview.
 
+Interactive pose controls in Tier 0 are allowed only when they are pure
+rotations of the Unity lens basis. Dragging the black hole across the sky may
+rotate the `(right, up, forward)` basis and therefore re-aim the distant
+transfer map without changing its physical parameters. A separate roll control
+may rotate the disk/shadow position angle around the line of sight. These are
+rigid rotations of a distant cached radiance field; they do not change `a`,
+`i`, `r_obs`, the screen half-width, disk geometry, or the metric. UI controls
+for apparent size, observer radius, spin, inclination, binary phase, or
+observer translation must be disabled, marked as requiring a new transfer map,
+or routed through Tier 1 regeneration.
+
 The first Tier 1 latency measurement is now available for the WGPU Vulkan
 prototype on the local NVIDIA GeForce RTX 5080 Laptop GPU. For Kerr `a = 0.9`,
 `i = 60 deg`, `r_obs = 100M`, `h = 0.05`, and `8000` fixed RK4 steps, a warm
