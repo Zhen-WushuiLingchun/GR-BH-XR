@@ -19,6 +19,36 @@ from here.
 
 ## Log
 
+### 2026-07-07 - Tier 1 GPU trace latency benchmark
+
+- Goal: Quantify whether the WGPU Vulkan tracer is currently a slider-update,
+  progressive-update, or per-frame geodesic integration path.
+- Changed files / components: Added `gr_bh_xr.gpu.benchmark_latency`, GPU task
+  tests for its parser/summary helper, and GPU validation/physical-scope
+  documentation for the measured update budget.
+- Academic reason: The project must not confuse Tier 0 static texture playback
+  with true real-time geodesic integration. Measured latency is needed before
+  deciding when neural or reduced-order surrogates become necessary.
+- Physical correspondence: The benchmark measures a full Kerr transfer-map
+  update for fixed Boyer-Lindquist screen bounds and observer metadata. It
+  includes GPU dispatch, readback, momentum-derived escape directions,
+  event/debug texture assembly, and disk-transfer buffers, but excludes HDF5
+  writes and Unity texture upload.
+- Assumptions and conventions: The benchmark case is Kerr `a = 0.9`,
+  `i = 60 deg`, `r_obs = 100M`, `alpha,beta in [-8M, 8M]`, `h = 0.05`, and
+  `8000` fixed RK4 steps on the local NVIDIA GeForce RTX 5080 Laptop GPU.
+- Validation: Raw `trace_lens_map` timings were `49.09 ms` at `256x256`,
+  `185.94 ms` at `512x512`, and `652.51 ms` at `1024x1024`. With the existing
+  `0.25M` critical-band `2x2` refinement, timings were `113.48 ms`,
+  `345.96 ms`, and `1243.98 ms`. The JSON reports are stored under ignored
+  `outputs/task5/`.
+- References: Existing Task 4 GPU validation notes in
+  `validation/gpu_kerr_lensing/README.md`.
+- Open issues / next steps: Use these numbers to keep Quest Tier 0 static
+  playback separate from Tier 1 update controls; start Quest first-pass
+  validation with a higher-resolution skybox while disk-transfer texture export
+  continues.
+
 ### 2026-07-07 - Static playback boundary and Quest yaw semantics
 
 - Goal: Clarify the Task 5 Unity path after desktop angular-window testing

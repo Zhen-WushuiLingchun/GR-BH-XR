@@ -178,6 +178,18 @@ budget and report `unclassified_max_lambda`. The follow-up shader adds
 near-polar substepping and reserves `polar_step_overshoot = 5`; the reviewed
 256x256 Kerr case now has zero solver/max-lambda failures.
 
+Tier 1 latency evidence must be recorded before claiming interactive
+parameter-space tracing. The benchmark command is
+`python -m gr_bh_xr.gpu.benchmark_latency`; results must state whether
+critical-band refinement is enabled and must separate GPU tracing/readback from
+HDF5 writes and Unity texture upload. On 2026-07-07, the local RTX 5080 Laptop
+GPU measured Kerr `a = 0.9`, `i = 60 deg`, `r_obs = 100M`, `h = 0.05`,
+`8000` steps at `49 ms`, `186 ms`, and `653 ms` for raw `256x256`, `512x512`,
+and `1024x1024` maps. With `critical_refine_band = 0.25M` and `2x2`
+refinement, the corresponding times were `113 ms`, `346 ms`, and `1.24 s`.
+These numbers support slider-release or progressive single-Kerr updates, not
+headset-rate per-frame geodesic integration.
+
 ## Phase 3 Quest PCVR
 
 Task 5 begins with a static Unity texture bridge. Before any headset claim,

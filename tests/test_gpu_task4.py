@@ -9,6 +9,7 @@ import pytest
 from gr_bh_xr.generate_lens_map import EVENT_CODES, FAILURE_CODES
 from gr_bh_xr.geodesic import trace_ray
 from gr_bh_xr.gpu.backend import backend_info, select_vulkan_adapter
+from gr_bh_xr.gpu.benchmark_latency import _case_summary, build_parser
 from gr_bh_xr.gpu.generate_lens_map import generate_gpu_lens_map
 from gr_bh_xr.gpu.preview import preview_envelope_warning
 from gr_bh_xr.gpu.trace import GpuTraceConfig, trace_screen_points
@@ -40,6 +41,42 @@ def test_gpu_preview_warns_outside_documented_envelope():
     assert preview_envelope_warning(0.5, 60.0) == ""
     assert "outside f32 preview envelope" in preview_envelope_warning(0.95, 5.0)
     assert "outside f32 preview envelope" in preview_envelope_warning(0.99, 60.0)
+
+
+def test_gpu_latency_case_summary_reports_pixels_per_second():
+    summary = _case_summary(
+        16,
+        2,
+        [10.0, 20.0],
+        {"event_counts": {"capture": 1}, "failure_counts": {"none": 256}},
+    )
+
+    assert summary["grid"] == 16
+    assert summary["pixels"] == 256
+    assert summary["elapsed_ms_median"] == 15.0
+    assert summary["pixels_per_second_median"] == pytest.approx(256.0 / 0.015)
+    assert summary["event_counts"]["capture"] == 1
+
+
+def test_gpu_latency_parser_accepts_grid_list():
+    args = build_parser().parse_args(
+        [
+            "--spin",
+            "0.9",
+            "--inclination-deg",
+            "60",
+            "--grids",
+            "256",
+            "512",
+            "--iterations",
+            "2",
+        ]
+    )
+
+    assert args.spin == pytest.approx(0.9)
+    assert args.inclination_deg == pytest.approx(60.0)
+    assert args.grids == [256, 512]
+    assert args.iterations == 2
 
 
 def test_gpu_schwarzschild_lens_map_schema_and_events(tmp_path):

@@ -22,6 +22,36 @@ The preview is an interactive PC debug view of the texture contract intended
 for later Unity/OpenXR integration. `--save-and-exit <path>` writes the same
 HDF5 schema without opening a window.
 
+## Tier 1 Latency Benchmark
+
+Use this benchmark to separate static Tier 0 texture playback from Tier 1
+near-real-time transfer-map updates. It measures `trace_lens_map` after a small
+warmup run, including GPU dispatch, readback, escape-direction postprocessing,
+event/debug texture assembly, disk-transfer buffer extraction, and optional
+critical-band refinement. It excludes HDF5 writes and Unity texture upload.
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.gpu.benchmark_latency --spin 0.9 --inclination-deg 60 --grids 256 512 1024 --alpha-max 8 --beta-max 8 --r-obs 100 --step-size 0.05 --steps 8000 --out outputs/task5/gpu_trace_latency_kerr_a0.9_i60_raw.json
+python -m gr_bh_xr.gpu.benchmark_latency --spin 0.9 --inclination-deg 60 --grids 256 512 1024 --alpha-max 8 --beta-max 8 --r-obs 100 --step-size 0.05 --steps 8000 --critical-refine-band 0.25 --critical-refine-factor 2 --out outputs/task5/gpu_trace_latency_kerr_a0.9_i60_refined.json
+```
+
+On 2026-07-07, the local NVIDIA GeForce RTX 5080 Laptop GPU produced these
+warm-pipeline timings for Kerr `a = 0.9`, `i = 60 deg`, `r_obs = 100M`,
+`h = 0.05`, and `8000` steps:
+
+| grid | raw trace | refined trace (`band=0.25`, `2x2`) | refined pixels |
+| ---: | ---: | ---: | ---: |
+| 256x256 | 49.09 ms | 113.48 ms | 4,000 |
+| 512x512 | 185.94 ms | 345.96 ms | 16,032 |
+| 1024x1024 | 652.51 ms | 1,243.98 ms | 64,216 |
+
+This is fast enough for slider-release or progressive parameter updates, and
+possibly for coarse live preview at 256x256. It is not evidence for 72/90 Hz
+per-frame geodesic integration. Quest Tier 0 still consumes cached textures;
+Tier 1 must explicitly report update latency whenever spin, inclination,
+observer, or screen-window controls trigger a new transfer map.
+
 ## HDF5 Schema
 
 Generated GPU maps use schema `gr-bh-xr.phase2.gpu_lens_map.v3`.

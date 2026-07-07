@@ -92,6 +92,16 @@ rendering of an offline geodesic transfer map. Any UI that exposes spin,
 inclination, observer position, or binary phase must either regenerate/select a
 matching transfer map or visibly mark the output as a stale/approximate preview.
 
+The first Tier 1 latency measurement is now available for the WGPU Vulkan
+prototype on the local NVIDIA GeForce RTX 5080 Laptop GPU. For Kerr `a = 0.9`,
+`i = 60 deg`, `r_obs = 100M`, `h = 0.05`, and `8000` fixed RK4 steps, a warm
+`trace_lens_map` update took about `49 ms` at `256x256`, `186 ms` at `512x512`,
+and `653 ms` at `1024x1024` without critical-band refinement. With the existing
+`0.25M` critical-band `2x2` refinement, the same grids took about `113 ms`,
+`346 ms`, and `1.24 s`. This supports slider-release, progressive, or coarse
+interactive updates for single-Kerr maps, but it is still not 72/90 Hz
+per-frame geodesic integration.
+
 This shortcut is valid only for the stated model. A non-axisymmetric thin-disk
 emissivity pattern can rotate without re-tracing geodesics by advecting the
 emission coordinates in the disk frame:
