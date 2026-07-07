@@ -19,6 +19,48 @@ from here.
 
 ## Log
 
+### 2026-07-07 - Quest disk visual mode and VR settings panel
+
+- Goal: Add a first headset-usable thin-disk visual layer and replace the
+  oversized text status display with a world-space settings panel.
+- Changed files / components: Extended `BlackHoleLensStaticPreview.shader`
+  with disk visual compositing over the existing full-sky transfer map; added
+  `BlackHoleLensRuntimeSettings` for live-safe material parameters; added
+  `BlackHoleLensSettingsPanel` as a world-space Canvas with selectable buttons;
+  extended XR controller controls and Unity gate automation to bind the panel,
+  disk settings, and generated disk cubemaps.
+- Academic reason: Disk visuals must consume validated transfer quantities
+  rather than overlaying a decorative texture. Runtime controls also need to
+  distinguish safe Tier 0 display parameters from physical parameters that
+  require Tier 1 transfer-map regeneration.
+- Physical correspondence: The disk visual mode samples the first two disk
+  crossing cubemaps storing `(r_m, sin(phi_m), cos(phi_m), g_m)`. The first
+  visual model uses a documented emissivity proxy with observed weighting
+  `g^3` by default. It is not yet a Page-Thorne flux model, radiative transfer
+  result, or time-delay-aware disk animation.
+- Assumptions and conventions: The settings panel is a Unity world-space UI
+  object. Opening it places it in front of the headset; afterwards it remains
+  world locked and can be repositioned with controller grip. The panel exposes
+  live-safe controls such as disk visual/audit mode, opacity, brightness, and
+  `g` power. Requests to change observer radius are marked as stale-transfer
+  requests because `a`, inclination, `r_obs`, apparent size, and observer
+  translation require a new transfer map in Tier 1.
+- Validation: `python -m pytest -q` passed with `59 passed`. `git diff --check`
+  passed. `python -m gr_bh_xr.gpu.generate_transfer_cubemap --spin 0.9
+  --inclination-deg 60 --face-size 1024 --r-obs 100 --steps 8000` generated a
+  local full-sky disk package with `6291456` texels, `capture = 2023`,
+  `escape = 6289433`, `invalid = 0`, and disk valid counts `[47289, 1316]`.
+  Unity batch Player build using
+  `Assets/GRBHXR/FullSkyTransferDisk1024` exited with code `0` and confirmed
+  `fullSkyTransfer=True`.
+- References: Existing Cunningham/Luminet/Bardeen disk-transfer references in
+  `references/references.md`; no new emissivity reference is introduced yet.
+- Open issues / next steps: Add Page-Thorne emissivity and time-delay-aware
+  Keplerian pattern advection after the current Quest control path is stable.
+  Implement Tier 1 GPU regeneration for physical parameters before exposing
+  real spin, inclination, observer-radius, or near-horizon navigation controls
+  as active physics.
+
 ### 2026-07-07 - Quest interaction control scaffold
 
 - Goal: Add a first interaction layer for Quest/desktop debugging without

@@ -302,6 +302,8 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     assert "_DiskOrder1Cube" in shader
     assert "_UseDiskTransfer" in shader
     assert "_DiskAuditMode" in shader
+    assert "_DiskVisualMode" in shader
+    assert "_DiskGPower" in shader
     assert "_ProbeMode" in shader
     assert "_LensWorldRight" in shader
     assert "_LensWorldUp" in shader
@@ -322,6 +324,8 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     assert "lensDirectionToWorld(dir.xyz)" in shader
     assert "if (_UseFullSkyTransfer > 0.5)" in shader
     assert "diskAuditColor" in shader
+    assert "diskVisualLayer" in shader
+    assert "compositeDiskVisual" in shader
     assert "texCUBE(_DiskOrder0Cube, localRay)" in shader
     assert "texCUBE(_DiskOrder1Cube, localRay)" in shader
     assert "texCUBE(_EscapeDirCube, localRay)" in shader
@@ -332,8 +336,9 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     assert "mul((float3x3)unity_ObjectToWorld, dir.xyz)" not in shader
     assert "mul((float3x3)unity_WorldToObject, worldRay)" not in shader
     assert "protractorProbe(worldDir)" in shader
-    assert "texCUBE(_SkyboxCubemap, worldRay)" in shader
-    assert "texCUBE(_SkyboxCubemap, worldDir)" in shader
+    assert "sampleSkybox(worldRay, _SkyboxLodBias)" in shader
+    assert "sampleSkybox(worldDir, _StrongLensLodBias)" in shader
+    assert "texCUBEbias(_SkyboxCubemap" in shader
 
 
 def test_unity_lens_map_loader_keeps_raw_textures_linear():
@@ -428,6 +433,45 @@ def test_unity_lens_floating_panel_runtime_is_versioned():
     assert "FindAnyObjectByType<BlackHoleLensAnchorControls>()" in source
 
 
+def test_unity_runtime_settings_and_vr_panel_are_versioned():
+    settings = (UNITY_RUNTIME_DIR / "BlackHoleLensRuntimeSettings.cs").read_text(encoding="utf8")
+    panel = (UNITY_RUNTIME_DIR / "BlackHoleLensSettingsPanel.cs").read_text(encoding="utf8")
+    controls = (UNITY_RUNTIME_DIR / "BlackHoleLensXrControllerControls.cs").read_text(encoding="utf8")
+    asmdef = (UNITY_RUNTIME_DIR / "GRBHXR.asmdef").read_text(encoding="utf8")
+
+    assert "BlackHoleLensRuntimeSettings" in settings
+    assert "ToggleDiskVisualMode" in settings
+    assert "CycleDiskAuditMode" in settings
+    assert "AddDiskOpacity" in settings
+    assert "AddDiskBrightness" in settings
+    assert "AddDiskGPower" in settings
+    assert '"_DiskVisualMode"' in settings
+    assert '"_DiskGPower"' in settings
+    assert "disk visual" in settings
+
+    assert "BlackHoleLensSettingsPanel" in panel
+    assert "Canvas" in panel
+    assert "GraphicRaycaster" in panel
+    assert "WorldSpace" in panel
+    assert "PlaceInFrontOfCamera" in panel
+    assert "DragToRay" in panel
+    assert "Navigate(Vector2 axis)" in panel
+    assert "ActivateSelected" in panel
+    assert "Request closer r_obs map" in panel
+    assert "Tier 0 playback" in panel
+    assert "LegacyRuntime.ttf" in panel
+    assert "Arial.ttf" not in panel
+
+    assert "BlackHoleLensSettingsPanel" in controls
+    assert "settingsPanel.ToggleVisible()" in controls
+    assert "settingsPanel.Navigate(axis)" in controls
+    assert "settingsPanel.ActivateSelected()" in controls
+    assert "settingsPanel.DragToRay" in controls
+    assert "GetDevicePositionOrCamera" in controls
+    assert "GetDeviceForwardOrCamera" in controls
+    assert "UnityEngine.UI" in asmdef
+
+
 def test_unity_editor_gate_automation_is_versioned():
     source = (UNITY_EDITOR_DIR / "GRBHXRGateAutomation.cs").read_text(encoding="utf8")
     asmdef = (UNITY_EDITOR_DIR / "GRBHXR.Editor.asmdef").read_text(encoding="utf8")
@@ -468,7 +512,12 @@ def test_unity_editor_gate_automation_is_versioned():
     assert "BlackHoleXrSkyShell" in source
     assert "BlackHoleLensAnchorControls" in source
     assert "BlackHoleLensFloatingPanel" in source
+    assert "BlackHoleLensSettingsPanel" in source
+    assert "BlackHoleLensRuntimeSettings" in source
     assert "LensControlPanel" in source
+    assert "LensSettingsPanel" in source
+    assert '"_DiskVisualMode"' in source
+    assert "-grbhxrDiskVisualMode" in source
     assert "PrimitiveType.Sphere" in source
     assert "AssignSerializedObject(skyShellComponent, \"targetCamera\", camera)" in source
     assert "AssignSerializedObject(skyShellComponent, \"lensAnchor\", lensAnchor.transform)" in source

@@ -15,6 +15,11 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
         _UseFullSkyTransfer ("Use Full-Sky Transfer", Float) = 0
         _UseDiskTransfer ("Use Disk Transfer", Float) = 0
         _DiskAuditMode ("Disk Audit Mode", Float) = 0
+        _DiskVisualMode ("Disk Visual Mode", Float) = 0
+        _DiskOpacity ("Disk Opacity", Float) = 0.85
+        _DiskBrightness ("Disk Brightness", Float) = 1.0
+        _DiskGPower ("Disk g Power", Float) = 3.0
+        _DiskSecondaryScale ("Disk Secondary Scale", Float) = 0.32
         _ProbeMode ("Probe Mode", Float) = 0
         _SkyboxLodBias ("Skybox LOD Bias", Float) = 0
         _StrongLensLodBias ("Strong Lens LOD Bias", Float) = 0.85
@@ -55,6 +60,11 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
             float _UseFullSkyTransfer;
             float _UseDiskTransfer;
             float _DiskAuditMode;
+            float _DiskVisualMode;
+            float _DiskOpacity;
+            float _DiskBrightness;
+            float _DiskGPower;
+            float _DiskSecondaryScale;
             float _ProbeMode;
             float _SkyboxLodBias;
             float _StrongLensLodBias;
@@ -124,7 +134,7 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
 
             bool diskSampleValid(float4 disk)
             {
-                return disk.x > 0.0 && disk.w > 0.0;
+                return disk.x > 1.0 && disk.w > 0.05;
             }
 
             fixed4 diskAuditColor(float4 disk, float order)
@@ -144,6 +154,57 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 float radialLine = smoothstep(0.015, 0.055, radiusDistance);
                 color = lerp(float3(0.0, 0.0, 0.0), color, radialLine);
                 return fixed4(color, 1.0);
+            }
+
+            float3 blackbodyRamp(float g)
+            {
+                float t = saturate((g - 0.45) / 1.05);
+                float3 red = float3(1.0, 0.18, 0.04);
+                float3 gold = float3(1.0, 0.63, 0.18);
+                float3 white = float3(1.0, 0.95, 0.78);
+                float3 blue = float3(0.58, 0.72, 1.0);
+                float3 warm = lerp(red, gold, smoothstep(0.0, 0.45, t));
+                float3 hot = lerp(white, blue, smoothstep(0.65, 1.0, t));
+                return lerp(warm, hot, smoothstep(0.42, 0.82, t));
+            }
+
+            fixed4 diskVisualLayer(float4 disk, float order)
+            {
+                if (!diskSampleValid(disk))
+                {
+                    return fixed4(0.0, 0.0, 0.0, 0.0);
+                }
+
+                float r = max(disk.x, 1.0e-3);
+                float g = clamp(disk.w, 0.05, 3.0);
+                float innerGate = smoothstep(1.8, 2.8, r);
+                float outerGate = 1.0 - smoothstep(27.0, 30.0, r);
+                float emissivity = pow(saturate(6.0 / r), 2.2) * innerGate * outerGate;
+                float orderScale = order > 0.5 ? _DiskSecondaryScale : 1.0;
+                float observedWeight = emissivity * pow(g, max(_DiskGPower, 0.0)) * _DiskBrightness * orderScale;
+
+                // This first visual mode is a documented thin-disk emissivity
+                // proxy over the validated (r_m, phi_m, g_m) transfer map. It is
+                // not yet a Page-Thorne flux model or radiative-transfer result.
+                float3 color = blackbodyRamp(g) * observedWeight;
+                float alpha = saturate(observedWeight * _DiskOpacity);
+                return fixed4(color, alpha);
+            }
+
+            fixed4 compositeDiskVisual(fixed4 baseColor, float3 localRay)
+            {
+                if (_UseDiskTransfer <= 0.5 || _DiskVisualMode <= 0.5)
+                {
+                    return baseColor;
+                }
+                float4 disk1 = texCUBE(_DiskOrder1Cube, localRay);
+                float4 disk0 = texCUBE(_DiskOrder0Cube, localRay);
+                fixed4 layer1 = diskVisualLayer(disk1, 1.0);
+                fixed4 layer0 = diskVisualLayer(disk0, 0.0);
+                float3 rgb = baseColor.rgb;
+                rgb = saturate(rgb + layer1.rgb * layer1.a);
+                rgb = saturate(rgb + layer0.rgb * layer0.a);
+                return fixed4(rgb, baseColor.a);
             }
 
             fixed4 frag(v2f i) : SV_Target
@@ -212,14 +273,15 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
 
                 if (!insideAngularWindow)
                 {
-                    return _UseFullSkyTransfer > 0.5 ? fullSkyColor : sampleSkybox(worldRay, _SkyboxLodBias);
+                    fixed4 baseColor = _UseFullSkyTransfer > 0.5 ? fullSkyColor : sampleSkybox(worldRay, _SkyboxLodBias);
+                    return compositeDiskVisual(baseColor, localRay);
                 }
 
                 float4 dir = tex2D(_EscapeDirTex, lensUv);
                 fixed4 eventColor = tex2D(_EventTex, lensUv);
                 if (dir.a < 0.5)
                 {
-                    return eventColor;
+                    return compositeDiskVisual(eventColor, localRay);
                 }
                 float3 worldDir = lensDirectionToWorld(dir.xyz);
                 if (_ProbeMode > 0.5)
@@ -231,9 +293,9 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 {
                     float edgeDistance = min(min(lensUv.x, 1.0 - lensUv.x), min(lensUv.y, 1.0 - lensUv.y));
                     float localWeight = smoothstep(0.0, 0.04, edgeDistance);
-                    return lerp(fullSkyColor, localColor, localWeight);
+                    return compositeDiskVisual(lerp(fullSkyColor, localColor, localWeight), localRay);
                 }
-                return localColor;
+                return compositeDiskVisual(localColor, localRay);
             }
             ENDCG
         }

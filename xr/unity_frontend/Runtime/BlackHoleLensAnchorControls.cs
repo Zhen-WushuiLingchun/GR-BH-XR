@@ -197,7 +197,7 @@ namespace GRBHXR
                 "R stick: yaw/pitch  L stick: roll\n" +
                 "A: aim at view  B: panel\n" +
                 "Desktop: drag / arrows / Q E / R\n" +
-                $"Size+r_obs locked (map {stale})";
+                $"Size/r_obs: locked (map {stale})";
         }
 
         private void PollMouseKeyboardInput()

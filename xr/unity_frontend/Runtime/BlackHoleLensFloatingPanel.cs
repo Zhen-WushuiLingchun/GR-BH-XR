@@ -9,6 +9,7 @@ namespace GRBHXR
         [SerializeField] private BlackHoleLensAnchorControls controls;
         [SerializeField] private BlackHoleXrHeadPoseDriver headPoseDriver;
         [SerializeField] private BlackHoleLensXrControllerControls xrControllerControls;
+        [SerializeField] private BlackHoleLensRuntimeSettings runtimeSettings;
         // Horizontally centered on the gaze axis: a left-offset panel with an
         // upper-left text anchor pushed long status lines outside the HMD FOV.
         [SerializeField] private Vector3 cameraLocalOffset = new Vector3(0.0f, 0.28f, 1.55f);
@@ -79,6 +80,10 @@ namespace GRBHXR
                 {
                     textMesh.text += $"\n{xrControllerControls.StatusText()}";
                 }
+                if (runtimeSettings != null)
+                {
+                    textMesh.text += $"\n{runtimeSettings.StatusText()}";
+                }
             }
         }
 
@@ -99,6 +104,10 @@ namespace GRBHXR
             if (xrControllerControls == null)
             {
                 xrControllerControls = FindAnyObjectByType<BlackHoleLensXrControllerControls>();
+            }
+            if (runtimeSettings == null)
+            {
+                runtimeSettings = FindAnyObjectByType<BlackHoleLensRuntimeSettings>();
             }
         }
 

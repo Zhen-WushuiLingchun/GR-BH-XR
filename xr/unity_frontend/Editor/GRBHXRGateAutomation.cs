@@ -214,7 +214,12 @@ namespace GRBHXR.EditorTools
             material.SetTexture("_SkyboxCubemap", cubemap);
             material.SetFloat("_UseAngularWindow", options.UseAngularWindow ? 1.0f : 0.0f);
             material.SetFloat("_UseFullSkyTransfer", useFullSkyTransfer ? 1.0f : 0.0f);
+            material.SetFloat("_DiskVisualMode", options.DiskVisualMode ? 1.0f : 0.0f);
             material.SetFloat("_DiskAuditMode", options.DiskAuditMode);
+            material.SetFloat("_DiskOpacity", 0.85f);
+            material.SetFloat("_DiskBrightness", 1.0f);
+            material.SetFloat("_DiskGPower", 3.0f);
+            material.SetFloat("_DiskSecondaryScale", 0.32f);
             material.SetFloat("_ProbeMode", skyboxKind == GateSkyboxKind.Protractor ? 1.0f : 0.0f);
             material.SetFloat("_SkyboxLodBias", 0.0f);
             material.SetFloat("_StrongLensLodBias", 0.85f);
@@ -279,8 +284,23 @@ namespace GRBHXR.EditorTools
                 binder = previewObject.AddComponent<BlackHoleLensMaterialBinder>();
             }
             AssignSerializedObject(binder, "targetMaterial", material);
+
+            var runtimeSettings = previewObject.GetComponent<BlackHoleLensRuntimeSettings>();
+            if (runtimeSettings == null)
+            {
+                runtimeSettings = previewObject.AddComponent<BlackHoleLensRuntimeSettings>();
+            }
+            AssignSerializedObject(runtimeSettings, "targetMaterial", material);
+            AssignSerializedObject(runtimeSettings, "targetRenderer", previewObject.GetComponent<Renderer>());
+            AssignSerializedBool(runtimeSettings, "diskVisualMode", options.DiskVisualMode);
+            AssignSerializedInt(runtimeSettings, "diskAuditMode", Mathf.RoundToInt(options.DiskAuditMode));
+            AssignSerializedFloat(runtimeSettings, "diskOpacity", 0.85f);
+            AssignSerializedFloat(runtimeSettings, "diskBrightness", 1.0f);
+            AssignSerializedFloat(runtimeSettings, "diskGPower", 3.0f);
+            AssignSerializedFloat(runtimeSettings, "diskSecondaryScale", 0.32f);
             lensMap.Load();
             lensMap.ApplyToMaterial(material);
+            runtimeSettings.Apply();
 
             var camera = Camera.main;
             if (camera == null)
@@ -343,6 +363,24 @@ namespace GRBHXR.EditorTools
                     xrControls = lensAnchor.AddComponent<BlackHoleLensXrControllerControls>();
                 }
                 AssignSerializedObject(xrControls, "controls", controls);
+                AssignSerializedObject(xrControls, "runtimeSettings", runtimeSettings);
+
+                var settingsPanelObject = GameObject.Find("LensSettingsPanel");
+                if (settingsPanelObject == null)
+                {
+                    settingsPanelObject = new GameObject("LensSettingsPanel");
+                }
+                var settingsPanel = settingsPanelObject.GetComponent<BlackHoleLensSettingsPanel>();
+                if (settingsPanel == null)
+                {
+                    settingsPanel = settingsPanelObject.AddComponent<BlackHoleLensSettingsPanel>();
+                }
+                AssignSerializedObject(settingsPanel, "targetCamera", camera);
+                AssignSerializedObject(settingsPanel, "controls", controls);
+                AssignSerializedObject(settingsPanel, "runtimeSettings", runtimeSettings);
+                AssignSerializedBool(settingsPanel, "visible", options.ShowControlPanel);
+                settingsPanel.SetVisible(options.ShowControlPanel, placeInFrontOfCamera: true);
+                AssignSerializedObject(xrControls, "settingsPanel", settingsPanel);
 
                 var panelObject = GameObject.Find("LensControlPanel");
                 if (panelObject == null)
@@ -358,8 +396,9 @@ namespace GRBHXR.EditorTools
                 AssignSerializedObject(panel, "controls", controls);
                 AssignSerializedObject(panel, "headPoseDriver", headPoseDriver);
                 AssignSerializedObject(panel, "xrControllerControls", xrControls);
+                AssignSerializedObject(panel, "runtimeSettings", runtimeSettings);
                 AssignSerializedBool(panel, "followCamera", true);
-                AssignSerializedBool(panel, "visible", options.ShowControlPanel);
+                AssignSerializedBool(panel, "visible", false);
                 AssignSerializedFloat(panel, "textCharacterSize", 0.013f);
                 AssignSerializedVector3(panel, "cameraLocalOffset", new Vector3(0.0f, 0.28f, 1.55f));
                 panel.RefreshNow();
@@ -639,6 +678,19 @@ namespace GRBHXR.EditorTools
             EditorUtility.SetDirty(target);
         }
 
+        private static void AssignSerializedInt(UnityEngine.Object target, string fieldName, int value)
+        {
+            var serializedObject = new SerializedObject(target);
+            var property = serializedObject.FindProperty(fieldName);
+            if (property == null)
+            {
+                throw new MissingReferenceException($"Serialized field not found: {target.GetType().Name}.{fieldName}");
+            }
+            property.intValue = value;
+            serializedObject.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+
         private static void AssignSerializedVector3(UnityEngine.Object target, string fieldName, Vector3 value)
         {
             var serializedObject = new SerializedObject(target);
@@ -688,6 +740,7 @@ namespace GRBHXR.EditorTools
             public bool UseAngularWindow;
             public bool UseSkyShell;
             public bool ShowControlPanel;
+            public bool DiskVisualMode;
             public float DiskAuditMode;
 
             public static GateOptions FromCommandLine()
@@ -707,6 +760,7 @@ namespace GRBHXR.EditorTools
                 options.UseAngularWindow = CommandLineFlag("-grbhxrUseAngularWindow");
                 options.UseSkyShell = CommandLineFlag("-grbhxrUseSkyShell");
                 options.ShowControlPanel = CommandLineFlag("-grbhxrShowControlPanel");
+                options.DiskVisualMode = CommandLineFlag("-grbhxrDiskVisualMode");
                 options.DiskAuditMode = CommandLineFloat("-grbhxrDiskAuditMode", options.DiskAuditMode);
                 return options;
             }
