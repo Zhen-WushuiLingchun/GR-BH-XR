@@ -173,6 +173,29 @@ $proj = 'F:\UnityProjects\GRBHXR_PCVR_Gate\GRBHXR_PCVR_Gate'
 & $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRGateAutomation.BatchCaptureAngularWindowYawGate -grbhxrCaptureDir 'F:\UnityProjects\GRBHXR_PCVR_Gate\unity_gate_fullsky_hybrid_1024' -grbhxrFullSkyTransferDir Assets/GRBHXR/FullSkyTransfer1024
 ```
 
+The full-sky protractor gate uses the same Unity project path but switches the
+skybox/probe to the 10-degree protractor bands:
+
+```powershell
+& $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRGateAutomation.BatchCaptureFullSkyProtractorYawGate -grbhxrCaptureDir 'F:\UnityProjects\GRBHXR_PCVR_Gate\unity_gate_fullsky_protractor_1024' -grbhxrFullSkyTransferDir Assets/GRBHXR/FullSkyTransfer1024
+```
+
+Compare the captured protractor bands against the full-sky cubemap direction
+bytes, not against the old 2D local-patch direction texture:
+
+```powershell
+python validation\quest_pcvr\scripts\compare_protractor_gate.py --full-sky-package-dir 'F:\UnityProjects\GRBHXR_PCVR_Gate\GRBHXR_PCVR_Gate\Assets\GRBHXR\FullSkyTransfer1024' --screenshot 'F:\UnityProjects\GRBHXR_PCVR_Gate\unity_gate_fullsky_protractor_1024\unity_gate_fullsky_protractor_yaw_004_square_1024.png' --fov-deg 9.1478 --yaw-deg 4 --r-obs 100 --alpha-max 8 --beta-max 8 --samples 61 --json
+```
+
+On 2026-07-07 the full-sky protractor run wrote yaw `0/2/4 deg` screenshots
+under `F:\UnityProjects\GRBHXR_PCVR_Gate\unity_gate_fullsky_protractor_1024`.
+The quantitative comparison reported no former-window seam violations:
+`seam_pair_count = 101`, `seam_max_observed_band_jump = 1`, and
+`seam_violations = 0` at yaw `2 deg` and `4 deg`. The yaw `4 deg` screenshot
+had `valid = 2684`, `exact_raw = 2432`, and mean band error `0.114` band.
+These numbers turn the "no square seam" visual claim into a reproducible
+regression over the actual full-sky transfer cubemap bytes.
+
 The 2026-07-07 full-sky Unity-project run wrote yaw `0 deg`, `2 deg`, and
 `4 deg` screenshots under
 `F:\UnityProjects\GRBHXR_PCVR_Gate\unity_gate_fullsky_hybrid_1024`. The `4 deg`

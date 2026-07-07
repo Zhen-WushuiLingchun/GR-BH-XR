@@ -9,6 +9,10 @@ import numpy as np
 import pytest
 
 from gr_bh_xr.gpu.backend import select_vulkan_adapter
+from gr_bh_xr.gpu.generate_transfer_cubemap import (
+    UNITY_CUBE_FACES,
+    _face_directions,
+)
 from gr_bh_xr.gpu.generate_lens_map import generate_gpu_lens_map
 from gr_bh_xr.types import MetricParams
 from gr_bh_xr.xr.export_unity_textures import (
@@ -353,6 +357,7 @@ def test_unity_editor_gate_automation_is_versioned():
     assert "BatchCaptureQuadrantHandedness" in source
     assert "BatchCaptureProtractorBands" in source
     assert "BatchCaptureAngularWindowYawGate" in source
+    assert "BatchCaptureFullSkyProtractorYawGate" in source
     assert "CaptureYaw" in source
     assert "FullSkyTransferDir" in source
     assert "-grbhxrFullSkyTransferDir" in source
@@ -367,6 +372,9 @@ def test_unity_editor_gate_automation_is_versioned():
     assert "unity_gate_angular_yaw_000_square_1024.png" in source
     assert "unity_gate_angular_yaw_002_square_1024.png" in source
     assert "unity_gate_angular_yaw_004_square_1024.png" in source
+    assert "unity_gate_fullsky_protractor_yaw_000_square_1024.png" in source
+    assert "unity_gate_fullsky_protractor_yaw_002_square_1024.png" in source
+    assert "unity_gate_fullsky_protractor_yaw_004_square_1024.png" in source
     assert "new Vector3(20.0f, 20.0f, 20.0f)" in source
     assert "new Vector3(20.0f, 20.0f, 1.0f)" not in source
     assert "GRBHXR.Editor" in asmdef
@@ -405,6 +413,39 @@ def test_protractor_gate_comparison_detects_old_scale_skew():
     assert result.raw_closer == 25
     assert result.exact_old_skew == 0
     assert result.old_skew_closer == 0
+
+
+def test_full_sky_protractor_loader_matches_generated_cubemap_faces(tmp_path):
+    module = _load_module(PROTRACTOR_SCRIPT, "compare_protractor_gate_fullsky")
+    face_size = 4
+    package = tmp_path / "fullsky_package"
+    package.mkdir()
+    (package / "full_sky_transfer_metadata.json").write_text(
+        json.dumps(
+            {
+                "schema": "gr-bh-xr.task5.full_sky_transfer_cubemap.v1",
+                "faceSize": face_size,
+                "faceOrder": list(UNITY_CUBE_FACES),
+            }
+        ),
+        encoding="utf8",
+    )
+
+    cube = np.zeros((len(UNITY_CUBE_FACES), face_size, face_size, 4), dtype=np.float32)
+    for face_index, face_name in enumerate(UNITY_CUBE_FACES):
+        directions = _face_directions(face_name, face_size).reshape((face_size, face_size, 3))
+        cube[face_index, ..., :3] = directions
+        cube[face_index, ..., 3] = 1.0
+    cube.astype("<f4", copy=False).tofile(package / "escape_dir_unity_cube_rgba32f.bytes")
+
+    loaded = module.load_full_sky_direction_package(package)
+    np.testing.assert_allclose(loaded, cube)
+    for face_name in UNITY_CUBE_FACES:
+        directions = _face_directions(face_name, face_size)
+        for direction in directions:
+            sampled = module.bilinear_cubemap_direction(loaded, direction)
+            np.testing.assert_allclose(sampled[:3], direction, atol=1.0e-6)
+            assert sampled[3] == pytest.approx(1.0)
 
 
 def _load_module(path: Path, name: str):

@@ -71,6 +71,18 @@ namespace GRBHXR.EditorTools
             AssetDatabase.Refresh();
         }
 
+        [MenuItem("GR-BH-XR/Gate/Capture Full-Sky Protractor Yaw Gate")]
+        public static void CaptureFullSkyProtractorYawGate()
+        {
+            var options = GateOptions.FromCommandLine();
+            options.UseAngularWindow = true;
+            ConfigurePreview(options, GateSkyboxKind.Protractor);
+            CaptureYaw(options, 0.0f, "unity_gate_fullsky_protractor_yaw_000_square_1024.png", 1024, 1024);
+            CaptureYaw(options, 2.0f, "unity_gate_fullsky_protractor_yaw_002_square_1024.png", 1024, 1024);
+            CaptureYaw(options, 4.0f, "unity_gate_fullsky_protractor_yaw_004_square_1024.png", 1024, 1024);
+            AssetDatabase.Refresh();
+        }
+
         public static void BatchConfigureAndCapture()
         {
             ConfigureAndCapture();
@@ -89,6 +101,11 @@ namespace GRBHXR.EditorTools
         public static void BatchCaptureAngularWindowYawGate()
         {
             CaptureAngularWindowYawGate();
+        }
+
+        public static void BatchCaptureFullSkyProtractorYawGate()
+        {
+            CaptureFullSkyProtractorYawGate();
         }
 
         private static void ConfigurePreview(GateOptions options, GateSkyboxKind skyboxKind)

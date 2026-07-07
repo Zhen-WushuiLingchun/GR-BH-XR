@@ -16,6 +16,7 @@ from gr_bh_xr.gpu.preview import preview_envelope_warning
 from gr_bh_xr.gpu.trace import GpuTraceConfig, trace_screen_points, trace_unity_direction_points
 from gr_bh_xr.gpu.validate import validate_cpu_vs_gpu
 from gr_bh_xr.gpu.validate_disk_transfer import validate_disk_transfer_cpu_vs_gpu
+from gr_bh_xr.gpu.validate_full_sky_transfer import validate_full_sky_transfer
 from gr_bh_xr.types import CameraConfig, MetricParams, TraceConfig
 
 
@@ -134,6 +135,54 @@ def test_gpu_full_sky_transfer_cubemap_writes_boundary_free_package(tmp_path):
     assert (out_dir / "full_sky_transfer_metadata.json").exists()
     assert (out_dir / "event_cube_rgba8.bytes").stat().st_size == 6 * 4 * 4 * 4
     assert (out_dir / "escape_dir_unity_cube_rgba32f.bytes").stat().st_size == 6 * 4 * 4 * 16
+
+
+def test_gpu_full_sky_tetrad_validator_matches_cpu_reference(tmp_path):
+    _require_vulkan_adapter()
+    out = tmp_path / "fullsky_compare.json"
+    h5_path = tmp_path / "fullsky_compare.h5"
+
+    summary = validate_full_sky_transfer(
+        params=MetricParams(M=1.0, a=0.0),
+        inclination_deg=90.0,
+        samples=24,
+        r_obs=80.0,
+        step_size=0.05,
+        steps=8000,
+        horizon_eps=0.3,
+        out=out,
+        h5=h5_path,
+        command="pytest full-sky cpu gpu",
+    )
+
+    assert out.exists()
+    assert h5_path.exists()
+    assert summary["cpu_event_counts"]["capture"] > 0
+    assert summary["cpu_event_counts"]["escape"] > 0
+    assert summary["gpu_event_counts"]["capture"] > 0
+    assert summary["gpu_event_counts"]["escape"] > 0
+    assert summary["stable_event_agreement"] >= 0.98
+    assert summary["gpu_failure_outside_exclusions"] == 0
+    assert summary["escape_direction_median_error_rad"] < 1.0e-4
+
+    with h5py.File(h5_path, "r") as handle:
+        assert handle.attrs["schema"] == "gr-bh-xr.task5.full_sky_cpu_gpu_validation.v1"
+        for dataset in (
+            "direction_unity",
+            "cpu_event_code",
+            "cpu_failure_code",
+            "cpu_min_r",
+            "cpu_escape_dir",
+            "gpu_event_code",
+            "gpu_failure_code",
+            "gpu_final_r",
+            "gpu_escape_dir",
+            "stable_comparison_mask",
+            "full_grid_event_agreement_mask",
+            "excluded_near_capture",
+            "escape_direction_error_rad",
+        ):
+            assert dataset in handle
 
 
 def test_gpu_schwarzschild_lens_map_schema_and_events(tmp_path):

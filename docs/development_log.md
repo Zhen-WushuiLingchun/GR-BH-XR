@@ -19,6 +19,42 @@ from here.
 
 ## Log
 
+### 2026-07-07 - Full-sky tetrad and seam validation
+
+- Goal: Close the post-full-sky P1 evidence gaps before using the cubemap path
+  for Quest first-run claims.
+- Changed files / components: Added `trace_state()` for explicit CPU
+  `RayState` tracing, added `gr_bh_xr.gpu.validate_full_sky_transfer`,
+  extended the Unity full-sky protractor batch capture, extended
+  `validation/quest_pcvr/scripts/compare_protractor_gate.py` to read full-sky
+  cubemap direction bytes, and updated Task 5 validation documentation.
+- Academic reason: The finite-observer tetrad path is a different physical
+  initialization from the Bardeen `alpha,beta` screen path, so it needs its own
+  CPU reference comparison. The removal of the square seam also needs a
+  quantitative regression rather than a screenshot-only claim.
+- Physical correspondence: CPU and GPU both launch rays from the same
+  finite-radius static-observer tetrad at `r_obs = 100M`, `i = 60 deg`, Kerr
+  `a = 0.9M`. The Unity seam gate compares protractor bands generated from the
+  momentum-derived escaped direction stored in the full-sky cubemap.
+- Assumptions and conventions: This remains Tier 0 static transfer-map
+  playback; no per-frame geodesic integration or Quest runtime claim is made
+  in this step. Full-sky capture/invalid edge dilation remains a deferred
+  display-polish item for full-sky-only modes.
+- Validation: `python -m gr_bh_xr.gpu.validate_full_sky_transfer --spin 0.9
+  --inclination-deg 60 --samples 4096 --r-obs 100` produced CPU/GPU event
+  counts `capture = 2`, `escape = 4094`, `invalid = 0`, stable agreement
+  `1.0`, full-grid agreement `1.0`, and `0` GPU failures outside exclusions.
+  Stable escaped-ray direction errors were median `1.57e-6 rad`, RMS
+  `3.84e-5 rad`, and max `1.60e-3 rad`. Unity batch protractor captures at
+  yaw `0/2/4 deg` compared against `escape_dir_unity_cube_rgba32f.bytes` had
+  old-window seam violations `0`; yaw `2/4 deg` had max adjacent band jump
+  `1`.
+- References: Existing Kerr geodesic and Unity texture-contract references;
+  this entry validates an implementation path rather than introducing a new
+  metric model.
+- Open issues / next steps: Run the Quest/OpenXR first-run protocol and keep
+  Task 6 display-level disk-transfer export moving in parallel.
+
 ### 2026-07-07 - Full-sky background transfer cubemap
 
 - Goal: Remove the unphysical square boundary discovered in the Unity yaw gate,

@@ -234,6 +234,18 @@ Required checks:
 - the full-sky path is tested on desktop at yaw `0 deg`, `2 deg`, and `4 deg`
   with `-grbhxrFullSkyTransferDir`, and the validation image must not show the
   square hard boundary produced by unlensed-skybox fallback;
+- the full-sky finite-observer tetrad path is compared against the CPU DOP853
+  reference with `python -m gr_bh_xr.gpu.validate_full_sky_transfer` before it
+  is used for Quest first-run claims. Stable-sample event agreement must be at
+  least `98%`, GPU failures outside documented exclusions must be `0`, and
+  stable escaped-ray direction errors should satisfy median `< 1e-4 rad` and
+  RMS `< 5e-4 rad`;
+- the full-sky protractor/yaw gate must compare the Unity screenshot against
+  `escape_dir_unity_cube_rgba32f.bytes` from the full-sky cubemap, not against
+  the old 2D `escape_dir_unity_rgba32f.bytes` patch. Across the former
+  `[-8M, 8M]` window boundary, adjacent valid protractor samples may differ by
+  at most one 10-degree band except where capture/invalid event masks
+  intervene;
 - the Unity shader includes single-pass instanced stereo macros so Quest/OpenXR
   does not render a missing or eye-shifted lens map in one eye;
 - the angular-window yaw test is interpreted only as head-rotation anchoring
@@ -249,6 +261,12 @@ Required checks:
 - 72 Hz or 90 Hz target feasibility is recorded;
 - black-hole angular size and scale are documented;
 - PC-to-Quest latency is recorded or qualitatively evaluated.
+
+The full-sky cubemap still has a deferred display-polish item: a one-texel
+dilation of capture/invalid edges before direction interpolation may be needed
+for a full-sky-only visual mode. It is not part of the current Quest first-run
+gate because the mixed shader covers the central capture edge with the
+high-resolution local patch.
 
 Minimum success:
 

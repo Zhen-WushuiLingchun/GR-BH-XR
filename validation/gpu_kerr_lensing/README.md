@@ -79,6 +79,24 @@ The 2026-07-07 local RTX 5080 Laptop GPU run at `face-size = 1024` produced
 `invalid = 0`. The event cube was `25165824` bytes and the Unity escape-
 direction cube was `100663296` bytes.
 
+The finite-observer tetrad path has its own CPU-vs-GPU gate because it does
+not share the Bardeen screen initialization used by the local `alpha,beta`
+validator:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.gpu.validate_full_sky_transfer --spin 0.9 --inclination-deg 60 --samples 4096 --r-obs 100 --out outputs/task5/fullsky_cpu_gpu_compare_kerr_a0.9_i60.json --h5 outputs/task5/fullsky_cpu_gpu_compare_kerr_a0.9_i60.h5
+```
+
+The 2026-07-07 local gate used the NVIDIA GeForce RTX 5080 Laptop GPU and
+reported `capture = 2`, `escape = 4094`, `invalid = 0` on both CPU and GPU.
+The full-grid event agreement was `1.0`; the stable event agreement was `1.0`
+after excluding the two near-capture samples; GPU failures outside exclusions
+were `0`. On the `4094` stable escaped samples, the median direction error was
+`1.57e-6 rad`, RMS was `3.84e-5 rad`, and max was recorded as `1.60e-3 rad`.
+The max error is audit metadata rather than the sole gate because it is most
+sensitive near capture and cubemap face/sample boundaries.
+
 ## HDF5 Schema
 
 Generated GPU maps use schema `gr-bh-xr.phase2.gpu_lens_map.v3`.

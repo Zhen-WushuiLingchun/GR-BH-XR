@@ -10,7 +10,7 @@ from scipy.integrate import solve_ivp
 from .camera import initial_ray_state
 from .metric import carter_constant, hamiltonian, horizon_radius, inverse_metric, inverse_metric_derivatives
 from .sky import escape_direction_or_nan
-from .types import CameraConfig, FailureReason, MetricParams, RayDiagnostics, TraceConfig
+from .types import CameraConfig, FailureReason, MetricParams, RayDiagnostics, RayState, TraceConfig
 
 
 EQUATOR_THETA = math.pi / 2.0
@@ -153,11 +153,24 @@ def trace_ray(
 ) -> RayDiagnostics:
     """Trace one inward screen ray until capture, escape, disk crossing, or failure."""
 
-    cfg = config or TraceConfig()
     state = initial_ray_state(params, camera)
+    return trace_state(params, state, config, r_obs=camera.r_obs)
+
+
+def trace_state(
+    params: MetricParams,
+    state: RayState,
+    config: TraceConfig | None = None,
+    *,
+    r_obs: float | None = None,
+) -> RayDiagnostics:
+    """Trace an explicitly initialized canonical ray state."""
+
+    cfg = config or TraceConfig()
     y0 = np.concatenate([state.x, state.p])
     capture_r = horizon_radius(params) + cfg.horizon_eps
-    r_escape = cfg.r_escape if cfg.r_escape is not None else max(2.0 * camera.r_obs, camera.r_obs + 50.0)
+    observer_r = float(r_obs) if r_obs is not None else float(state.x[1])
+    r_escape = cfg.r_escape if cfg.r_escape is not None else max(2.0 * observer_r, observer_r + 50.0)
     rhs_history = [y0.copy()]
     last_lam = 0.0
 
