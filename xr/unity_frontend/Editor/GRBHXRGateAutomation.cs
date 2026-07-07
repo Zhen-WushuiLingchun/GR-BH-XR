@@ -19,7 +19,7 @@ namespace GRBHXR.EditorTools
         private const string DefaultProtractorSkyboxMaterialPath = "Assets/GRBHXR/Skyboxes/M_GRBHXR_ProtractorBands_Skybox.mat";
         private const string DefaultMaterialPath = "Assets/GRBHXR/Materials/M_KerrLensPreview.mat";
         private const string DefaultScenePath = "Assets/Scenes/GRBHXR_KerrLensPreview.unity";
-        private const string DefaultFullSkyTransferDir = "";
+        private const string DefaultFullSkyTransferDir = "Assets/GRBHXR/FullSkyTransfer1024";
         private const string DefaultCaptureDir = "F:/学习和研究/GR-BH-XR/outputs/task5/unity_gate";
 
         [MenuItem("GR-BH-XR/Gate/Configure Screen-Space Gate Preview")]
@@ -216,6 +216,8 @@ namespace GRBHXR.EditorTools
             material.SetFloat("_UseFullSkyTransfer", useFullSkyTransfer ? 1.0f : 0.0f);
             material.SetFloat("_DiskAuditMode", options.DiskAuditMode);
             material.SetFloat("_ProbeMode", skyboxKind == GateSkyboxKind.Protractor ? 1.0f : 0.0f);
+            material.SetFloat("_SkyboxLodBias", 0.0f);
+            material.SetFloat("_StrongLensLodBias", 0.85f);
             EditorUtility.SetDirty(material);
 
             var screen = GameObject.Find("LensScreen");
@@ -294,6 +296,11 @@ namespace GRBHXR.EditorTools
             camera.backgroundColor = Color.black;
             camera.nearClipPlane = 0.01f;
             camera.farClipPlane = 1000.0f;
+            var headPoseDriver = camera.GetComponent<BlackHoleXrHeadPoseDriver>();
+            if (headPoseDriver == null)
+            {
+                headPoseDriver = camera.gameObject.AddComponent<BlackHoleXrHeadPoseDriver>();
+            }
 
             var lensAnchor = GameObject.Find("BlackHoleLensAnchor");
             if (lensAnchor == null)
@@ -328,6 +335,14 @@ namespace GRBHXR.EditorTools
                 AssignSerializedObject(controls, "lensAnchor", lensAnchor.transform);
                 AssignSerializedObject(controls, "skyShell", skyShellComponent);
                 AssignSerializedBool(controls, "enableMouseKeyboardInput", true);
+                controls.ResetPose();
+
+                var xrControls = lensAnchor.GetComponent<BlackHoleLensXrControllerControls>();
+                if (xrControls == null)
+                {
+                    xrControls = lensAnchor.AddComponent<BlackHoleLensXrControllerControls>();
+                }
+                AssignSerializedObject(xrControls, "controls", controls);
 
                 var panelObject = GameObject.Find("LensControlPanel");
                 if (panelObject == null)
@@ -341,9 +356,14 @@ namespace GRBHXR.EditorTools
                 }
                 AssignSerializedObject(panel, "targetCamera", camera);
                 AssignSerializedObject(panel, "controls", controls);
+                AssignSerializedObject(panel, "headPoseDriver", headPoseDriver);
+                AssignSerializedObject(panel, "xrControllerControls", xrControls);
                 AssignSerializedBool(panel, "followCamera", true);
-                AssignSerializedBool(panel, "visible", true);
+                AssignSerializedBool(panel, "visible", options.ShowControlPanel);
+                AssignSerializedFloat(panel, "textCharacterSize", 0.013f);
+                AssignSerializedVector3(panel, "cameraLocalOffset", new Vector3(0.0f, 0.28f, 1.55f));
                 panel.RefreshNow();
+                AssignSerializedObject(xrControls, "floatingPanel", panel);
             }
 
             float rObs = metadata.sourceAttributes != null && metadata.sourceAttributes.r_obs > 0.0f
@@ -619,6 +639,19 @@ namespace GRBHXR.EditorTools
             EditorUtility.SetDirty(target);
         }
 
+        private static void AssignSerializedVector3(UnityEngine.Object target, string fieldName, Vector3 value)
+        {
+            var serializedObject = new SerializedObject(target);
+            var property = serializedObject.FindProperty(fieldName);
+            if (property == null)
+            {
+                throw new MissingReferenceException($"Serialized field not found: {target.GetType().Name}.{fieldName}");
+            }
+            property.vector3Value = value;
+            serializedObject.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+
         private static void EnsureFolder(string path)
         {
             if (string.IsNullOrEmpty(path) || AssetDatabase.IsValidFolder(path))
@@ -654,6 +687,7 @@ namespace GRBHXR.EditorTools
             public string CaptureDir = DefaultCaptureDir;
             public bool UseAngularWindow;
             public bool UseSkyShell;
+            public bool ShowControlPanel;
             public float DiskAuditMode;
 
             public static GateOptions FromCommandLine()
@@ -672,6 +706,7 @@ namespace GRBHXR.EditorTools
                 options.CaptureDir = CommandLineValue("-grbhxrCaptureDir", options.CaptureDir);
                 options.UseAngularWindow = CommandLineFlag("-grbhxrUseAngularWindow");
                 options.UseSkyShell = CommandLineFlag("-grbhxrUseSkyShell");
+                options.ShowControlPanel = CommandLineFlag("-grbhxrShowControlPanel");
                 options.DiskAuditMode = CommandLineFloat("-grbhxrDiskAuditMode", options.DiskAuditMode);
                 return options;
             }

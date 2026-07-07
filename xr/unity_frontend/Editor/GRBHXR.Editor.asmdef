@@ -2,7 +2,10 @@
   "name": "GRBHXR.Editor",
   "rootNamespace": "GRBHXR.EditorTools",
   "references": [
-    "GRBHXR"
+    "GRBHXR",
+    "Unity.XR.Management",
+    "Unity.XR.Management.Editor",
+    "Unity.XR.OpenXR"
   ],
   "includePlatforms": [
     "Editor"

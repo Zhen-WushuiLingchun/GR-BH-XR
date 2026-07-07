@@ -16,6 +16,8 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
         _UseDiskTransfer ("Use Disk Transfer", Float) = 0
         _DiskAuditMode ("Disk Audit Mode", Float) = 0
         _ProbeMode ("Probe Mode", Float) = 0
+        _SkyboxLodBias ("Skybox LOD Bias", Float) = 0
+        _StrongLensLodBias ("Strong Lens LOD Bias", Float) = 0.85
         _LensWorldRight ("Lens World Right", Vector) = (1, 0, 0, 0)
         _LensWorldUp ("Lens World Up", Vector) = (0, 1, 0, 0)
         _LensWorldForward ("Lens World Forward", Vector) = (0, 0, 1, 0)
@@ -26,12 +28,17 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
         Pass
         {
             Cull Off
+            // ZWrite must stay ON: the built-in pipeline draws the camera skybox
+            // after opaques wherever depth is still at the far plane. With ZWrite
+            // off, the sky shell leaves depth untouched and the raw skybox pass
+            // overwrites the entire lensed image in the player.
             ZWrite On
             ZTest Always
 
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma target 3.0
             #pragma multi_compile_instancing
             #include "UnityCG.cginc"
 
@@ -49,6 +56,8 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
             float _UseDiskTransfer;
             float _DiskAuditMode;
             float _ProbeMode;
+            float _SkyboxLodBias;
+            float _StrongLensLodBias;
             float4 _LensWorldRight;
             float4 _LensWorldUp;
             float4 _LensWorldForward;
@@ -108,6 +117,11 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 return fixed4(encoded, 0.0, 1.0 - encoded, 1.0);
             }
 
+            fixed4 sampleSkybox(float3 direction, float lodBias)
+            {
+                return texCUBEbias(_SkyboxCubemap, float4(normalize(direction), lodBias));
+            }
+
             bool diskSampleValid(float4 disk)
             {
                 return disk.x > 0.0 && disk.w > 0.0;
@@ -162,7 +176,7 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                         float3 cubeWorldDir = lensDirectionToWorld(cubeDir.xyz);
                         fullSkyColor = _ProbeMode > 0.5
                             ? protractorProbe(cubeWorldDir)
-                            : texCUBE(_SkyboxCubemap, cubeWorldDir);
+                            : sampleSkybox(cubeWorldDir, _SkyboxLodBias);
                     }
                 }
 
@@ -198,7 +212,7 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
 
                 if (!insideAngularWindow)
                 {
-                    return _UseFullSkyTransfer > 0.5 ? fullSkyColor : texCUBE(_SkyboxCubemap, worldRay);
+                    return _UseFullSkyTransfer > 0.5 ? fullSkyColor : sampleSkybox(worldRay, _SkyboxLodBias);
                 }
 
                 float4 dir = tex2D(_EscapeDirTex, lensUv);
@@ -212,7 +226,7 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 {
                     return protractorProbe(worldDir);
                 }
-                fixed4 localColor = texCUBE(_SkyboxCubemap, worldDir);
+                fixed4 localColor = sampleSkybox(worldDir, _StrongLensLodBias);
                 if (_UseFullSkyTransfer > 0.5)
                 {
                     float edgeDistance = min(min(lensUv.x, 1.0 - lensUv.x), min(lensUv.y, 1.0 - lensUv.y));
