@@ -76,8 +76,11 @@ z = r cos theta
 
 `src/gr_bh_xr/metric_ks.py` currently validates the metric, inverse metric,
 analytic Cartesian derivatives, Schwarzschild limit, and finite behavior at the
-outer horizon. It is not yet a near-horizon roaming solver; the geodesic
-integrator and BL-vs-KS cross-validation gates are separate Tier 2 steps.
+outer horizon. `src/gr_bh_xr/geodesic_ks.py` adds the first Hamiltonian tracer
+seed and BL-to-KS canonical-state transform. It is still not a near-horizon
+roaming solver; disk events, Carter-constant diagnostics, critical-curve
+regression, observer worldlines, and transfer-map keyframes remain separate
+Tier 2 gates.
 
 Required tracked invariants (`Q` from `carter1968kerr`; screen mapping and
 geodesic structure from `bardeen1973kerrGeodesics` and

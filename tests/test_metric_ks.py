@@ -3,6 +3,7 @@ import math
 import numpy as np
 
 from gr_bh_xr.metric import horizon_radius
+from gr_bh_xr.metric import covariant_metric as bl_covariant_metric
 from gr_bh_xr.metric_ks import (
     MINKOWSKI_INVERSE,
     bl_to_ks_cartesian,
@@ -83,3 +84,32 @@ def test_ks_metric_is_finite_at_outer_horizon():
     assert np.all(np.isfinite(cov))
     assert np.all(np.isfinite(inv))
     assert np.allclose(cov @ inv, np.eye(4), atol=3.0e-13)
+
+
+def test_ks_metric_has_unit_negative_determinant_inside_and_outside_horizon():
+    params = MetricParams(M=1.0, a=0.9)
+    samples = [
+        bl_to_ks_cartesian(4.0, 1.1, 0.2, params.a),
+        bl_to_ks_cartesian(horizon_radius(params), math.pi / 2.0, 0.8, params.a),
+        bl_to_ks_cartesian(1.2, 1.3, -0.6, params.a),
+    ]
+
+    for xyz in samples:
+        assert math.isclose(float(np.linalg.det(ks_metric(params, xyz))), -1.0, abs_tol=3.0e-13)
+
+
+def test_ks_killing_norms_match_boyer_lindquist_metric_outside_horizon():
+    params = MetricParams(M=1.0, a=0.8)
+    r = 5.4
+    theta = 1.0
+    phi = -0.3
+    xyz = bl_to_ks_cartesian(r, theta, phi, params.a)
+    ks_cov = ks_metric(params, xyz)
+    bl_cov = bl_covariant_metric(params, r, theta)
+
+    dt = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+    dphi = np.array([0.0, -xyz[1], xyz[0], 0.0], dtype=np.float64)
+
+    assert math.isclose(float(dt @ ks_cov @ dt), bl_cov[0, 0], abs_tol=1.0e-13)
+    assert math.isclose(float(dt @ ks_cov @ dphi), bl_cov[0, 3], abs_tol=1.0e-13)
+    assert math.isclose(float(dphi @ ks_cov @ dphi), bl_cov[3, 3], abs_tol=1.0e-11)

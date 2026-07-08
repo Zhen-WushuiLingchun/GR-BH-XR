@@ -19,6 +19,40 @@ from here.
 
 ## Log
 
+### 2026-07-08 - Kerr-Schild Hamiltonian tracer seed
+
+- Goal: Add the first CPU Kerr-Schild Hamiltonian tracer and cross-chart state
+  transform after the metric primitive review passed.
+- Changed files / components: Added `src/gr_bh_xr/geodesic_ks.py`; extended
+  `tests/test_metric_ks.py` with determinant/Killing-norm invariants; added
+  `tests/test_geodesic_ks.py`; updated `docs/equations.md` and
+  `docs/validation_targets.md`.
+- Academic reason: The next near-horizon gate needs a horizon-penetrating
+  integrator whose first evidence is exterior agreement with the existing
+  Boyer-Lindquist reference and bounded Hamiltonian residuals through the
+  Schwarzschild horizon.
+- Physical correspondence: The tracer evolves canonical Kerr-Schild
+  `(x^mu, p_mu)` using `dx^mu/dlambda = g^{mu nu} p_nu` and
+  `dp_i/dlambda = -1/2 p_mu partial_i g^{mu nu} p_nu`. The BL-to-KS state
+  transform preserves the canonical one-form and includes the radial time and
+  azimuth shifts for ingoing Kerr-Schild coordinates.
+- Assumptions and conventions: The first capture event is classified after
+  continuing inside `r_+` by the configured margin. Disk-crossing events,
+  Carter `Q`, and full critical-curve regression are intentionally deferred to
+  the next Stage A validation pass.
+- Validation: `python -m pytest tests/test_metric_ks.py tests/test_geodesic_ks.py
+  -q` passed with `11 passed`. The tests cover `det(g) = -1`, Killing-norm
+  agreement with the BL metric outside the horizon, BL-to-KS null-Hamiltonian
+  preservation, Schwarzschild escape classification/minimum-radius agreement,
+  and a capture ray that continues inside the outer horizon with bounded
+  Hamiltonian residual.
+- References: Same Kerr-Schild and Kerr geodesic references as the previous
+  entry; no new source added.
+- Open issues / next steps: Add disk crossing in Cartesian KS coordinates,
+  transform/diagnose Carter `Q`, compare asymptotic escape directions against
+  BL in the exterior, and run Kerr critical-curve regression through the KS
+  tracer.
+
 ### 2026-07-08 - Kerr-Schild metric primitives for Tier 2 planning
 
 - Goal: Start the true near-horizon roaming track with coordinate-regular

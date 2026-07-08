@@ -368,9 +368,11 @@ Stage A CPU Kerr-Schild reference checks:
 - `src/gr_bh_xr/metric_ks.py` must keep covariant/inverse metric consistency,
   Schwarzschild limit, finite outer-horizon behavior, and analytic derivative
   agreement with finite differences under test.
-- A future `geodesic_ks.py` tracer must use the Hamiltonian form with
-  Cartesian Kerr-Schild inverse metric derivatives and record horizon crossing,
-  escape, and disk-crossing events without Boyer-Lindquist axis failures.
+- `src/gr_bh_xr/geodesic_ks.py` must use the Hamiltonian form with Cartesian
+  Kerr-Schild inverse metric derivatives and record horizon crossing and escape
+  without Boyer-Lindquist horizon/axis failures. Disk-crossing events,
+  Carter-constant diagnostics, and stronger escape-direction comparison remain
+  follow-up gates.
 - Exterior-domain BL-vs-KS cross-validation must compare event class,
   asymptotic escape direction, disk crossing fields, and Hamiltonian residuals.
 - Kerr critical-curve regression must recover the existing `a = 0.9`,
