@@ -39,18 +39,24 @@ from here.
   headset-rate near-horizon free flight. Horizon-crossing Hamiltonian residuals
   are reported as f32 diagnostics, not compared to the CPU exterior `1e-8`
   target.
-- Validation: Formal `a = 0.9`, `i = 60 deg` gate with `55`-sample screen fans
-  at `beta = 0, +4, -4` plus deterministic full-sky directions produced
-  `sample_count = 677`, `full_event_agreement = 1.0`,
-  `stable_event_agreement = 1.0`, `gpu_failure_outside_exclusions = 0`,
-  escaped-direction median/RMS/max errors of `8.94e-6`, `1.64e-5`, and
-  `6.35e-5 rad`, and GPU `max |H|` bands of `1.47e-4` outer,
-  `1.32e-5` near-horizon exterior, and `2.49e-5` horizon-crossing.
+- Validation: The first fixed-budget gate exposed that `303/677` samples were
+  both-side max-lambda unclassified. The revised adaptive-step `a = 0.9`,
+  `i = 60 deg`, `max_lambda = 800M` gate with `55`-sample screen fans at
+  `beta = 0, +4, -4` plus deterministic full-sky directions produced
+  `sample_count = 677`, `both_unclassified_max_lambda = 0`,
+  `resolved_event_agreement = 1.0`, `stable_event_agreement = 1.0`,
+  `gpu_failure_outside_exclusions = 0`, escaped-direction median/RMS/max
+  errors of `1.98e-6`, `1.05e-4`, and `1.83e-3 rad`, and GPU `max |H|` bands
+  of `2.92e-6` outer, `4.39e-6` near-horizon exterior, and `5.08e-5`
+  horizon-crossing. GPU step distribution was median `223`, p95 `905.2`, and
+  max `1218`, replacing the previous far-zone many-thousand-step waste.
 - References: Existing Kerr-Schild and Kerr geodesic references; no new source
   added.
-- Open issues / next steps: Add finite-distance object intersections and a
-  frustum-only latency benchmark before deciding whether Tier 2.5 can use live
-  GPU tracing or must remain keyframe/surrogate based.
+- Open issues / next steps: Add a dedicated low-`r_obs` near-horizon fan
+  because the formal gate has only `3` near-horizon exterior escaped-direction
+  samples. Then add finite-distance object intersections and a frustum-only
+  latency benchmark before deciding whether Tier 2.5 can use live GPU tracing
+  or must remain keyframe/surrogate based.
 
 ### 2026-07-08 - Unity disk hot-spot lookup controls
 

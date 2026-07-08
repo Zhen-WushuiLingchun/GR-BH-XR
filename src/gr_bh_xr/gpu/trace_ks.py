@@ -25,7 +25,7 @@ from gr_bh_xr.types import CameraConfig, MetricParams, RayState, TraceConfig
 
 _KS_TRACE_CONTEXT = None
 KS_INPUTS_PER_RAY = 8
-KS_F32_OUTPUTS_PER_RAY = 11
+KS_F32_OUTPUTS_PER_RAY = 12
 
 
 @dataclass(frozen=True)
@@ -33,8 +33,11 @@ class KsGpuTraceConfig:
     """Settings for the f32 fixed-step Kerr-Schild GPU tracer."""
 
     params: MetricParams
-    step_size: float = 0.05
-    steps: int = 8000
+    step_size: float = 0.01
+    steps: int = 20000
+    max_lambda: float = 800.0
+    max_step: float = 1.0
+    adaptive_step: bool = True
     r_escape: float = 200.0
     horizon_eps: float = TraceConfig.horizon_eps
 
@@ -43,6 +46,10 @@ class KsGpuTraceConfig:
             raise ValueError("step_size must be positive.")
         if self.steps <= 0:
             raise ValueError("steps must be positive.")
+        if self.max_lambda <= 0.0:
+            raise ValueError("max_lambda must be positive.")
+        if self.max_step <= 0.0:
+            raise ValueError("max_step must be positive.")
         if self.r_escape <= 0.0:
             raise ValueError("r_escape must be positive.")
 
@@ -61,6 +68,9 @@ class KsGpuTraceConfig:
             "a": self.params.a,
             "step_size": self.step_size,
             "steps": self.steps,
+            "max_lambda": self.max_lambda,
+            "max_step": self.max_step,
+            "adaptive_step": self.adaptive_step,
             "r_escape": self.r_escape,
             "horizon_eps": self.horizon_eps,
             "capture_r": self.capture_r,
@@ -181,8 +191,9 @@ def trace_ks_states(config: KsGpuTraceConfig, states: list[RayState] | tuple[Ray
         "min_r": out_f32[:, 0],
         "h_max_abs": out_f32[:, 1],
         "final_r": out_f32[:, 2],
-        "final_x": out_f32[:, 3:7],
-        "final_p": out_f32[:, 7:11],
+        "lambda_end": out_f32[:, 3],
+        "final_x": out_f32[:, 4:8],
+        "final_p": out_f32[:, 8:12],
     }
 
 
@@ -230,6 +241,9 @@ def _shader_params(config: KsGpuTraceConfig, n_rays: int) -> np.ndarray:
             config.capture_r,
             float(n_rays),
             math.pi,
+            1.0 if config.adaptive_step else 0.0,
+            config.max_step,
+            config.max_lambda,
         ],
         dtype=np.float32,
     )
@@ -244,6 +258,7 @@ def _empty_result(info: dict[str, Any]) -> dict[str, Any]:
         "min_r": np.empty(0, dtype=np.float32),
         "h_max_abs": np.empty(0, dtype=np.float32),
         "final_r": np.empty(0, dtype=np.float32),
+        "lambda_end": np.empty(0, dtype=np.float32),
         "final_x": np.empty((0, 4), dtype=np.float32),
         "final_p": np.empty((0, 4), dtype=np.float32),
     }
@@ -272,7 +287,7 @@ const FAILURE_NONE: i32 = 0;
 const FAILURE_UNCLASSIFIED_MAX_LAMBDA: i32 = 2;
 const FAILURE_SOLVER_FAILURE: i32 = 3;
 const KS_INPUTS_PER_RAY: u32 = 8u;
-const KS_F32_OUTPUTS_PER_RAY: u32 = 11u;
+const KS_F32_OUTPUTS_PER_RAY: u32 = 12u;
 
 @group(0) @binding(0) var<storage, read> params: array<f32>;
 @group(0) @binding(1) var<storage, read> initial_states: array<f32>;
@@ -472,6 +487,19 @@ fn state_is_bad(s: StateKS) -> bool {
         || is_bad(s.pt) || is_bad(s.px) || is_bad(s.py) || is_bad(s.pz);
 }
 
+fn adaptive_step_size(s: StateKS, lambda_used: f32) -> f32 {
+    let base_h = params[2];
+    let adaptive = params[8] > 0.5;
+    let max_h = params[9];
+    let max_lambda = params[10];
+    var h = base_h;
+    if (adaptive) {
+        let r = max(ks_radius_xyz(s.x, s.y, s.z), 1.0);
+        h = clamp(base_h * r, base_h, max_h);
+    }
+    return min(h, max(max_lambda - lambda_used, 0.0));
+}
+
 fn load_state(idx: u32) -> StateKS {
     let base = idx * KS_INPUTS_PER_RAY;
     return StateKS(
@@ -493,21 +521,27 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (idx >= ray_count) {
         return;
     }
-    let h = params[2];
     let max_steps = u32(params[3]);
     let escape_r = params[4];
     let capture_r = params[5];
+    let max_lambda = params[10];
     var s = load_state(idx);
     var event = EVENT_INVALID;
     var failure = FAILURE_UNCLASSIFIED_MAX_LAMBDA;
     var step_count: u32 = 0u;
+    var lambda_used = 0.0;
     var min_r = ks_radius_xyz(s.x, s.y, s.z);
     var h_max = abs(hamiltonian_ks(s));
     if (state_is_bad(s)) {
         failure = FAILURE_SOLVER_FAILURE;
     } else {
         for (var i = 0u; i < max_steps; i = i + 1u) {
-            s = rk4_step_ks(s, h);
+            let dh = adaptive_step_size(s, lambda_used);
+            if (dh <= 0.0 || lambda_used >= max_lambda) {
+                break;
+            }
+            s = rk4_step_ks(s, dh);
+            lambda_used = lambda_used + dh;
             step_count = step_count + 1u;
             if (state_is_bad(s)) {
                 failure = FAILURE_SOLVER_FAILURE;
@@ -540,13 +574,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     out_f32[fbase + 0u] = min_r;
     out_f32[fbase + 1u] = h_max;
     out_f32[fbase + 2u] = ks_radius_xyz(s.x, s.y, s.z);
-    out_f32[fbase + 3u] = s.t;
-    out_f32[fbase + 4u] = s.x;
-    out_f32[fbase + 5u] = s.y;
-    out_f32[fbase + 6u] = s.z;
-    out_f32[fbase + 7u] = s.pt;
-    out_f32[fbase + 8u] = s.px;
-    out_f32[fbase + 9u] = s.py;
-    out_f32[fbase + 10u] = s.pz;
+    out_f32[fbase + 3u] = lambda_used;
+    out_f32[fbase + 4u] = s.t;
+    out_f32[fbase + 5u] = s.x;
+    out_f32[fbase + 6u] = s.y;
+    out_f32[fbase + 7u] = s.z;
+    out_f32[fbase + 8u] = s.pt;
+    out_f32[fbase + 9u] = s.px;
+    out_f32[fbase + 10u] = s.py;
+    out_f32[fbase + 11u] = s.pz;
 }
 """

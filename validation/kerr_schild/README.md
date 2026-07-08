@@ -185,20 +185,24 @@ Formal command:
 
 ```powershell
 $env:PYTHONPATH='src'
-python -m gr_bh_xr.gpu.validate_ks --spin 0.9 --inclination-deg 60 --fan-samples 55 --fan-alpha-max 8 --fan-betas 0,4,-4 --full-sky-samples 512 --step-size 0.01 --steps 20000 --out outputs/tier2/ks_gpu_a0.9_i60.json --h5 outputs/tier2/ks_gpu_a0.9_i60.h5
+python -m gr_bh_xr.gpu.validate_ks --spin 0.9 --inclination-deg 60 --fan-samples 55 --fan-alpha-max 8 --fan-betas 0,4,-4 --full-sky-samples 512 --step-size 0.01 --steps 20000 --max-lambda 800 --max-step 1 --out outputs/tier2/ks_gpu_a0.9_i60_adaptive.json --h5 outputs/tier2/ks_gpu_a0.9_i60_adaptive.h5
 ```
 
 The JSON/HDF5 artifacts record:
 
-- CPU f64 KS event codes and GPU f32 KS event/failure codes;
-- stable-event agreement after excluding CPU invalid and near-capture samples;
+- CPU f64 KS event/failure codes and GPU f32 KS event/failure codes;
+- resolved-event agreement after separating both-side max-lambda
+  unclassified samples from actual resolved samples;
+- stable-event agreement after excluding near-capture samples;
 - escaped-ray asymptotic momentum-direction error for stable escaped rays;
-- GPU `max |H|` grouped by `min_r` bands: outer, near-horizon exterior, and
-  horizon-crossing.
+- escaped-direction errors and GPU `max |H|` grouped by `min_r` bands: outer,
+  near-horizon exterior, and horizon-crossing.
 
 Acceptance:
 
 - stable-event agreement `>= 98%`;
+- both-side max-lambda unclassified samples are reported separately and should
+  be zero for the formal `max_lambda = 800M` gate;
 - GPU failures outside CPU-invalid / near-capture exclusions equal `0`;
 - median escaped-direction error below `1e-4 rad`;
 - horizon-crossing `max |H|` is reported as f32 diagnostic evidence rather
@@ -209,13 +213,24 @@ Current `a = 0.9`, `i = 60 deg` result:
 ```text
 sample_count = 677
 full_event_agreement = 1.0
+resolved_event_agreement = 1.0
 stable_event_agreement = 1.0
+both_unclassified_max_lambda = 0
 gpu_failure_outside_exclusions = 0
-escape_direction_median_error = 8.94e-6 rad
-escape_direction_rms_error = 1.64e-5 rad
-escape_direction_max_error = 6.35e-5 rad
+escape_direction_sample_count = 602
+escape_direction_median_error = 1.98e-6 rad
+escape_direction_rms_error = 1.05e-4 rad
+escape_direction_max_error = 1.83e-3 rad
+escape direction error by min_r band:
+  outer: count = 599, median = 1.97e-6 rad, max = 8.94e-4 rad
+  near_horizon_exterior: count = 3, median = 1.45e-3 rad, max = 1.83e-3 rad
+  horizon_crossing: count = 0
 gpu max |H| by min_r band:
-  outer = 1.47e-4
-  near_horizon_exterior = 1.32e-5
-  horizon_crossing = 2.49e-5
+  outer = 2.92e-6
+  near_horizon_exterior = 4.39e-6
+  horizon_crossing = 5.08e-5
+GPU step distribution:
+  median = 223
+  p95 = 905.2
+  max = 1218
 ```

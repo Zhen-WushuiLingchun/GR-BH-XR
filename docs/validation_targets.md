@@ -418,19 +418,24 @@ Task 2 WGSL Kerr-Schild checks:
   metric/RHS correctness from camera-initialization work.
 - `python -m gr_bh_xr.gpu.validate_ks` must compare CPU f64 KS traces against
   GPU f32 KS traces on both screen-coordinate fans and deterministic full-sky
-  directions. Stable-event agreement must be at least `98%`, GPU failures
-  outside CPU-invalid / near-capture exclusions must be `0`, and escaped-ray
-  momentum-direction errors must be reported.
+  directions. Both-side max-lambda unclassified samples must be counted
+  separately from resolved samples. Resolved/stable-event agreement must be at
+  least `98%`, GPU failures outside CPU-invalid / near-capture exclusions must
+  be `0`, and escaped-ray momentum-direction errors must be reported by
+  `min_r` band.
 - GPU KS Hamiltonian residuals are grouped by `min_r` band. Exterior samples
   are expected to be far tighter than near-horizon or horizon-crossing samples;
   horizon-crossing f32 residuals are diagnostic evidence for the fixed-step
   kernel, not a replacement for the CPU f64 exterior `1e-8` target.
-- The current `a = 0.9`, `i = 60 deg` gate records `sample_count = 677`,
-  `full_event_agreement = 1.0`, `stable_event_agreement = 1.0`,
+- The current `a = 0.9`, `i = 60 deg`, `max_lambda = 800M` adaptive-step gate
+  records `sample_count = 677`, `both_unclassified_max_lambda = 0`,
+  `resolved_event_agreement = 1.0`, `stable_event_agreement = 1.0`,
   `gpu_failure_outside_exclusions = 0`, escaped-direction median/RMS/max
-  errors of `8.94e-6`, `1.64e-5`, and `6.35e-5 rad`, and GPU `max |H|`
-  bands of `1.47e-4` outer, `1.32e-5` near-horizon exterior, and `2.49e-5`
-  horizon-crossing.
+  errors of `1.98e-6`, `1.05e-4`, and `1.83e-3 rad`, and GPU `max |H|`
+  bands of `2.92e-6` outer, `4.39e-6` near-horizon exterior, and `5.08e-5`
+  horizon-crossing. The near-horizon exterior direction-error band currently
+  has only `3` samples, so Task 4 still requires a dedicated low-`r_obs`
+  near-horizon fan before realtime claims.
 - This Task 2 shader does not yet implement arbitrary observer worldlines,
   finite-distance object intersections, or headset-rate near-horizon free
   flight.

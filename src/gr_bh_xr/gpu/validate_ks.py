@@ -38,6 +38,9 @@ def validate_ks_gpu(
     full_sky_samples: int,
     step_size: float,
     steps: int,
+    max_lambda: float,
+    max_step: float,
+    adaptive_step: bool,
     horizon_eps: float,
     out: Path | str,
     h5: Path | str | None = None,
@@ -60,6 +63,9 @@ def validate_ks_gpu(
         params=params,
         step_size=step_size,
         steps=steps,
+        max_lambda=max_lambda,
+        max_step=max_step,
+        adaptive_step=adaptive_step,
         r_escape=2.0 * r_obs,
         horizon_eps=horizon_eps,
     )
@@ -69,6 +75,8 @@ def validate_ks_gpu(
         states=states,
         step_size=step_size,
         steps=steps,
+        max_lambda=max_lambda,
+        max_step=max_step,
         r_obs=r_obs,
         horizon_eps=horizon_eps,
     )
@@ -86,6 +94,9 @@ def validate_ks_gpu(
         "sample_count": int(len(states)),
         "step_size": step_size,
         "steps": steps,
+        "max_lambda": max_lambda,
+        "max_step": max_step,
+        "adaptive_step": adaptive_step,
         "horizon_eps": horizon_eps,
         "capture_r": config.capture_r,
         "r_escape": config.r_escape,
@@ -147,16 +158,19 @@ def _trace_cpu(
     states: list[RayState],
     step_size: float,
     steps: int,
+    max_lambda: float,
+    max_step: float,
     r_obs: float,
     horizon_eps: float,
 ) -> dict[str, np.ndarray]:
     config = TraceConfig(
-        max_lambda=step_size * steps,
+        max_lambda=max_lambda,
         r_escape=2.0 * r_obs,
         horizon_eps=horizon_eps,
-        max_step=2.0,
+        max_step=max_step,
     )
     event_code = np.full(len(states), SCHEMA_EVENT_CODES["invalid"], dtype=np.int16)
+    failure_code = np.full(len(states), SCHEMA_FAILURE_CODES["none"], dtype=np.int16)
     min_r = np.full(len(states), np.nan, dtype=np.float64)
     h_max_abs = np.full(len(states), np.nan, dtype=np.float64)
     lambda_end = np.full(len(states), np.nan, dtype=np.float64)
@@ -166,6 +180,12 @@ def _trace_cpu(
     for idx, state in enumerate(states):
         diag = trace_state_ks(params, state, config, r_obs=r_obs, inner_horizon_eps=horizon_eps)
         event_code[idx] = SCHEMA_EVENT_CODES[diag.event]
+        if diag.event == "invalid":
+            failure_code[idx] = (
+                SCHEMA_FAILURE_CODES["unclassified_max_lambda"]
+                if "max_lambda" in diag.message
+                else SCHEMA_FAILURE_CODES["solver_failure"]
+            )
         min_r[idx] = diag.min_r
         h_max_abs[idx] = diag.h_max_abs
         lambda_end[idx] = diag.lambda_end
@@ -182,6 +202,7 @@ def _trace_cpu(
                 pass
     return {
         "event_code": event_code,
+        "failure_code": failure_code,
         "min_r": min_r,
         "h_max_abs": h_max_abs,
         "lambda_end": lambda_end,
@@ -199,10 +220,16 @@ def _compare(
     horizon_eps: float,
 ) -> dict[str, Any]:
     near_capture_radius = horizon_radius(params) + max(0.1 * params.M, 2.0 * horizon_eps)
-    cpu_valid = cpu["event_code"] != SCHEMA_EVENT_CODES["invalid"]
+    cpu_resolved = cpu["event_code"] != SCHEMA_EVENT_CODES["invalid"]
+    gpu_resolved = gpu["event_code"] != SCHEMA_EVENT_CODES["invalid"]
+    both_unclassified = (
+        (cpu["failure_code"] == SCHEMA_FAILURE_CODES["unclassified_max_lambda"])
+        & (gpu["failure_code"] == SCHEMA_FAILURE_CODES["unclassified_max_lambda"])
+    )
+    resolved = ~both_unclassified
     near_capture = cpu["min_r"] <= near_capture_radius
     event_agreement = cpu["event_code"] == gpu["event_code"]
-    stable = cpu_valid & ~near_capture
+    stable = resolved & ~near_capture
     stable_count = int(np.count_nonzero(stable))
     stable_agree_count = int(np.count_nonzero(event_agreement & stable))
     gpu_unexpected_failure = (gpu["failure_code"] != SCHEMA_FAILURE_CODES["none"]) & stable
@@ -236,7 +263,18 @@ def _compare(
         if event_agreement.size
         else math.nan,
         "full_agreement_count": int(np.count_nonzero(event_agreement)),
-        "excluded_cpu_invalid": int(np.count_nonzero(~cpu_valid)),
+        "resolved_event_agreement": float(np.count_nonzero(event_agreement & resolved) / np.count_nonzero(resolved))
+        if np.count_nonzero(resolved)
+        else math.nan,
+        "resolved_sample_count": int(np.count_nonzero(resolved)),
+        "both_unclassified_max_lambda": int(np.count_nonzero(both_unclassified)),
+        "cpu_unclassified_max_lambda": int(
+            np.count_nonzero(cpu["failure_code"] == SCHEMA_FAILURE_CODES["unclassified_max_lambda"])
+        ),
+        "gpu_unclassified_max_lambda": int(
+            np.count_nonzero(gpu["failure_code"] == SCHEMA_FAILURE_CODES["unclassified_max_lambda"])
+        ),
+        "excluded_cpu_invalid": int(np.count_nonzero(~cpu_resolved)),
         "excluded_near_capture": int(np.count_nonzero(near_capture)),
         "near_capture_radius": near_capture_radius,
         "gpu_failure_outside_exclusions": int(np.count_nonzero(gpu_unexpected_failure)),
@@ -251,9 +289,14 @@ def _compare(
         if finite_error.size
         else math.nan,
         "gpu_h_max_abs_by_min_r_band": h_bands,
+        "escape_direction_error_by_min_r_band": _direction_error_bands(
+            params, cpu["min_r"], direction_error, horizon_eps
+        ),
     }
     return {
         "stable_mask": stable.astype(np.uint8),
+        "resolved_mask": resolved.astype(np.uint8),
+        "both_unclassified_mask": both_unclassified.astype(np.uint8),
         "event_agreement_mask": event_agreement.astype(np.uint8),
         "near_capture_mask": near_capture.astype(np.uint8),
         "gpu_escape_dir": gpu_escape_dir.astype(np.float32),
@@ -282,6 +325,28 @@ def _h_residual_bands(
     return out
 
 
+def _direction_error_bands(
+    params: MetricParams, cpu_min_r: np.ndarray, direction_error: np.ndarray, horizon_eps: float
+) -> dict[str, dict[str, float | int]]:
+    rp = horizon_radius(params)
+    bands = {
+        "outer": cpu_min_r > rp + max(1.0 * params.M, 2.0 * horizon_eps),
+        "near_horizon_exterior": (cpu_min_r > rp)
+        & (cpu_min_r <= rp + max(1.0 * params.M, 2.0 * horizon_eps)),
+        "horizon_crossing": cpu_min_r <= rp,
+    }
+    out: dict[str, dict[str, float | int]] = {}
+    for name, mask in bands.items():
+        values = direction_error[mask & np.isfinite(direction_error)]
+        out[name] = {
+            "count": int(values.size),
+            "max": float(np.max(values)) if values.size else math.nan,
+            "median": float(np.median(values)) if values.size else math.nan,
+            "rms": float(np.sqrt(np.mean(values * values))) if values.size else math.nan,
+        }
+    return out
+
+
 def _write_h5(
     out: Path,
     sample_kind: np.ndarray,
@@ -300,18 +365,22 @@ def _write_h5(
         handle.attrs["sample_kind_code_1"] = "full_sky_direction"
         handle.create_dataset("sample_kind", data=sample_kind)
         handle.create_dataset("cpu_event_code", data=cpu["event_code"])
+        handle.create_dataset("cpu_failure_code", data=cpu["failure_code"])
         handle.create_dataset("cpu_min_r", data=cpu["min_r"])
         handle.create_dataset("cpu_h_max_abs", data=cpu["h_max_abs"])
         handle.create_dataset("cpu_escape_dir", data=cpu["escape_dir"])
         handle.create_dataset("gpu_event_code", data=gpu["event_code"])
         handle.create_dataset("gpu_failure_code", data=gpu["failure_code"])
         handle.create_dataset("gpu_steps", data=gpu["steps"])
+        handle.create_dataset("gpu_lambda_end", data=gpu["lambda_end"])
         handle.create_dataset("gpu_min_r", data=gpu["min_r"])
         handle.create_dataset("gpu_h_max_abs", data=gpu["h_max_abs"])
         handle.create_dataset("gpu_final_x", data=gpu["final_x"])
         handle.create_dataset("gpu_final_p", data=gpu["final_p"])
         handle.create_dataset("gpu_escape_dir", data=comparison["gpu_escape_dir"])
         handle.create_dataset("stable_comparison_mask", data=comparison["stable_mask"])
+        handle.create_dataset("resolved_comparison_mask", data=comparison["resolved_mask"])
+        handle.create_dataset("both_unclassified_max_lambda_mask", data=comparison["both_unclassified_mask"])
         handle.create_dataset("event_agreement_mask", data=comparison["event_agreement_mask"])
         handle.create_dataset("excluded_near_capture", data=comparison["near_capture_mask"])
         handle.create_dataset(
@@ -342,6 +411,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--full-sky-samples", type=int, default=512)
     parser.add_argument("--step-size", type=float, default=KsGpuTraceConfig.step_size)
     parser.add_argument("--steps", type=int, default=KsGpuTraceConfig.steps)
+    parser.add_argument("--max-lambda", type=float, default=KsGpuTraceConfig.max_lambda)
+    parser.add_argument("--max-step", type=float, default=KsGpuTraceConfig.max_step)
+    parser.add_argument("--fixed-step", action="store_true")
     parser.add_argument("--horizon-eps", type=float, default=TraceConfig.horizon_eps)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--h5", type=Path)
@@ -361,6 +433,9 @@ def main() -> None:
         full_sky_samples=args.full_sky_samples,
         step_size=args.step_size,
         steps=args.steps,
+        max_lambda=args.max_lambda,
+        max_step=args.max_step,
+        adaptive_step=not args.fixed_step,
         horizon_eps=args.horizon_eps,
         out=args.out,
         h5=args.h5,

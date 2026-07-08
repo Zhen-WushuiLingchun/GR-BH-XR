@@ -127,6 +127,8 @@ def test_gpu_kerr_schild_states_capture_and_escape():
             params=params,
             step_size=0.05,
             steps=8000,
+            max_lambda=800.0,
+            max_step=1.0,
             r_escape=200.0,
             horizon_eps=0.3,
         ),
@@ -153,6 +155,9 @@ def test_gpu_kerr_schild_validator_writes_summary_and_h5(tmp_path):
         full_sky_samples=6,
         step_size=0.05,
         steps=4000,
+        max_lambda=400.0,
+        max_step=1.0,
+        adaptive_step=True,
         horizon_eps=0.3,
         out=out,
         h5=h5,
@@ -161,6 +166,7 @@ def test_gpu_kerr_schild_validator_writes_summary_and_h5(tmp_path):
 
     assert summary["schema"] == "gr-bh-xr.tier2.ks_gpu_validation.v1"
     assert summary["stable_event_agreement"] >= 0.98
+    assert summary["resolved_event_agreement"] >= 0.98
     assert summary["gpu_failure_outside_exclusions"] == 0
     assert out.exists()
     with h5py.File(h5, "r") as handle:
