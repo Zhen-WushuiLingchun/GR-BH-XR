@@ -433,3 +433,34 @@ This is the same kind of boundary-band effect as the disk annulus edge: CPU
 DOP853 root finding and GPU f32 fixed-step endpoint detection disagree by about
 one angular sample at the target limb.  The stable interior/exterior region is
 the pass/fail metric.
+
+### KS frustum realtime benchmark
+
+The frustum benchmark measures the KS WGPU kernel over a square `100 deg` view
+cone for low observer radii.  It is a decision gate for whether the current
+kernel can support headset-rate near-horizon realtime tracing.  The benchmark
+does not include Python finite-observer initial-state construction or Unity
+texture upload, and the current KS shader still records `disk_crossings_enabled
+= false`.
+
+Formal commands:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.gpu.benchmark_latency --mode ks-frustum --spin 0.9 --inclination-deg 60 --grids 128 --r-obs-values 20 10 5 3 2 --step-size 0.01 --steps 20000 --max-lambda 800 --max-step 1 --step-r-ref 5 --r-escape 200 --iterations 1 --warmup-grid 8 --out outputs/tier2/ks_frustum_latency_128.json
+python -m gr_bh_xr.gpu.benchmark_latency --mode ks-frustum --spin 0.9 --inclination-deg 60 --grids 256 --r-obs-values 20 10 5 3 2 --step-size 0.01 --steps 20000 --max-lambda 800 --max-step 1 --step-r-ref 5 --r-escape 200 --iterations 1 --warmup-grid 8 --out outputs/tier2/ks_frustum_latency_256.json
+python -m gr_bh_xr.gpu.benchmark_latency --mode ks-frustum --spin 0.9 --inclination-deg 60 --grids 512 --r-obs-values 20 10 5 3 2 --step-size 0.01 --steps 20000 --max-lambda 800 --max-step 1 --step-r-ref 5 --r-escape 200 --iterations 1 --warmup-grid 8 --out outputs/tier2/ks_frustum_latency_512.json
+```
+
+Current summary:
+
+```text
+grid 128: 17.3-22.4 ms, about 44.6-57.9 Hz, no 90 Hz claim
+grid 256: 67.9-79.6 ms, about 12.6-14.7 Hz, no 90 Hz claim
+grid 512: 266.1-301.6 ms, about 3.3-3.8 Hz, no 90 Hz claim
+```
+
+The current result supports near-horizon keyframe generation and interactive
+parameter-update work, not per-frame headset-rate free flight.  A realtime path
+needs foveation/lower resolution, keyframe playback, or a separately audited
+surrogate.

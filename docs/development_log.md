@@ -19,6 +19,33 @@ from here.
 
 ## Log
 
+### 2026-07-08 - Kerr-Schild frustum realtime benchmark
+
+- Goal: Add the Task 4 decision gate that measures whether the current WGSL
+  Kerr-Schild kernel can support headset-rate near-horizon realtime tracing.
+- Changed files / components: Extended `src/gr_bh_xr/gpu/benchmark_latency.py`
+  with `--mode ks-frustum`; added parser/frustum-direction tests; updated
+  `docs/validation_targets.md` and `validation/kerr_schild/README.md`.
+- Academic reason: The project must not infer realtime near-horizon feasibility
+  from offline transfer-map screenshots. The pass/fail quantity is measured
+  milliseconds per frustum, not whether an image can be generated eventually.
+- Physical correspondence: The benchmark launches finite-observer KS tetrad
+  rays through a `100 deg` frustum at `r_obs = 20, 10, 5, 3, 2M`, using the
+  horizon-penetrating f32 KS kernel. Disk crossings are explicitly disabled in
+  this shader path; sphere targets are available but off in the formal timing
+  runs.
+- Assumptions and conventions: The timings include WGPU dispatch/readback and
+  event summary, but exclude Python initial-state construction and Unity upload.
+  Single-eye median `< 11 ms` is required before claiming 90 Hz low-resolution
+  realtime tracing.
+- Validation: On the RTX 5080 Laptop GPU, `a = 0.9`, `i = 60 deg`, `100 deg`
+  FOV runs measured `17.3-22.4 ms` at `128x128`, `67.9-79.6 ms` at `256x256`,
+  and `266.1-301.6 ms` at `512x512` across `r_obs = 20, 10, 5, 3, 2M`.
+- References: Existing KS and validation references; no new source added.
+- Open issues / next steps: Treat current KS tracing as keyframe/offline or
+  parameter-update infrastructure. Headset-rate free flight needs foveated
+  tracing, lower resolution, keyframe playback, or an audited surrogate.
+
 ### 2026-07-08 - Kerr-Schild GPU finite-sphere intersection gate
 
 - Goal: Finish Task 3's first GPU path by validating WGSL finite-sphere

@@ -498,6 +498,31 @@ Task 3 finite-distance object checks:
   detection expands/contracts the finite target boundary by about one angular
   sample, analogous to the disk-annulus edge band.
 
+Task 4 frustum realtime benchmark:
+
+- `python -m gr_bh_xr.gpu.benchmark_latency --mode ks-frustum` records the
+  first KS frustum-only latency decision table. It measures WGPU dispatch,
+  readback, and event summaries for explicit KS initial states; it excludes
+  Python finite-observer initial-state construction and Unity texture upload.
+  The current KS shader has sphere-target support but does not yet implement
+  disk crossings, so `disk_crossings_enabled = false` is recorded.
+- The decision rule is single-eye median `< 11 ms` before claiming low-resolution
+  90 Hz realtime tracing. Current `a = 0.9`, `i = 60 deg`, `100 deg` FOV,
+  `h0 = 0.01M`, `r_escape = 200M`, `max_lambda = 800M` results:
+
+```text
+grid   r_obs values         median ms range       best Hz range       90 Hz claim
+128    20,10,5,3,2M         17.3 - 22.4           44.6 - 57.9         no
+256    20,10,5,3,2M         67.9 - 79.6           12.6 - 14.7         no
+512    20,10,5,3,2M         266.1 - 301.6         3.3 - 3.8           no
+```
+
+- Interpretation: the present f32 KS kernel is useful for offline/interactive
+  transfer updates and for keyframe generation evidence, but the measured
+  frustum cost does not justify headset-rate near-horizon free-flight claims.
+  The next realtime path should be keyframe playback, foveated/lower-resolution
+  tracing, or an audited surrogate rather than full-frustum per-frame tracing.
+
 Stage B observer checks:
 
 - Observer worldlines must state their domain: static/ZAMO-like, circular,

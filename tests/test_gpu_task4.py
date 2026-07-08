@@ -9,7 +9,7 @@ import pytest
 from gr_bh_xr.generate_lens_map import EVENT_CODES, FAILURE_CODES
 from gr_bh_xr.geodesic import trace_ray
 from gr_bh_xr.gpu.backend import backend_info, select_vulkan_adapter
-from gr_bh_xr.gpu.benchmark_latency import _case_summary, build_parser
+from gr_bh_xr.gpu.benchmark_latency import _case_summary, _frustum_directions, build_parser
 from gr_bh_xr.gpu.generate_lens_map import generate_gpu_lens_map
 from gr_bh_xr.gpu.generate_transfer_cubemap import generate_transfer_cubemap
 from gr_bh_xr.gpu.preview import preview_envelope_warning
@@ -83,6 +83,40 @@ def test_gpu_latency_parser_accepts_grid_list():
     assert args.inclination_deg == pytest.approx(60.0)
     assert args.grids == [256, 512]
     assert args.iterations == 2
+
+
+def test_gpu_latency_parser_accepts_ks_frustum_mode():
+    args = build_parser().parse_args(
+        [
+            "--mode",
+            "ks-frustum",
+            "--spin",
+            "0.9",
+            "--inclination-deg",
+            "60",
+            "--grids",
+            "128",
+            "256",
+            "--r-obs-values",
+            "20",
+            "3",
+            "--fov-deg",
+            "100",
+        ]
+    )
+
+    assert args.mode == "ks-frustum"
+    assert args.grids == [128, 256]
+    assert args.r_obs_values == [20.0, 3.0]
+    assert args.fov_deg == pytest.approx(100.0)
+
+
+def test_frustum_directions_are_normalized_and_centered():
+    directions = _frustum_directions(3, 100.0)
+
+    assert directions.shape == (9, 3)
+    assert np.allclose(np.linalg.norm(directions, axis=1), 1.0)
+    assert np.allclose(directions[4], np.array([0.0, 0.0, 1.0]))
 
 
 def test_gpu_unity_direction_points_capture_and_escape():
