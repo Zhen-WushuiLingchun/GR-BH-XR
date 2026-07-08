@@ -476,9 +476,18 @@ Task 3 finite-distance object checks:
   sphere-hit regression that recovers the front-surface intersection and
   `sqrt(1 - 2M/r_hit)` static redshift. It is not yet the finite-distance
   weak-field lens-equation gate.
-- Formal Task 3 acceptance remains pending: add the weak-field lens equation
-  anchor `theta_E^2 = 4M D_LS / (D_L D_S)` with a standard lensing reference,
-  then add a GPU sphere-intersection path and CPU/GPU comparison.
+- `python -m gr_bh_xr.validate_ks_finite_lens` records the weak-field
+  finite-distance lensing anchor. It uses Schneider, Ehlers, and Falco's
+  standard point-lens Einstein angle
+  `theta_E^2 = 4M D_LS / (D_L D_S)` only in a far-field configuration where
+  the thin-lens approximation is expected to be percent-level accurate. The
+  current `D_L = 10000M`, `D_LS = 5000M`, target-radius `5M`, `81`-sample
+  run gives `theta_E = 0.0115470054 rad`, measured hit-band center
+  `0.0116227826 rad`, and relative error `6.56e-3`.
+- Formal Task 3 GPU acceptance remains pending: add a WGSL sphere-intersection
+  path and CPU/GPU comparison. The nearer `D_L = 200M`, `D_LS = 100M`
+  configuration is treated as a finite-distance demo configuration rather than
+  a strict first-order weak-field pass/fail gate.
 
 Stage B observer checks:
 

@@ -359,3 +359,40 @@ This is a seed test, not yet the formal finite-distance lensing gate.  The
 next required gate is a weak-field finite-distance lens-equation anchor,
 `theta_E^2 = 4M D_LS / (D_L D_S)`, followed by a WGSL sphere-intersection
 implementation and CPU/GPU comparison.
+
+### Weak-field finite-distance lensing anchor
+
+The first Task 3 equation anchor uses the standard point-mass Einstein angle
+from Schneider, Ehlers, and Falco:
+
+```text
+theta_E^2 = 4M D_LS / (D_L D_S),    D_S = D_L + D_LS
+```
+
+Formal command:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.validate_ks_finite_lens --out outputs/tier2/ks_finite_lens_weak_field.json
+```
+
+Current result:
+
+```text
+D_L = 10000M
+D_LS = 5000M
+D_S = 15000M
+target radius = 5M
+samples = 81
+event counts = object_hit 18, escape 63
+theta_E = 0.011547005383792516 rad
+measured hit-band center = 0.011622782606623652 rad
+relative error = 6.56e-3
+```
+
+The target has finite radius, so the validation compares the center of the
+hit-angle band with the point-source Einstein angle rather than requiring an
+exact point equality.  The nearby `D_L = 200M`, `D_LS = 100M` configuration is
+not used as this strict gate because it is already close enough to the hole for
+higher-order finite-distance/strong-field corrections to move the image angle
+by several percent.

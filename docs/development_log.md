@@ -19,6 +19,33 @@ from here.
 
 ## Log
 
+### 2026-07-08 - Kerr-Schild finite-distance weak-field lens anchor
+
+- Goal: Add the Task 3 weak-field finite-distance lensing equation anchor for
+  the KS sphere-target path.
+- Changed files / components: Added `src/gr_bh_xr/validate_ks_finite_lens.py`
+  and `tests/test_validate_ks_finite_lens.py`; updated `references/`,
+  `docs/validation_targets.md`, and `validation/kerr_schild/README.md`.
+- Academic reason: A local object-hit event is not enough by itself; the
+  finite-distance target path needs a standard weak-field point-lens limit
+  before it can support claims about local-object lensing.
+- Physical correspondence: In geometric units, the aligned point-mass Einstein
+  angle is `theta_E^2 = 4M D_LS / (D_L D_S)`. The formal gate uses
+  `D_L = 10000M`, `D_LS = 5000M`, and a finite sphere of radius `5M`, then
+  compares the center of the hit-angle band with the point-source `theta_E`.
+- Assumptions and conventions: The Schneider/Ehlers/Falco equation is used as
+  a far-field weak-lens anchor. The closer `D_L = 200M`, `D_LS = 100M` case is
+  not treated as a strict one-line formula gate because higher-order
+  finite-distance/strong-field corrections are already visible.
+- Validation: Formal run produced `theta_E = 0.011547005383792516 rad`,
+  measured hit-band center `0.011622782606623652 rad`, relative error
+  `6.56e-3`, and event counts `object_hit = 18`, `escape = 63`.
+- References: Added `schneider1992gravitationalLenses` and
+  `references/source_notes/2026-07-08-finite-distance-lensing-anchor.md`.
+- Open issues / next steps: Migrate finite sphere intersections to WGSL and
+  run CPU/GPU comparison; later extend from static sphere targets to moving
+  finite objects and MR environment proxies.
+
 ### 2026-07-08 - Kerr-Schild finite-distance sphere target seed
 
 - Goal: Start Task 3 by adding a CPU Kerr-Schild finite-distance object event

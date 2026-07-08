@@ -728,3 +728,29 @@ ignored `references/pdfs/local_only/`.
 - Limitations / open questions: The current repository commit only adds the
   Cartesian Kerr-Schild metric primitives and tests; full geodesic continuation
   remains a Stage A follow-up.
+
+### Schneider Ehlers Falco 1992 - Gravitational Lensing Equation
+
+- Source path: `references/source_notes/2026-07-08-finite-distance-lensing-anchor.md`
+- PDF path: Not stored; copyrighted Springer book, use `local_only/` only for
+  personal copies.
+- Code review path: Not applicable; monograph reference.
+- BibTeX key: `schneider1992gravitationalLenses`
+- Stable locator: https://doi.org/10.1007/978-3-662-03758-4
+- Search date: 2026-07-08
+- Search terms: Schneider Ehlers Falco Gravitational Lenses Einstein radius
+  point mass lens equation
+- Why added: Task 3 finite-distance object tracing needs a standard weak-field
+  point-lens equation anchor before claiming local-object lensing behavior.
+- Short summary: Monograph treatment of gravitational lensing, including the
+  lens equation, point-mass lens models, and Einstein angle/radius vocabulary.
+- Relevant equations / assumptions / methods: Thin-lens weak-field equation and
+  aligned point-mass Einstein angle
+  `theta_E^2 = 4M D_LS / (D_L D_S)` in geometric units.
+- Project use: Reference for `gr_bh_xr.validate_ks_finite_lens`, which checks
+  the Kerr-Schild finite sphere target against the weak-field Einstein-angle
+  limit.
+- Limitations / open questions: The formula is a first-order weak-field anchor;
+  closer configurations such as `D_L = 200M`, `D_LS = 100M` show higher-order
+  finite-distance/strong-field corrections and are not strict pass/fail uses of
+  this equation.
