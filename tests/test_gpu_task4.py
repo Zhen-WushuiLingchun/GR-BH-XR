@@ -14,9 +14,11 @@ from gr_bh_xr.gpu.generate_lens_map import generate_gpu_lens_map
 from gr_bh_xr.gpu.generate_transfer_cubemap import generate_transfer_cubemap
 from gr_bh_xr.gpu.preview import preview_envelope_warning
 from gr_bh_xr.gpu.trace import GpuTraceConfig, trace_screen_points, trace_unity_direction_points
+from gr_bh_xr.gpu.trace_ks import KsGpuTraceConfig, ks_states_from_screen_points, trace_ks_states
 from gr_bh_xr.gpu.validate import validate_cpu_vs_gpu
 from gr_bh_xr.gpu.validate_disk_transfer import validate_disk_transfer_cpu_vs_gpu
 from gr_bh_xr.gpu.validate_full_sky_transfer import validate_full_sky_transfer
+from gr_bh_xr.gpu.validate_ks import validate_ks_gpu
 from gr_bh_xr.types import CameraConfig, MetricParams, TraceConfig
 
 
@@ -108,6 +110,64 @@ def test_gpu_unity_direction_points_capture_and_escape():
     assert result["event_code"][0] == EVENT_CODES["capture"]
     assert result["event_code"][1] == EVENT_CODES["escape"]
     assert np.all(result["failure_code"] == FAILURE_CODES["none"])
+
+
+def test_gpu_kerr_schild_states_capture_and_escape():
+    _require_vulkan_adapter()
+    params = MetricParams(M=1.0, a=0.0)
+    states = ks_states_from_screen_points(
+        params=params,
+        inclination_deg=90.0,
+        r_obs=100.0,
+        alpha=np.asarray([0.0, 8.0], dtype=np.float64),
+        beta=np.asarray([0.0, 0.0], dtype=np.float64),
+    )
+    result = trace_ks_states(
+        KsGpuTraceConfig(
+            params=params,
+            step_size=0.05,
+            steps=8000,
+            r_escape=200.0,
+            horizon_eps=0.3,
+        ),
+        states,
+    )
+
+    assert result["event_code"].tolist() == [EVENT_CODES["capture"], EVENT_CODES["escape"]]
+    assert np.all(result["failure_code"] == FAILURE_CODES["none"])
+    assert float(result["h_max_abs"][1]) < 1.0e-4
+
+
+def test_gpu_kerr_schild_validator_writes_summary_and_h5(tmp_path):
+    _require_vulkan_adapter()
+    out = tmp_path / "ks_gpu_compare.json"
+    h5 = tmp_path / "ks_gpu_compare.h5"
+
+    summary = validate_ks_gpu(
+        params=MetricParams(M=1.0, a=0.9),
+        inclination_deg=60.0,
+        r_obs=100.0,
+        fan_samples=5,
+        fan_alpha_max=8.0,
+        fan_betas=(0.0,),
+        full_sky_samples=6,
+        step_size=0.05,
+        steps=4000,
+        horizon_eps=0.3,
+        out=out,
+        h5=h5,
+        command="pytest ks gpu validator",
+    )
+
+    assert summary["schema"] == "gr-bh-xr.tier2.ks_gpu_validation.v1"
+    assert summary["stable_event_agreement"] >= 0.98
+    assert summary["gpu_failure_outside_exclusions"] == 0
+    assert out.exists()
+    with h5py.File(h5, "r") as handle:
+        assert handle.attrs["schema"] == "gr-bh-xr.tier2.ks_gpu_validation.v1"
+        assert handle["gpu_final_x"].shape[1] == 4
+        assert handle["gpu_final_p"].shape[1] == 4
+        assert "gpu_h_max_abs" in handle
 
 
 def test_gpu_full_sky_transfer_cubemap_writes_boundary_free_package(tmp_path):

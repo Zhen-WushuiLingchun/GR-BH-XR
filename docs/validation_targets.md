@@ -410,6 +410,31 @@ Stage A CPU Kerr-Schild reference checks:
   coordinates are doing
   useful work.
 
+Task 2 WGSL Kerr-Schild checks:
+
+- `src/gr_bh_xr/gpu/trace_ks.py` validates the Cartesian Kerr-Schild
+  Hamiltonian RHS and fixed-step RK4 kernel in f32 WGPU while receiving
+  explicit CPU-initialized KS canonical states. This gate isolates GPU
+  metric/RHS correctness from camera-initialization work.
+- `python -m gr_bh_xr.gpu.validate_ks` must compare CPU f64 KS traces against
+  GPU f32 KS traces on both screen-coordinate fans and deterministic full-sky
+  directions. Stable-event agreement must be at least `98%`, GPU failures
+  outside CPU-invalid / near-capture exclusions must be `0`, and escaped-ray
+  momentum-direction errors must be reported.
+- GPU KS Hamiltonian residuals are grouped by `min_r` band. Exterior samples
+  are expected to be far tighter than near-horizon or horizon-crossing samples;
+  horizon-crossing f32 residuals are diagnostic evidence for the fixed-step
+  kernel, not a replacement for the CPU f64 exterior `1e-8` target.
+- The current `a = 0.9`, `i = 60 deg` gate records `sample_count = 677`,
+  `full_event_agreement = 1.0`, `stable_event_agreement = 1.0`,
+  `gpu_failure_outside_exclusions = 0`, escaped-direction median/RMS/max
+  errors of `8.94e-6`, `1.64e-5`, and `6.35e-5 rad`, and GPU `max |H|`
+  bands of `1.47e-4` outer, `1.32e-5` near-horizon exterior, and `2.49e-5`
+  horizon-crossing.
+- This Task 2 shader does not yet implement arbitrary observer worldlines,
+  finite-distance object intersections, or headset-rate near-horizon free
+  flight.
+
 Stage B observer checks:
 
 - Observer worldlines must state their domain: static/ZAMO-like, circular,

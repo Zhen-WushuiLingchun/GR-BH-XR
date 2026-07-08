@@ -170,7 +170,52 @@ min_r = 1.4158898944 M
 
 ## Remaining Stage A Gates
 
-- Add a denser full-sky KS/BL exterior cross-check before any keyframe transfer
-  map claims.
 - Add analytic-horizon-crossing comparison from the indexed
   horizon-penetrating literature when the formula contract is selected.
+
+## Task 2 WGSL Kerr-Schild Tracer Gate
+
+The first GPU KS path validates the horizon-penetrating Hamiltonian RHS and RK4
+kernel in WGPU/WGSL. Initial canonical states are generated on the CPU and
+passed to the shader so the gate isolates the metric/RHS migration from camera
+initialization. It is a fixed-step f32 test kernel, not yet a headset-rate
+near-horizon free-flight renderer.
+
+Formal command:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.gpu.validate_ks --spin 0.9 --inclination-deg 60 --fan-samples 55 --fan-alpha-max 8 --fan-betas 0,4,-4 --full-sky-samples 512 --step-size 0.01 --steps 20000 --out outputs/tier2/ks_gpu_a0.9_i60.json --h5 outputs/tier2/ks_gpu_a0.9_i60.h5
+```
+
+The JSON/HDF5 artifacts record:
+
+- CPU f64 KS event codes and GPU f32 KS event/failure codes;
+- stable-event agreement after excluding CPU invalid and near-capture samples;
+- escaped-ray asymptotic momentum-direction error for stable escaped rays;
+- GPU `max |H|` grouped by `min_r` bands: outer, near-horizon exterior, and
+  horizon-crossing.
+
+Acceptance:
+
+- stable-event agreement `>= 98%`;
+- GPU failures outside CPU-invalid / near-capture exclusions equal `0`;
+- median escaped-direction error below `1e-4 rad`;
+- horizon-crossing `max |H|` is reported as f32 diagnostic evidence rather
+  than compared to the CPU f64 exterior `1e-8` target.
+
+Current `a = 0.9`, `i = 60 deg` result:
+
+```text
+sample_count = 677
+full_event_agreement = 1.0
+stable_event_agreement = 1.0
+gpu_failure_outside_exclusions = 0
+escape_direction_median_error = 8.94e-6 rad
+escape_direction_rms_error = 1.64e-5 rad
+escape_direction_max_error = 6.35e-5 rad
+gpu max |H| by min_r band:
+  outer = 1.47e-4
+  near_horizon_exterior = 1.32e-5
+  horizon_crossing = 2.49e-5
+```
