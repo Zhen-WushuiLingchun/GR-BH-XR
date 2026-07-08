@@ -397,6 +397,9 @@ Stage A CPU Kerr-Schild reference checks:
   wrapped `Delta phi_m`, `Delta t_m`, and `Delta g_m` error fields.
 - Kerr critical-curve regression must recover the existing `a = 0.9`,
   `i = 60 deg` center and error thresholds before any near-horizon visual claim.
+  The current KS gate records `center alpha = 0.9359348514M`,
+  `max_abs_error = 0.0027052051M`, `rms_error = 0.0004011217M`, and
+  `invalid = 0`.
 - Conserved quantities `E`, `L_z`, exterior Carter `Q`, and Hamiltonian
   residuals must be reported through and across the outer horizon; bounded
   residuals near `r_+` are the direct evidence that the horizon-penetrating

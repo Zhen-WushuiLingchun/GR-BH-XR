@@ -19,6 +19,32 @@ from here.
 
 ## Log
 
+### 2026-07-08 - Kerr-Schild critical-curve regression
+
+- Goal: Close the KS Stage A shadow-boundary gate by comparing the KS
+  capture/escape boundary with the analytic Kerr critical curve.
+- Changed files / components: Added `src/gr_bh_xr/validate_ks_critical_curve.py`
+  and `tests/test_validate_ks_critical_curve.py`; updated
+  `docs/validation_targets.md` and `validation/kerr_schild/README.md`.
+- Academic reason: The horizon-penetrating tracer must recover the same
+  spherical-photon-orbit shadow boundary as the validated BL solver before it
+  can be used as the reference path for near-horizon keyframes.
+- Physical correspondence: The analytic curve is still the Bardeen/Gralla
+  spherical photon orbit screen curve. Only the numerical classifier changes
+  from BL exterior capture to KS horizon-penetrating capture.
+- Assumptions and conventions: The gate tests fixed-observer screen
+  coordinates at `r_obs = 100M`; it does not yet validate arbitrary observer
+  worldlines or finite-distance objects.
+- Validation: Formal `a = 0.9`, `i = 60 deg`, `48`-angle KS gate passed with
+  `center alpha = 0.9359348514M`, `max_abs_error = 0.0027052051M`,
+  `rms_error = 0.0004011217M`, `invalid = 0`, `max |H|_KS = 4.77e-8`, and
+  `min_r = 1.4158898944M`.
+- References: Existing Kerr critical-curve references
+  (`bardeen1973kerrGeodesics`, `gralla2020nullGeodesicsKerr`); no new source
+  added.
+- Open issues / next steps: Add the denser full-sky KS/BL exterior gate, then
+  migrate the KS RHS to WGSL for Task 2.
+
 ### 2026-07-08 - Kerr-Schild exterior Carter diagnostic
 
 - Goal: Add a Carter `Q` drift diagnostic to the KS tracer without pretending

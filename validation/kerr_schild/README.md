@@ -144,9 +144,32 @@ max |Delta g_m| = 4.34e-9
 max |H|_KS = 9.58e-9
 ```
 
+### Critical-curve regression
+
+The KS tracer reuses the analytic Kerr critical-curve polygon and the same
+radial bisection method as the BL validator, but the capture/escape events are
+classified by the horizon-penetrating KS integrator.
+
+Formal command:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.validate_ks_critical_curve --spin 0.9 --inclination-deg 60 --angles 48 --r-obs 100 --max-lambda 1200 --horizon-eps 0.02 --curve-samples 2048 --refine-steps 14 --out outputs/tier2/ks_critical_curve_a0.9_i60.json
+```
+
+Current reviewed result:
+
+```text
+center alpha = 0.9359348514 M
+max_abs_error = 0.0027052051 M
+rms_error = 0.0004011217 M
+invalid = 0
+max |H|_KS = 4.77e-8
+min_r = 1.4158898944 M
+```
+
 ## Remaining Stage A Gates
 
-- Run Kerr critical-curve regression with the KS tracer.
 - Add a denser full-sky KS/BL exterior cross-check before any keyframe transfer
   map claims.
 - Add analytic-horizon-crossing comparison from the indexed
