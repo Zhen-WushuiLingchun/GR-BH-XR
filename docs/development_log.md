@@ -19,6 +19,44 @@ from here.
 
 ## Log
 
+### 2026-07-08 - Kerr-Schild metric primitives for Tier 2 planning
+
+- Goal: Start the true near-horizon roaming track with coordinate-regular
+  Kerr-Schild metric primitives while preserving the distinction between
+  precomputed transfer-map playback and future horizon-penetrating tracing.
+- Changed files / components: Added `src/gr_bh_xr/metric_ks.py` and
+  `tests/test_metric_ks.py`; updated `docs/equations.md`,
+  `docs/validation_targets.md`, `references/references.md`,
+  `references/references.bib`, and
+  `references/source_notes/2026-07-08-kerr-schild-near-horizon.md`; adjusted
+  Quest control labels in `xr/unity_frontend/Runtime/` to call current stick
+  input observer-basis rotation rather than black-hole parameter control.
+- Academic reason: Near-horizon work must remove Boyer-Lindquist horizon/axis
+  coordinate failures before making any claim about event-horizon proximity.
+  The first auditable step is metric-level validation, not a visual navigation
+  demo.
+- Physical correspondence: The new module implements Cartesian Kerr-Schild
+  `g_mu_nu = eta_mu_nu + 2 H l_mu l_nu`, the inverse metric, analytic
+  Cartesian derivatives, Hamiltonian evaluation, and BL/Kerr-Schild spatial
+  coordinate conversion. Current VR yaw/pitch/roll controls rotate the
+  observer basis of a static transfer map; changing spin, inclination,
+  observer radius, apparent size, or worldline still requires regenerated
+  transfer maps or the future Tier 2 keyframe pipeline.
+- Assumptions and conventions: Signature remains `(-,+,+,+)`, geometric units
+  remain `G = c = 1`, and existing BL/Carter/Kerr critical-curve gates remain
+  authoritative until a KS geodesic solver has its own BL-vs-KS cross-validation.
+- Validation: `python -m pytest tests/test_metric_ks.py -q` passed with
+  `6 passed`, covering Schwarzschild limit, null Kerr-Schild vector,
+  covariant/inverse metric identity, BL/Kerr-Schild spatial roundtrip, analytic
+  derivative comparison with finite differences, and finite metric behavior at
+  the outer horizon.
+- References: Added `bakun2024kerrHorizonPenetrating` as a modern
+  horizon-penetrating Kerr geodesic reference; existing Carter/Bardeen/Gralla
+  references remain the exterior analytic cross-check sources.
+- Open issues / next steps: Implement `geodesic_ks.py`, add BL-vs-KS exterior
+  ray comparison, recover the Kerr critical curve with the KS tracer, then add
+  observer worldlines/tetrad transport before GPU keyframe generation.
+
 ### 2026-07-07 - Quest disk visual mode and VR settings panel
 
 - Goal: Add a first headset-usable thin-disk visual layer and replace the

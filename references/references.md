@@ -705,3 +705,26 @@ ignored `references/pdfs/local_only/`.
 - Project use: Analytic cross-check target for the numerical Kerr integrator.
 - Limitations / open questions: Boyer-Lindquist exterior; horizon-penetrating
   checks still use Kerr-Schild as in `docs/equations.md`.
+
+### Bakun et al. 2024 - Horizon-Penetrating Kerr Geodesics
+
+- Source path: `references/source_notes/2026-07-08-kerr-schild-near-horizon.md`
+- PDF path: Not stored yet.
+- Code review path: Not applicable; paper reference.
+- BibTeX key: `bakun2024kerrHorizonPenetrating`
+- Stable locator: https://arxiv.org/abs/2409.03722
+- Search date: 2026-07-08
+- Search terms: Kerr Geodesics horizon-penetrating Kerr coordinates;
+  Kerr-Schild coordinates Kerr metric ingoing Cartesian H l_mu
+- Why added: Stage A near-horizon work needs a citable horizon-penetrating Kerr
+  geodesic reference so the future solver is not justified by renderer demos.
+- Short summary: Treats timelike and null Kerr geodesics in horizon-penetrating
+  coordinates and emphasizes smooth continuation through Kerr horizons where
+  Boyer-Lindquist coordinates are singular.
+- Relevant equations / assumptions / methods: Horizon-penetrating Kerr
+  coordinates, conserved `E`, `L_z`, Carter constant, horizon regularity.
+- Project use: Reference for the Tier 2 Kerr-Schild / horizon-penetrating
+  solver roadmap and validation gates.
+- Limitations / open questions: The current repository commit only adds the
+  Cartesian Kerr-Schild metric primitives and tests; full geodesic continuation
+  remains a Stage A follow-up.

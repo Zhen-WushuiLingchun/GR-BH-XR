@@ -81,10 +81,12 @@ Tier 1: real-time or near-real-time GPU transfer-map update
   spin / inclination / observer / screen-window changes trigger GPU tracing,
   tiled updates, progressive refinement, or cached parameter interpolation
 
-Tier 2: dynamic-metric cache or surrogate
-  BBH, multi-black-hole, or gravitational-wave lensing uses time-indexed maps,
-  adaptive tracing, reduced-order models, or neural surrogates validated against
-  exact data and audit buffers
+Tier 2: worldline keyframes or dynamic-metric cache
+  near-horizon single-Kerr roaming uses a validated observer worldline plus
+  time-indexed transfer-map keyframes; BBH, multi-black-hole, or
+  gravitational-wave lensing uses time-indexed maps, adaptive tracing,
+  reduced-order models, or neural surrogates validated against exact data and
+  audit buffers
 ```
 
 Do not describe Tier 0 as real-time geodesic integration. It is real-time
@@ -142,6 +144,15 @@ cache assumption and require a documented metric source plus time-dependent
 transfer maps, offline/cache playback, adaptive GPU tracing, or validated
 surrogates. A static Kerr map must not be reused as evidence for those future
 systems.
+
+Near-horizon single-Kerr roaming is a separate Tier 2 path. The accepted first
+version is not six-degree-of-freedom free flight and not headset-rate
+integration. It is a precomputed observer worldline, such as ZAMO-like hover,
+circular-orbit segment, radial free fall, or an explicitly accelerated craft,
+with transfer-map keyframes sampled along proper time. Unity may interpolate
+and play back those keyframes while keeping head rotation free through the
+cubemap lookup. True 6DoF near-horizon flight moves to Tier 2.5+ and requires
+adaptive realtime tracing or a surrogate trained against exact transfer buffers.
 
 ## Visual And Academic Claims
 

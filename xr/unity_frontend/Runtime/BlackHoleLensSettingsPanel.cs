@@ -158,7 +158,7 @@ namespace GRBHXR
             if (statusText != null)
             {
                 string pose = controls != null
-                    ? $"Aim yaw {controls.YawDegrees:F1}  pitch {controls.PitchDegrees:F1}  roll {controls.RollDegrees:F1}"
+                    ? $"Observer basis yaw {controls.YawDegrees:F1}  pitch {controls.PitchDegrees:F1}  roll {controls.RollDegrees:F1}"
                     : "No lens anchor bound";
                 string disk = runtimeSettings != null
                     ? runtimeSettings.StatusText().Replace("\n", "  ")

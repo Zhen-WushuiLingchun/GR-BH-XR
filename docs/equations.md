@@ -17,6 +17,8 @@ keys resolve in `references/references.bib`; provenance notes are in
 - Direct / secondary disk images: `luminet1979blackHoleImage`.
 - Shadow / lensing ring / photon ring and higher-order image scaling:
   `gralla2019shadowsPhotonRings`, `gralla2020lensingKerr`.
+- Horizon-penetrating Kerr geodesic motivation and future cross-checks:
+  `bakun2024kerrHorizonPenetrating`.
 - Simplified and polarized GRRT: `younsi2012grrt`, `bronzwaer2018raptor`,
   `bronzwaer2020raptorii`.
 
@@ -52,6 +54,30 @@ dp_mu / dlambda = - partial H / partial x^mu
 The Phase 1 CPU reference solver evaluates `partial_r g^{mu nu}` and
 `partial_theta g^{mu nu}` analytically for the Boyer-Lindquist inverse metric.
 Finite differences are retained only as a derivative test oracle.
+
+The Tier 2 near-horizon track uses Cartesian Kerr-Schild primitives as the
+coordinate-regular foundation (`bakun2024kerrHorizonPenetrating` motivates the
+horizon-penetrating geodesic target):
+
+```text
+g_{mu nu} = eta_{mu nu} + 2 H l_mu l_nu
+g^{mu nu} = eta^{mu nu} - 2 H l^mu l^nu
+H = M r^3 / (r^4 + a^2 z^2)
+r^4 - (x^2 + y^2 + z^2 - a^2) r^2 - a^2 z^2 = 0
+```
+
+The implemented Cartesian spatial map follows the oblate spheroidal relation:
+
+```text
+x = (r cos phi - a sin phi) sin theta
+y = (r sin phi + a cos phi) sin theta
+z = r cos theta
+```
+
+`src/gr_bh_xr/metric_ks.py` currently validates the metric, inverse metric,
+analytic Cartesian derivatives, Schwarzschild limit, and finite behavior at the
+outer horizon. It is not yet a near-horizon roaming solver; the geodesic
+integrator and BL-vs-KS cross-validation gates are separate Tier 2 steps.
 
 Required tracked invariants (`Q` from `carter1968kerr`; screen mapping and
 geodesic structure from `bardeen1973kerrGeodesics` and

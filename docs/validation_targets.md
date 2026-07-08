@@ -340,6 +340,10 @@ Delta t_m is recorded and reported; its tighter threshold is set after display-s
   crossing when a theta turning point lies exactly on the equatorial plane.
   CPU and GPU currently share this limitation; it must be revisited before
   using such edge cases for claims.
+- The current Unity disk visual emissivity `pow(saturate(6/r), 2.2)` is a
+  documented visual proxy only. A physically stronger disk visual mode must add
+  a Page-Thorne-style relativistic thin-disk flux model with its source indexed
+  in `references/` before replacing the proxy in claims.
 
 ## Phase 5 MR Overlay
 
@@ -349,6 +353,42 @@ Required checks:
 - Depth API or equivalent occlusion is visually checked;
 - parameters shown in the UI map to documented physical quantities;
 - limitations of passthrough pixel access are recorded before any lensing claim.
+
+## Tier 2 Near-Horizon Kerr-Schild Roaming
+
+Tier 2 near-horizon roaming is not headset-rate per-frame geodesic integration.
+The accepted architecture is a precomputed observer worldline with transfer-map
+keyframes sampled along observer proper time, then Unity/Quest interpolation and
+playback. Head rotation remains a cubemap lookup; observer position follows the
+validated worldline. Six-degree-of-freedom free flight remains Tier 2.5+ and
+requires a realtime tracer or audited surrogate.
+
+Stage A CPU Kerr-Schild reference checks:
+
+- `src/gr_bh_xr/metric_ks.py` must keep covariant/inverse metric consistency,
+  Schwarzschild limit, finite outer-horizon behavior, and analytic derivative
+  agreement with finite differences under test.
+- A future `geodesic_ks.py` tracer must use the Hamiltonian form with
+  Cartesian Kerr-Schild inverse metric derivatives and record horizon crossing,
+  escape, and disk-crossing events without Boyer-Lindquist axis failures.
+- Exterior-domain BL-vs-KS cross-validation must compare event class,
+  asymptotic escape direction, disk crossing fields, and Hamiltonian residuals.
+- Kerr critical-curve regression must recover the existing `a = 0.9`,
+  `i = 60 deg` center and error thresholds before any near-horizon visual claim.
+- Conserved quantities `E`, `L_z`, Carter `Q`, and Hamiltonian residuals must be
+  reported through and across the outer horizon; bounded residuals near `r_+`
+  are the direct evidence that the horizon-penetrating coordinates are doing
+  useful work.
+
+Stage B observer checks:
+
+- Observer worldlines must state their domain: static/ZAMO-like, circular,
+  radial free fall, or explicitly accelerated craft.
+- Camera tetrads must be transported along the worldline, with orthonormality
+  drift recorded.
+- Large-radius/low-speed tetrad launch must reduce to the existing static
+  observer mapping plus the special-relativistic aberration limit.
+- Redshift must use the observer four-velocity, not the static-observer value.
 
 ## Phase 6 Simplified GRRT
 

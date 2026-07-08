@@ -408,7 +408,9 @@ def test_unity_lens_anchor_controls_runtime_is_versioned():
     assert "Observer-radius or apparent-size changes require a new transfer map" in source
     assert "Quaternion.Euler(pitchDegrees, yawDegrees, rollDegrees)" in source
     assert "skyShell.SyncNow()" in source
-    assert "Size/r_obs: locked" in source
+    assert "Observer-Basis Controls" in source
+    assert "observer yaw/pitch" in source
+    assert "Size/r_obs locked" in source
     assert "Input.GetMouseButtonDown" in source
     assert "KeyCode.Q" in source
     assert "KeyCode.E" in source

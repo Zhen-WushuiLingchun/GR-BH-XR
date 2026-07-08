@@ -12,6 +12,8 @@ namespace GRBHXR
         [SerializeField] private BlackHoleLensSettingsPanel settingsPanel;
         [SerializeField] private BlackHoleLensRuntimeSettings runtimeSettings;
         [SerializeField] private bool enableControllerInput = true;
+        // These sticks rotate the observer/view basis of a static transfer map.
+        // They do not change Kerr spin, inclination, r_obs, or the observer worldline.
         [SerializeField] private bool yawPitchOnRightStick = true;
         [SerializeField] private bool rollOnLeftStick = true;
         // Default off: with the hold-to-rotate gate on, users could not tell

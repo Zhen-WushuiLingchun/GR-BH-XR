@@ -192,12 +192,12 @@ namespace GRBHXR
         {
             string stale = transferMapStale ? "STALE" : "fixed";
             return
-                "GR-BH-XR Lens Controls\n" +
+                "GR-BH-XR Observer-Basis Controls\n" +
                 $"Yaw {yawDegrees:F1}  Pitch {pitchDegrees:F1}  Roll {rollDegrees:F1}\n" +
-                "R stick: yaw/pitch  L stick: roll\n" +
+                "R stick: observer yaw/pitch  L stick: observer roll\n" +
                 "A: aim at view  B: panel\n" +
                 "Desktop: drag / arrows / Q E / R\n" +
-                $"Size/r_obs: locked (map {stale})";
+                $"Size/r_obs locked; transfer map {stale}";
         }
 
         private void PollMouseKeyboardInput()
