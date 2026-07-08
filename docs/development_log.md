@@ -19,6 +19,31 @@ from here.
 
 ## Log
 
+### 2026-07-08 - Kerr-Schild BL cross-chart fan gate
+
+- Goal: Version the reviewed BL-vs-KS fan cross-check as a reproducible
+  validation command rather than leaving it as an external audit note.
+- Changed files / components: Added `src/gr_bh_xr/validate_ks_bl_crosscheck.py`,
+  `tests/test_validate_ks_bl_crosscheck.py`, and
+  `validation/kerr_schild/README.md`; updated `docs/validation_targets.md`.
+- Academic reason: The KS tracer must prove that it agrees with the already
+  validated BL exterior solver on event classification and the escaped momentum
+  direction consumed by transfer maps before it can be used for keyframes.
+- Physical correspondence: The validation samples a screen-coordinate fan,
+  traces each ray in both charts, transforms escaped KS final states back to BL
+  only in the exterior, and compares momentum-derived escape directions.
+- Assumptions and conventions: This gate tests exterior rays only. It does not
+  yet test disk crossings, Carter `Q`, or the Kerr critical curve with the KS
+  tracer.
+- Validation: `python -m pytest tests/test_validate_ks_bl_crosscheck.py -q`
+  passed with `2 passed`. Formal fan runs for `a = 0.9`, `i = 60 deg` and
+  `i = 90 deg`, `alpha in [-8M, 8M]`, `beta = 0`, and `55` rays produced
+  `event_mismatches = 0` and maximum escaped-direction error
+  `2.1073424255447017e-08 rad` in both cases.
+- References: Existing BL/Kerr and Kerr-Schild references; no new source added.
+- Open issues / next steps: Add disk events and Carter diagnostics to the KS
+  tracer, then run KS critical-curve regression.
+
 ### 2026-07-08 - Kerr-Schild escape-direction gate
 
 - Goal: Strengthen the Kerr-Schild seed tracer with end-state diagnostics and
