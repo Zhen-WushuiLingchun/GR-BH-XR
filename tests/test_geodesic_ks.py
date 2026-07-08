@@ -3,7 +3,14 @@ import math
 from gr_bh_xr.camera import initial_ray_state
 from gr_bh_xr.disk import redshift_factor
 from gr_bh_xr.geodesic import trace_ray
-from gr_bh_xr.geodesic_ks import _inner_capture_radius, bl_state_to_ks_state, ks_state_to_bl_state, trace_state_ks
+from gr_bh_xr.geodesic_ks import (
+    KSSphereTarget,
+    _inner_capture_radius,
+    bl_state_to_ks_state,
+    ks_state_to_bl_state,
+    static_observer_redshift_ks,
+    trace_state_ks,
+)
 from gr_bh_xr.metric import hamiltonian as bl_hamiltonian, horizon_radius
 from gr_bh_xr.metric_ks import ks_hamiltonian
 from gr_bh_xr.sky import momentum_direction_from_state
@@ -125,3 +132,35 @@ def test_ks_inner_capture_radius_stays_outside_cauchy_horizon_near_extremal_spin
     capture_r = _inner_capture_radius(params, inner_eps=0.3)
 
     assert r_minus < capture_r < r_plus
+
+
+def test_ks_sphere_target_records_finite_static_object_hit():
+    params = MetricParams(M=1.0, a=0.0)
+    camera = CameraConfig(r_obs=50.0, theta_obs=math.pi / 2.0, alpha=0.0, beta=0.0)
+    cfg = TraceConfig(max_lambda=80.0, r_escape=100.0, horizon_eps=0.3, max_step=0.2)
+    target = KSSphereTarget(center_xyz=(20.0, 0.0, 0.0), radius=1.0)
+
+    ks = trace_state_ks(
+        params,
+        bl_state_to_ks_state(params, initial_ray_state(params, camera)),
+        cfg,
+        r_obs=50.0,
+        sphere_target=target,
+    )
+
+    hit_r = math.sqrt(ks.object_hit_x * ks.object_hit_x + ks.object_hit_y * ks.object_hit_y + ks.object_hit_z * ks.object_hit_z)
+    expected_static_g = math.sqrt(1.0 - 2.0 * params.M / hit_r)
+
+    assert ks.event == "object_hit"
+    assert math.isfinite(ks.object_hit_lambda)
+    assert abs(ks.object_hit_x - 21.0) < 1.0e-7
+    assert abs(ks.object_hit_y) < 1.0e-9
+    assert abs(ks.object_hit_z) < 1.0e-9
+    assert abs(ks.object_hit_redshift_g - expected_static_g) < 1.0e-10
+    assert ks.h_max_abs < 1.0e-9
+
+
+def test_ks_static_observer_redshift_rejects_static_worldline_inside_schwarzschild_ergoregion():
+    params = MetricParams(M=1.0, a=0.0)
+
+    assert math.isnan(static_observer_redshift_ks(params, (1.5, 0.0, 0.0), p_t=-1.0))

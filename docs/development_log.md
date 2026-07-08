@@ -19,6 +19,37 @@ from here.
 
 ## Log
 
+### 2026-07-08 - Kerr-Schild finite-distance sphere target seed
+
+- Goal: Start Task 3 by adding a CPU Kerr-Schild finite-distance object event
+  before weak-field lens-equation and GPU migration gates.
+- Changed files / components: Updated `src/gr_bh_xr/geodesic_ks.py` with
+  `KSSphereTarget`, object-hit diagnostics, and a static-object redshift helper;
+  added KS geodesic regression tests; updated `docs/validation_targets.md` and
+  `validation/kerr_schild/README.md`.
+- Academic reason: Local finite-distance objects are a separate physical path
+  from background cubemap lensing. The tracer needs an explicit object-hit
+  event before MR room objects, sphere targets, or finite-source lensing can be
+  claimed.
+- Physical correspondence: A sphere target is represented in Cartesian
+  Kerr-Schild coordinates by `|x - c| - R = 0`. For a static object outside the
+  ergoregion, the recorded redshift uses
+  `g = E / (-p_mu u_static^mu)` with `u_static^t = 1 / sqrt(-g_tt)`. Static
+  worldlines inside `g_tt >= 0` are rejected with `NaN` rather than treated as
+  physical emitters.
+- Assumptions and conventions: This is a CPU reference seed only. It does not
+  yet implement the weak-field finite-distance lens-equation anchor, GPU sphere
+  intersections, or generic moving-object tetrads.
+- Validation: Added a Schwarzschild straight-through sphere-hit test from
+  `r_obs = 50M` to a target centered at `20M`, confirming the front-surface hit
+  and `sqrt(1 - 2M/r_hit)` static redshift, plus a test that static observers
+  inside the Schwarzschild horizon are rejected.
+- References: Existing Kerr-Schild and lensing references; no new source added
+  in this seed step.
+- Open issues / next steps: Add the weak-field finite-distance lens equation
+  reference and anchor, then migrate sphere intersections to the WGSL KS kernel
+  for CPU/GPU comparison.
+
 ### 2026-07-08 - Kerr-Schild photon-shell f32 floor policy
 
 - Goal: Record the post-review reinterpretation of the KS GPU photon-shell

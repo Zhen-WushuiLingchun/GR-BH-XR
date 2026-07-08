@@ -317,3 +317,45 @@ r_obs = 3M:
 This gate is still a finite-observer transfer-map comparison, not headset-rate
 free flight.  It provides the low-radius accuracy evidence needed before
 frustum-only realtime benchmarks can be interpreted.
+
+### Finite-distance sphere target seed
+
+Task 3 starts by letting the CPU Kerr-Schild tracer stop on a finite spherical
+target in Cartesian Kerr-Schild coordinates.  This is the first local-object
+event path; it is separate from the background full-sky transfer cubemap and
+from the compact thin-disk transfer map.
+
+Implemented CPU fields:
+
+```text
+object_hit_lambda
+object_hit_t
+object_hit_x, object_hit_y, object_hit_z
+object_hit_p_t
+object_hit_redshift_g
+```
+
+The event function is `|x - c| - R = 0`, terminal on inward crossing.  For a
+static object outside the ergoregion, the recorded redshift is
+
+```text
+g = E / (-p_mu u_static^mu),    u_static^t = 1 / sqrt(-g_tt)
+```
+
+If `g_tt >= 0`, a static worldline is not physical and the redshift helper
+returns `NaN`.
+
+Current smoke check:
+
+```text
+a = 0 Schwarzschild
+r_obs = 50M
+target center = (20M, 0, 0), radius = 1M
+expected front-surface hit r = 21M
+expected static redshift = sqrt(1 - 2M / 21M)
+```
+
+This is a seed test, not yet the formal finite-distance lensing gate.  The
+next required gate is a weak-field finite-distance lens-equation anchor,
+`theta_E^2 = 4M D_LS / (D_L D_S)`, followed by a WGSL sphere-intersection
+implementation and CPU/GPU comparison.

@@ -460,6 +460,26 @@ Task 2 WGSL Kerr-Schild checks:
   finite-distance object intersections, or headset-rate near-horizon free
   flight.
 
+Task 3 finite-distance object checks:
+
+- `src/gr_bh_xr/geodesic_ks.py` may trace a spherical finite-distance target
+  in Cartesian Kerr-Schild coordinates with event function
+  `|x - c| - R = 0`. The object-hit event records the hit affine parameter,
+  hit position, canonical `p_t`, and static-object redshift when the static
+  worldline is physically allowed.
+- Static finite-distance object redshift uses
+  `g = E / (-p_mu u_static^mu)` with `u_static^t = 1 / sqrt(-g_tt)`. If
+  `g_tt >= 0`, the static worldline is inside the ergoregion and the helper
+  must return `NaN`; callers must not silently render such an object as a
+  static emitter.
+- The current CPU seed is validated by a Schwarzschild straight-through
+  sphere-hit regression that recovers the front-surface intersection and
+  `sqrt(1 - 2M/r_hit)` static redshift. It is not yet the finite-distance
+  weak-field lens-equation gate.
+- Formal Task 3 acceptance remains pending: add the weak-field lens equation
+  anchor `theta_E^2 = 4M D_LS / (D_L D_S)` with a standard lensing reference,
+  then add a GPU sphere-intersection path and CPU/GPU comparison.
+
 Stage B observer checks:
 
 - Observer worldlines must state their domain: static/ZAMO-like, circular,

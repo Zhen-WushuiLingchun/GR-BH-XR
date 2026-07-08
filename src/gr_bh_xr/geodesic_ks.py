@@ -20,9 +20,26 @@ from .metric_ks import (
     ks_hamiltonian,
     ks_inverse_metric,
     ks_inverse_metric_derivatives,
+    ks_metric,
     ks_radius,
 )
 from .types import FloatArray, MetricParams, RayState, TraceConfig
+
+
+@dataclass(frozen=True)
+class KSSphereTarget:
+    """Finite-distance spherical target in Cartesian Kerr-Schild coordinates."""
+
+    center_xyz: FloatArray
+    radius: float
+
+    def __post_init__(self) -> None:
+        center = np.asarray(self.center_xyz, dtype=np.float64)
+        if center.shape != (3,):
+            raise ValueError("center_xyz must be a 3-vector.")
+        if self.radius <= 0.0:
+            raise ValueError("sphere target radius must be positive.")
+        object.__setattr__(self, "center_xyz", center)
 
 
 @dataclass(frozen=True)
@@ -50,6 +67,13 @@ class KSRayDiagnostics:
     disk_crossing_phi: tuple[float, ...] = ()
     disk_crossing_p_t: tuple[float, ...] = ()
     disk_crossing_p_phi: tuple[float, ...] = ()
+    object_hit_lambda: float = math.nan
+    object_hit_t: float = math.nan
+    object_hit_x: float = math.nan
+    object_hit_y: float = math.nan
+    object_hit_z: float = math.nan
+    object_hit_p_t: float = math.nan
+    object_hit_redshift_g: float = math.nan
     message: str = ""
 
 
@@ -81,6 +105,7 @@ def trace_state_ks(
     *,
     r_obs: float | None = None,
     inner_horizon_eps: float | None = None,
+    sphere_target: KSSphereTarget | None = None,
 ) -> KSRayDiagnostics:
     """Trace an explicitly initialized Kerr-Schild ray state.
 
@@ -113,6 +138,7 @@ def trace_state_ks(
 
     events = [capture_event, escape_event]
     disk_event_index: int | None = None
+    sphere_event_index: int | None = None
     initial_z = float(y0[3])
     initial_dx = ks_inverse_metric(params, y0[1:4]) @ y0[4:]
     initial_dz = float(initial_dx[3])
@@ -135,6 +161,18 @@ def trace_state_ks(
         disk_event.direction = 0.0  # type: ignore[attr-defined]
         disk_event_index = len(events)
         events.append(disk_event)
+
+    if sphere_target is not None:
+        center = np.asarray(sphere_target.center_xyz, dtype=np.float64)
+        radius = float(sphere_target.radius)
+
+        def sphere_event(_lam: float, y: np.ndarray) -> float:
+            return float(np.linalg.norm(y[1:4] - center) - radius)
+
+        sphere_event.terminal = True  # type: ignore[attr-defined]
+        sphere_event.direction = -1.0  # type: ignore[attr-defined]
+        sphere_event_index = len(events)
+        events.append(sphere_event)
 
     def rhs(lam: float, y: np.ndarray) -> np.ndarray:
         nonlocal last_lam
@@ -163,6 +201,12 @@ def trace_state_ks(
     else:
         disk_crossing_lambda = sol.t_events[disk_event_index]
         disk_crossing_states = sol.y_events[disk_event_index]
+    if sphere_event_index is None:
+        sphere_hit_lambda = np.array([], dtype=np.float64)
+        sphere_hit_states = np.empty((0, y0.size), dtype=np.float64)
+    else:
+        sphere_hit_lambda = sol.t_events[sphere_event_index]
+        sphere_hit_states = sol.y_events[sphere_event_index]
 
     event = "invalid"
     message = sol.message
@@ -171,6 +215,8 @@ def trace_state_ks(
             event = "capture"
         elif sol.t_events[1].size:
             event = "escape"
+        elif sphere_hit_lambda.size:
+            event = "object_hit"
         elif cfg.stop_on_disk and disk_crossing_lambda.size:
             event = "disk_crossing"
         else:
@@ -183,7 +229,29 @@ def trace_state_ks(
         message,
         disk_crossing_lambda=disk_crossing_lambda,
         disk_crossing_states=disk_crossing_states,
+        object_hit_lambda=sphere_hit_lambda,
+        object_hit_states=sphere_hit_states,
     )
+
+
+def static_observer_redshift_ks(params: MetricParams, xyz: FloatArray, p_t: float) -> float:
+    """Return `g = E / (-p_mu u_static^mu)` for a static emitter/observer.
+
+    The static worldline is only timelike where `g_tt < 0`.  Inside the
+    ergoregion the helper returns NaN so callers cannot accidentally treat an
+    impossible static object as a physical emitter.
+    """
+
+    cov = ks_metric(params, xyz)
+    g_tt = float(cov[0, 0])
+    if g_tt >= 0.0:
+        return math.nan
+    u_t = 1.0 / math.sqrt(-g_tt)
+    energy = -float(p_t)
+    denom = energy * u_t
+    if denom <= 0.0:
+        return math.nan
+    return energy / denom
 
 
 def bl_state_to_ks_state(params: MetricParams, state: RayState) -> RayState:
@@ -233,6 +301,8 @@ def _diagnostics_ks(
     message: str,
     disk_crossing_lambda: np.ndarray | None = None,
     disk_crossing_states: np.ndarray | None = None,
+    object_hit_lambda: np.ndarray | None = None,
+    object_hit_states: np.ndarray | None = None,
 ) -> KSRayDiagnostics:
     xs = y_values[:, :4]
     ps = y_values[:, 4:]
@@ -249,6 +319,13 @@ def _diagnostics_ks(
     crossing_phi_tuple: tuple[float, ...] = ()
     crossing_p_t_tuple: tuple[float, ...] = ()
     crossing_p_phi_tuple: tuple[float, ...] = ()
+    object_lambda = math.nan
+    object_t = math.nan
+    object_x = math.nan
+    object_y = math.nan
+    object_z = math.nan
+    object_p_t = math.nan
+    object_g = math.nan
     if (
         disk_crossing_lambda is not None
         and disk_crossing_states is not None
@@ -263,6 +340,20 @@ def _diagnostics_ks(
         crossing_phi_tuple = tuple(value[3] for value in converted)
         crossing_p_t_tuple = tuple(value[4] for value in converted)
         crossing_p_phi_tuple = tuple(value[7] for value in converted)
+    if (
+        object_hit_lambda is not None
+        and object_hit_states is not None
+        and object_hit_lambda.size
+        and object_hit_states.ndim == 2
+    ):
+        row = object_hit_states[0]
+        object_lambda = float(object_hit_lambda[0])
+        object_t = float(row[0])
+        object_x = float(row[1])
+        object_y = float(row[2])
+        object_z = float(row[3])
+        object_p_t = float(row[4])
+        object_g = static_observer_redshift_ks(params, row[1:4], object_p_t)
     return KSRayDiagnostics(
         event=event,
         h_max_abs=_nanmax_abs(h_values),
@@ -285,6 +376,13 @@ def _diagnostics_ks(
         disk_crossing_phi=crossing_phi_tuple,
         disk_crossing_p_t=crossing_p_t_tuple,
         disk_crossing_p_phi=crossing_p_phi_tuple,
+        object_hit_lambda=object_lambda,
+        object_hit_t=object_t,
+        object_hit_x=object_x,
+        object_hit_y=object_y,
+        object_hit_z=object_z,
+        object_hit_p_t=object_p_t,
+        object_hit_redshift_g=object_g,
         message=message,
     )
 
