@@ -16,6 +16,7 @@ from scipy.integrate import solve_ivp
 from .metric import delta, hamiltonian as bl_hamiltonian, horizon_radius
 from .metric_ks import (
     bl_to_ks_cartesian,
+    ks_cartesian_to_bl,
     ks_hamiltonian,
     ks_inverse_metric,
     ks_inverse_metric_derivatives,
@@ -36,6 +37,8 @@ class KSRayDiagnostics:
     steps: int
     min_r: float
     final_r: float
+    final_x: FloatArray
+    final_p: FloatArray
     message: str = ""
 
 
@@ -77,7 +80,7 @@ def trace_state_ks(
     observer_r = float(r_obs) if r_obs is not None else ks_radius(params, state.x[1:4])
     r_escape = cfg.r_escape if cfg.r_escape is not None else max(2.0 * observer_r, observer_r + 50.0)
     inner_eps = cfg.horizon_eps if inner_horizon_eps is None else inner_horizon_eps
-    capture_r = max(1.0e-4, horizon_radius(params) - inner_eps)
+    capture_r = _inner_capture_radius(params, inner_eps)
     rhs_history = [y0.copy()]
     last_lam = 0.0
 
@@ -148,6 +151,23 @@ def bl_state_to_ks_state(params: MetricParams, state: RayState) -> RayState:
     return RayState(x=x_ks, p=p_ks)
 
 
+def ks_state_to_bl_state(params: MetricParams, state: RayState) -> RayState:
+    """Transform an ingoing Cartesian Kerr-Schild canonical state to BL coordinates.
+
+    This inverse is intended for exterior validation and escape-direction
+    diagnostics. Near the BL horizon the coordinate transform is logarithmically
+    singular; horizon-crossing claims must use the native Kerr-Schild state.
+    """
+
+    t_ks = float(state.x[0])
+    r, theta, phi_ks = ks_cartesian_to_bl(state.x[1:4], params.a)
+    phi_bl = phi_ks - _phi_shift(params, r)
+    x_bl = np.array([t_ks - _time_shift(params, r), r, theta, phi_bl], dtype=np.float64)
+    jac = _bl_to_ks_jacobian(params, r, theta, phi_bl)
+    p_bl = jac.T @ state.p
+    return RayState(x=x_bl, p=p_bl)
+
+
 def _diagnostics_ks(
     params: MetricParams, y_values: np.ndarray, lambda_end: float, event: str, message: str
 ) -> KSRayDiagnostics:
@@ -166,8 +186,18 @@ def _diagnostics_ks(
         steps=int(y_values.shape[0]),
         min_r=float(np.min(radii)),
         final_r=float(radii[-1]),
+        final_x=xs[-1].copy(),
+        final_p=ps[-1].copy(),
         message=message,
     )
+
+
+def _inner_capture_radius(params: MetricParams, inner_eps: float) -> float:
+    rp = horizon_radius(params)
+    rm = params.M - math.sqrt(params.M * params.M - params.a * params.a)
+    gap = rp - rm
+    margin = min(0.05 * params.M, 0.25 * gap)
+    return max(1.0e-4, rm + margin, rp - inner_eps)
 
 
 def _bl_to_ks_jacobian(params: MetricParams, r: float, theta: float, phi_bl: float) -> FloatArray:

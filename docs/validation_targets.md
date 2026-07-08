@@ -373,8 +373,14 @@ Stage A CPU Kerr-Schild reference checks:
   without Boyer-Lindquist horizon/axis failures. Disk-crossing events,
   Carter-constant diagnostics, and stronger escape-direction comparison remain
   follow-up gates.
+- Captured rays should be continued inside the outer horizon only far enough to
+  prove horizon penetration. For near-extremal spins, the numerical capture
+  surface must remain outside the Cauchy horizon, e.g. by using
+  `max(r_- + margin, r_+ - eps)`.
 - Exterior-domain BL-vs-KS cross-validation must compare event class,
   asymptotic escape direction, disk crossing fields, and Hamiltonian residuals.
+  A first representative Kerr escaped-ray direction gate is in place; dense
+  full-sky sampling remains required before transfer-map keyframe claims.
 - Kerr critical-curve regression must recover the existing `a = 0.9`,
   `i = 60 deg` center and error thresholds before any near-horizon visual claim.
 - Conserved quantities `E`, `L_z`, Carter `Q`, and Hamiltonian residuals must be

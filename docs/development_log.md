@@ -19,6 +19,33 @@ from here.
 
 ## Log
 
+### 2026-07-08 - Kerr-Schild escape-direction gate
+
+- Goal: Strengthen the Kerr-Schild seed tracer with end-state diagnostics and
+  the first BL-vs-KS escaped-ray direction comparison.
+- Changed files / components: Extended `src/gr_bh_xr/geodesic_ks.py` with
+  final state/momentum output, `ks_state_to_bl_state`, and a capture-surface
+  clamp that stays outside the Cauchy horizon for near-extremal spins; extended
+  `tests/test_geodesic_ks.py`.
+- Academic reason: Event classification alone is too weak for cross-chart
+  validation. Escaped-ray momentum direction is the transfer-map quantity that
+  Unity consumes for background lensing, so KS must agree with the existing BL
+  reference there before it can support future keyframes.
+- Physical correspondence: The KS final state is transformed back to BL
+  coordinates only in the exterior escape region, where the BL chart is valid
+  for diagnostics. Horizon-crossing evidence remains native KS. The inner
+  capture surface is now `max(r_- + margin, r_+ - eps)` rather than blindly
+  stepping toward the Cauchy horizon when the spin is near extremal.
+- Assumptions and conventions: The first escape-direction test is a single
+  representative Kerr ray. Dense full-sky KS-vs-BL sampling and critical-curve
+  regression are still separate gates.
+- Validation: `python -m pytest tests/test_geodesic_ks.py -q` passed with
+  `5 passed`; full-suite validation is recorded in the commit checklist.
+- References: Same Kerr-Schild and Kerr geodesic references as previous Stage A
+  entries.
+- Open issues / next steps: Add dense exterior BL-vs-KS sampling, disk crossing
+  in KS coordinates, Carter `Q` diagnostics, and Kerr critical-curve regression.
+
 ### 2026-07-08 - Kerr-Schild Hamiltonian tracer seed
 
 - Goal: Add the first CPU Kerr-Schild Hamiltonian tracer and cross-chart state
