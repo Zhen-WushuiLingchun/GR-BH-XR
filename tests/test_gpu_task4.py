@@ -19,6 +19,7 @@ from gr_bh_xr.gpu.validate import validate_cpu_vs_gpu
 from gr_bh_xr.gpu.validate_disk_transfer import validate_disk_transfer_cpu_vs_gpu
 from gr_bh_xr.gpu.validate_full_sky_transfer import validate_full_sky_transfer
 from gr_bh_xr.gpu.validate_ks import validate_ks_gpu
+from gr_bh_xr.gpu.validate_ks_finite_object import validate_ks_finite_object_gpu
 from gr_bh_xr.gpu.validate_ks_near_horizon import validate_near_horizon_ks_gpu
 from gr_bh_xr.types import CameraConfig, MetricParams, TraceConfig
 
@@ -139,6 +140,61 @@ def test_gpu_kerr_schild_states_capture_and_escape():
     assert result["event_code"].tolist() == [EVENT_CODES["capture"], EVENT_CODES["escape"]]
     assert np.all(result["failure_code"] == FAILURE_CODES["none"])
     assert float(result["h_max_abs"][1]) < 1.0e-4
+
+
+def test_gpu_kerr_schild_sphere_target_hit_and_escape():
+    _require_vulkan_adapter()
+    params = MetricParams(M=1.0, a=0.0)
+    states = ks_states_from_screen_points(
+        params=params,
+        inclination_deg=90.0,
+        r_obs=50.0,
+        alpha=np.asarray([0.0, 8.0], dtype=np.float64),
+        beta=np.asarray([0.0, 0.0], dtype=np.float64),
+    )
+    result = trace_ks_states(
+        KsGpuTraceConfig(
+            params=params,
+            step_size=0.02,
+            steps=8000,
+            max_lambda=500.0,
+            max_step=0.5,
+            r_escape=100.0,
+            horizon_eps=0.3,
+            sphere_center_xyz=(20.0, 0.0, 0.0),
+            sphere_radius=1.0,
+        ),
+        states,
+    )
+
+    assert result["event_code"][0] == EVENT_CODES["object_hit"]
+    assert result["event_code"][1] == EVENT_CODES["escape"]
+    assert np.all(result["failure_code"] == FAILURE_CODES["none"])
+    assert 20.0 <= float(result["final_x"][0, 1]) <= 21.1
+
+
+def test_gpu_kerr_schild_finite_object_validator_reports_stable_agreement(tmp_path):
+    _require_vulkan_adapter()
+    summary = validate_ks_finite_object_gpu(
+        params=MetricParams(M=1.0, a=0.0),
+        D_l=1000.0,
+        D_ls=500.0,
+        target_radius=10.0,
+        samples=41,
+        scan_half_width_frac=0.2,
+        cpu_max_step=10.0,
+        gpu_step_size=0.05,
+        gpu_max_step=0.5,
+        gpu_steps=8000,
+        out=tmp_path / "ks_finite_object_gpu_compare.json",
+        command="pytest finite object gpu compare",
+    )
+
+    assert summary["stable_event_mismatch_count"] == 0
+    assert summary["stable_event_agreement"] == 1.0
+    assert summary["gpu_failure_outside_none"] == 0
+    assert summary["object_hit_agreement_count"] > 0
+    assert summary["edge_band_event_mismatch_count"] <= summary["event_mismatch_count"]
 
 
 def test_gpu_kerr_schild_validator_writes_summary_and_h5(tmp_path):

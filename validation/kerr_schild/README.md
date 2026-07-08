@@ -396,3 +396,40 @@ exact point equality.  The nearby `D_L = 200M`, `D_LS = 100M` configuration is
 not used as this strict gate because it is already close enough to the hole for
 higher-order finite-distance/strong-field corrections to move the image angle
 by several percent.
+
+### GPU finite-sphere intersection gate
+
+The WGSL Kerr-Schild kernel can also stop on the same finite sphere target.  It
+adds a distinct `object_hit` event code while keeping the existing
+`capture/escape/disk_crossing/invalid` numeric codes unchanged.
+
+Formal command:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.gpu.validate_ks_finite_object --out outputs/tier2/ks_finite_object_gpu_compare.json
+```
+
+Current result:
+
+```text
+D_L = 1000M
+D_LS = 500M
+target radius = 10M
+samples = 81
+CPU events: object_hit 34, escape 47
+GPU events: object_hit 35, escape 46
+event_mismatch_count = 1
+object_edge_band_count = 8
+edge_band_event_mismatch_count = 1
+stable_event_mismatch_count = 0
+stable_event_agreement = 1.0
+gpu_failure_outside_none = 0
+gpu max |H| = 6.49e-6
+```
+
+The single full-grid mismatch is on the angular edge of the finite target.
+This is the same kind of boundary-band effect as the disk annulus edge: CPU
+DOP853 root finding and GPU f32 fixed-step endpoint detection disagree by about
+one angular sample at the target limb.  The stable interior/exterior region is
+the pass/fail metric.

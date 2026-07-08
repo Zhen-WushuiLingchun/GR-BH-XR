@@ -19,6 +19,35 @@ from here.
 
 ## Log
 
+### 2026-07-08 - Kerr-Schild GPU finite-sphere intersection gate
+
+- Goal: Finish Task 3's first GPU path by validating WGSL finite-sphere
+  intersections against the CPU Kerr-Schild reference.
+- Changed files / components: Extended `src/gr_bh_xr/gpu/trace_ks.py` with an
+  optional sphere target and `object_hit` event; added
+  `src/gr_bh_xr/gpu/validate_ks_finite_object.py`; extended GPU tests and
+  validation documentation.
+- Academic reason: A finite-distance object path is only useful for MR/local
+  objects if the GPU kernel can classify the same object hits as the CPU
+  reference and report boundary differences honestly.
+- Physical correspondence: The WGSL kernel evaluates the same Cartesian
+  condition `|x - c| <= R` during KS RK4 integration. The event is distinct
+  from capture/escape and preserves the existing event-code meanings for older
+  buffers.
+- Assumptions and conventions: The first GPU comparison is Schwarzschild and
+  static. A one-sample object-edge band is excluded from the stable pass/fail
+  metric because fixed-step f32 endpoint detection and CPU root finding can
+  disagree exactly at the finite sphere limb.
+- Validation: Formal `D_L = 1000M`, `D_LS = 500M`, target-radius `10M`,
+  `81`-sample run produced CPU events `object_hit = 34`, `escape = 47`; GPU
+  events `object_hit = 35`, `escape = 46`; total event mismatch `1`;
+  edge-band mismatch `1`; stable-event mismatch `0`; stable-event agreement
+  `1.0`; GPU failures `0`; GPU `max |H| = 6.49e-6`.
+- References: Uses the existing finite-distance lensing source note; no new
+  source added.
+- Open issues / next steps: Extend from spherical static targets to richer
+  finite objects and use the KS kernel in the frustum realtime benchmark.
+
 ### 2026-07-08 - Kerr-Schild finite-distance weak-field lens anchor
 
 - Goal: Add the Task 3 weak-field finite-distance lensing equation anchor for

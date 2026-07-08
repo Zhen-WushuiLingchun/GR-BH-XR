@@ -19,6 +19,7 @@ EVENT_CODES = {
     "escape": 1,
     "disk_crossing": 2,
     "invalid": 3,
+    "object_hit": 4,
 }
 
 FAILURE_CODES = {

@@ -488,6 +488,15 @@ Task 3 finite-distance object checks:
   path and CPU/GPU comparison. The nearer `D_L = 200M`, `D_LS = 100M`
   configuration is treated as a finite-distance demo configuration rather than
   a strict first-order weak-field pass/fail gate.
+- `python -m gr_bh_xr.gpu.validate_ks_finite_object` records the first WGSL
+  finite-sphere intersection comparison. The current `D_L = 1000M`,
+  `D_LS = 500M`, target-radius `10M`, `81`-sample run has CPU event counts
+  `object_hit = 34`, `escape = 47`; GPU event counts `object_hit = 35`,
+  `escape = 46`; total event mismatch `1`; object-edge-band mismatch `1`;
+  stable-event mismatch `0`; stable-event agreement `1.0`; GPU failures `0`.
+  The object edge band is reported separately because fixed-step f32 endpoint
+  detection expands/contracts the finite target boundary by about one angular
+  sample, analogous to the disk-annulus edge band.
 
 Stage B observer checks:
 

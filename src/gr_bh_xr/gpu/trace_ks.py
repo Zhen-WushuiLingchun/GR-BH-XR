@@ -41,6 +41,8 @@ class KsGpuTraceConfig:
     adaptive_step: bool = True
     r_escape: float = 200.0
     horizon_eps: float = TraceConfig.horizon_eps
+    sphere_center_xyz: tuple[float, float, float] | None = None
+    sphere_radius: float = 0.0
 
     def __post_init__(self) -> None:
         if self.step_size <= 0.0:
@@ -55,6 +57,11 @@ class KsGpuTraceConfig:
             raise ValueError("step_r_ref must be positive.")
         if self.r_escape <= 0.0:
             raise ValueError("r_escape must be positive.")
+        if self.sphere_center_xyz is not None:
+            if len(self.sphere_center_xyz) != 3:
+                raise ValueError("sphere_center_xyz must contain three values.")
+            if self.sphere_radius <= 0.0:
+                raise ValueError("sphere_radius must be positive when a sphere target is configured.")
 
     @property
     def capture_r(self) -> float:
@@ -78,6 +85,8 @@ class KsGpuTraceConfig:
             "r_escape": self.r_escape,
             "horizon_eps": self.horizon_eps,
             "capture_r": self.capture_r,
+            "sphere_center_xyz": self.sphere_center_xyz,
+            "sphere_radius": self.sphere_radius,
         }
 
 
@@ -249,6 +258,10 @@ def _shader_params(config: KsGpuTraceConfig, n_rays: int) -> np.ndarray:
             config.max_step,
             config.max_lambda,
             config.step_r_ref,
+            float(config.sphere_center_xyz[0]) if config.sphere_center_xyz is not None else 0.0,
+            float(config.sphere_center_xyz[1]) if config.sphere_center_xyz is not None else 0.0,
+            float(config.sphere_center_xyz[2]) if config.sphere_center_xyz is not None else 0.0,
+            float(config.sphere_radius) if config.sphere_center_xyz is not None else -1.0,
         ],
         dtype=np.float32,
     )
@@ -287,6 +300,7 @@ def _get_ks_trace_context():
 KS_WGSL_SHADER = r"""
 const EVENT_CAPTURE: i32 = 0;
 const EVENT_ESCAPE: i32 = 1;
+const EVENT_OBJECT_HIT: i32 = 4;
 const EVENT_INVALID: i32 = 3;
 const FAILURE_NONE: i32 = 0;
 const FAILURE_UNCLASSIFIED_MAX_LAMBDA: i32 = 2;
@@ -531,6 +545,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let escape_r = params[4];
     let capture_r = params[5];
     let max_lambda = params[10];
+    let sphere_center = vec3<f32>(params[12], params[13], params[14]);
+    let sphere_radius = params[15];
     var s = load_state(idx);
     var event = EVENT_INVALID;
     var failure = FAILURE_UNCLASSIFIED_MAX_LAMBDA;
@@ -562,6 +578,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             h_max = max(h_max, abs(hamiltonian_ks(s)));
             if (r <= capture_r) {
                 event = EVENT_CAPTURE;
+                failure = FAILURE_NONE;
+                break;
+            }
+            if (sphere_radius > 0.0 && distance(vec3<f32>(s.x, s.y, s.z), sphere_center) <= sphere_radius) {
+                event = EVENT_OBJECT_HIT;
                 failure = FAILURE_NONE;
                 break;
             }
