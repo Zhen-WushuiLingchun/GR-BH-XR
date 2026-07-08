@@ -50,6 +50,7 @@ def validate_ks_bl_crosscheck(
     rows: list[dict[str, Any]] = []
     direction_errors: list[float] = []
     event_mismatches = 0
+    both_invalid_count = 0
     both_valid_event_mismatches = 0
     bl_invalid_ks_valid = 0
     ks_invalid_bl_valid = 0
@@ -76,7 +77,10 @@ def validate_ks_bl_crosscheck(
             if math.isfinite(direction_error):
                 direction_errors.append(direction_error)
         classification = "same"
-        if bl.event != ks.event:
+        if bl.event == "invalid" and ks.event == "invalid":
+            both_invalid_count += 1
+            classification = "both_invalid_same"
+        elif bl.event != ks.event:
             event_mismatches += 1
             if bl.event != "invalid" and ks.event != "invalid":
                 both_valid_event_mismatches += 1
@@ -121,6 +125,7 @@ def validate_ks_bl_crosscheck(
         "r_escape": r_escape,
         "horizon_eps": horizon_eps,
         "event_mismatches": event_mismatches,
+        "both_invalid_count": both_invalid_count,
         "both_valid_event_mismatches": both_valid_event_mismatches,
         "bl_invalid_ks_valid": bl_invalid_ks_valid,
         "ks_invalid_bl_valid": ks_invalid_bl_valid,

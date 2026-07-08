@@ -78,6 +78,9 @@ not be interpreted as a physical error plateau.
 
 The v2 event fields intentionally separate:
 
+- `both_invalid_count`: a gate-hardening count for rays where both chart
+  implementations fail; the formal fan gates require this to stay zero so
+  simultaneous failures cannot pass silently as `same`;
 - `both_valid_event_mismatches`: hard failures where BL and KS both classify a
   ray but disagree;
 - `ks_invalid_bl_valid`: hard failures where the new KS path fails where the

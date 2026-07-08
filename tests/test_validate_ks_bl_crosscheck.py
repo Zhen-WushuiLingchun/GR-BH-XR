@@ -19,6 +19,7 @@ def test_ks_bl_crosscheck_smoke_has_no_event_mismatches():
 
     assert summary["schema"] == "gr-bh-xr.tier2.ks_bl_crosscheck.v2"
     assert summary["event_mismatches"] == 0
+    assert summary["both_invalid_count"] == 0
     assert summary["both_valid_event_mismatches"] == 0
     assert summary["bl_invalid_ks_valid"] == 0
     assert summary["ks_invalid_bl_valid"] == 0
@@ -44,6 +45,7 @@ def test_ks_bl_crosscheck_edge_on_smoke_has_no_event_mismatches():
 
     assert summary["schema"] == "gr-bh-xr.tier2.ks_bl_crosscheck.v2"
     assert summary["event_mismatches"] == 0
+    assert summary["both_invalid_count"] == 0
     assert summary["both_valid_event_mismatches"] == 0
     assert summary["bl_invalid_ks_valid"] == 0
     assert summary["ks_invalid_bl_valid"] == 0
@@ -66,6 +68,7 @@ def test_ks_bl_crosscheck_separates_bl_axis_failure_from_hard_mismatch():
         max_step=1.0,
     )
 
+    assert summary["both_invalid_count"] == 0
     assert summary["both_valid_event_mismatches"] == 0
     assert summary["ks_invalid_bl_valid"] == 0
     assert summary["bl_invalid_ks_valid"] >= 1
