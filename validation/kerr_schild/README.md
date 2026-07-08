@@ -90,9 +90,44 @@ The v2 event fields intentionally separate:
 
 The output JSON files are generated artifacts under ignored `outputs/tier2/`.
 
+### Disk-transfer cross-check
+
+The KS tracer also records non-terminal equatorial `z = 0` crossings and
+converts those crossing states back to exterior BL coordinates for comparison
+with the existing thin-disk transfer buffers. The emitted `phi_m` is the BL
+azimuth after removing the ingoing Kerr-Schild `_phi_shift`, so it is directly
+comparable to the Phase 4 disk-transfer schema.
+
+Formal command:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.validate_ks_disk_transfer --spin 0.9 --inclination-deg 60 --grid 64 --alpha-max 30 --beta-max 30 --r-obs 100 --max-lambda 1400 --r-escape 200 --horizon-eps 0.05 --max-step 1 --r-out 30 --max-order 2 --workers 8 --out outputs/tier2/ks_disk_transfer_a0.9_i60_64.json --h5 outputs/tier2/ks_disk_transfer_a0.9_i60_64.h5 --quiet
+```
+
+Acceptance:
+
+- `disk_validity_mismatch_count = 0`;
+- `event_mismatch_count = 0` for the matched exterior grid;
+- matched samples report `|Delta r_m|`, wrapped `|Delta phi_m|`,
+  `|Delta t_m|`, and `|Delta g_m|` in the JSON/HDF5 artifacts.
+
+Current reviewed result for `a = 0.9`, `i = 60 deg`, `64x64`:
+
+```text
+event_mismatch_count = 0
+disk_validity_mismatch_count = 0
+valid_by_order = [1900, 60]
+compare_sample_count = 1960
+max |Delta r_m| = 2.37e-7 M
+max |Delta phi_m| = 4.80e-9 rad
+max |Delta t_m| = 2.47e-7 M
+max |Delta g_m| = 4.34e-9
+max |H|_KS = 9.58e-9
+```
+
 ## Remaining Stage A Gates
 
-- Add equatorial disk-crossing events in Cartesian KS coordinates.
 - Convert KS states to BL only where valid and record Carter `Q` drift.
 - Run Kerr critical-curve regression with the KS tracer.
 - Add a denser full-sky KS/BL exterior cross-check before any keyframe transfer

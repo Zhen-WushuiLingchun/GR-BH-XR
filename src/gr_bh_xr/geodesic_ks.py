@@ -39,7 +39,19 @@ class KSRayDiagnostics:
     final_r: float
     final_x: FloatArray
     final_p: FloatArray
+    disk_crossings: int = 0
+    disk_crossing_lambda: tuple[float, ...] = ()
+    disk_crossing_order: tuple[int, ...] = ()
+    disk_crossing_t: tuple[float, ...] = ()
+    disk_crossing_r: tuple[float, ...] = ()
+    disk_crossing_phi: tuple[float, ...] = ()
+    disk_crossing_p_t: tuple[float, ...] = ()
+    disk_crossing_p_phi: tuple[float, ...] = ()
     message: str = ""
+
+
+KS_DISK_EVENT_GUARD_LAMBDA = 1.0e-6
+KS_DISK_COPLANAR_TOL = 1.0e-12
 
 
 def hamiltonian_rhs_ks(params: MetricParams, _lam: float, y: np.ndarray) -> np.ndarray:
@@ -96,6 +108,31 @@ def trace_state_ks(
     escape_event.terminal = True  # type: ignore[attr-defined]
     escape_event.direction = 1.0  # type: ignore[attr-defined]
 
+    events = [capture_event, escape_event]
+    disk_event_index: int | None = None
+    initial_z = float(y0[3])
+    initial_dx = ks_inverse_metric(params, y0[1:4]) @ y0[4:]
+    initial_dz = float(initial_dx[3])
+    is_coplanar_ray = (
+        abs(initial_z) <= KS_DISK_COPLANAR_TOL
+        and abs(initial_dz) <= KS_DISK_COPLANAR_TOL
+    )
+    if not is_coplanar_ray:
+        guard_source = initial_z
+        if abs(guard_source) <= KS_DISK_COPLANAR_TOL:
+            guard_source = initial_dz
+        guard_value = math.copysign(1.0, guard_source)
+
+        def disk_event(lam: float, y: np.ndarray) -> float:
+            if lam < KS_DISK_EVENT_GUARD_LAMBDA:
+                return guard_value
+            return float(y[3])
+
+        disk_event.terminal = bool(cfg.stop_on_disk)  # type: ignore[attr-defined]
+        disk_event.direction = 0.0  # type: ignore[attr-defined]
+        disk_event_index = len(events)
+        events.append(disk_event)
+
     def rhs(lam: float, y: np.ndarray) -> np.ndarray:
         nonlocal last_lam
         last_lam = float(lam)
@@ -111,11 +148,18 @@ def trace_state_ks(
             rtol=cfg.rtol,
             atol=cfg.atol,
             max_step=cfg.max_step,
-            events=[capture_event, escape_event],
+            events=events,
         )
     except Exception as exc:  # pragma: no cover - defensive path
         y_values = np.array(rhs_history[:-1] if len(rhs_history) > 1 else rhs_history, dtype=np.float64)
         return _diagnostics_ks(params, y_values, last_lam, "invalid", str(exc))
+
+    if disk_event_index is None:
+        disk_crossing_lambda = np.array([], dtype=np.float64)
+        disk_crossing_states = np.empty((0, y0.size), dtype=np.float64)
+    else:
+        disk_crossing_lambda = sol.t_events[disk_event_index]
+        disk_crossing_states = sol.y_events[disk_event_index]
 
     event = "invalid"
     message = sol.message
@@ -124,9 +168,19 @@ def trace_state_ks(
             event = "capture"
         elif sol.t_events[1].size:
             event = "escape"
+        elif cfg.stop_on_disk and disk_crossing_lambda.size:
+            event = "disk_crossing"
         else:
             message = "Kerr-Schild trace reached max_lambda without capture or escape."
-    return _diagnostics_ks(params, sol.y.T, float(sol.t[-1]), event, message)
+    return _diagnostics_ks(
+        params,
+        sol.y.T,
+        float(sol.t[-1]),
+        event,
+        message,
+        disk_crossing_lambda=disk_crossing_lambda,
+        disk_crossing_states=disk_crossing_states,
+    )
 
 
 def bl_state_to_ks_state(params: MetricParams, state: RayState) -> RayState:
@@ -169,7 +223,13 @@ def ks_state_to_bl_state(params: MetricParams, state: RayState) -> RayState:
 
 
 def _diagnostics_ks(
-    params: MetricParams, y_values: np.ndarray, lambda_end: float, event: str, message: str
+    params: MetricParams,
+    y_values: np.ndarray,
+    lambda_end: float,
+    event: str,
+    message: str,
+    disk_crossing_lambda: np.ndarray | None = None,
+    disk_crossing_states: np.ndarray | None = None,
 ) -> KSRayDiagnostics:
     xs = y_values[:, :4]
     ps = y_values[:, 4:]
@@ -177,6 +237,27 @@ def _diagnostics_ks(
     e_values = -ps[:, 0]
     lz_values = xs[:, 1] * ps[:, 2] - xs[:, 2] * ps[:, 1]
     radii = np.array([ks_radius(params, x[1:4]) for x in xs], dtype=np.float64)
+    crossing_lam_tuple: tuple[float, ...] = ()
+    crossing_order_tuple: tuple[int, ...] = ()
+    crossing_t_tuple: tuple[float, ...] = ()
+    crossing_r_tuple: tuple[float, ...] = ()
+    crossing_phi_tuple: tuple[float, ...] = ()
+    crossing_p_t_tuple: tuple[float, ...] = ()
+    crossing_p_phi_tuple: tuple[float, ...] = ()
+    if (
+        disk_crossing_lambda is not None
+        and disk_crossing_states is not None
+        and disk_crossing_lambda.size
+        and disk_crossing_states.ndim == 2
+    ):
+        crossing_lam_tuple = tuple(float(value) for value in disk_crossing_lambda)
+        crossing_order_tuple = tuple(range(len(crossing_lam_tuple)))
+        converted = [_safe_ks_crossing_to_bl(params, row[:4], row[4:]) for row in disk_crossing_states]
+        crossing_t_tuple = tuple(value[0] for value in converted)
+        crossing_r_tuple = tuple(value[1] for value in converted)
+        crossing_phi_tuple = tuple(value[3] for value in converted)
+        crossing_p_t_tuple = tuple(value[4] for value in converted)
+        crossing_p_phi_tuple = tuple(value[7] for value in converted)
     return KSRayDiagnostics(
         event=event,
         h_max_abs=_nanmax_abs(h_values),
@@ -188,7 +269,32 @@ def _diagnostics_ks(
         final_r=float(radii[-1]),
         final_x=xs[-1].copy(),
         final_p=ps[-1].copy(),
+        disk_crossings=len(crossing_lam_tuple),
+        disk_crossing_lambda=crossing_lam_tuple,
+        disk_crossing_order=crossing_order_tuple,
+        disk_crossing_t=crossing_t_tuple,
+        disk_crossing_r=crossing_r_tuple,
+        disk_crossing_phi=crossing_phi_tuple,
+        disk_crossing_p_t=crossing_p_t_tuple,
+        disk_crossing_p_phi=crossing_p_phi_tuple,
         message=message,
+    )
+
+
+def _safe_ks_crossing_to_bl(params: MetricParams, x_ks: np.ndarray, p_ks: np.ndarray) -> tuple[float, ...]:
+    try:
+        state = ks_state_to_bl_state(params, RayState(x=np.array(x_ks), p=np.array(p_ks)))
+    except Exception:
+        return (math.nan, math.nan, math.nan, math.nan, math.nan, math.nan, math.nan, math.nan)
+    return (
+        float(state.x[0]),
+        float(state.x[1]),
+        float(state.x[2]),
+        float(state.x[3]),
+        float(state.p[0]),
+        float(state.p[1]),
+        float(state.p[2]),
+        float(state.p[3]),
     )
 
 

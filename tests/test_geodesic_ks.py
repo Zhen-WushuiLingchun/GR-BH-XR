@@ -1,6 +1,7 @@
 import math
 
 from gr_bh_xr.camera import initial_ray_state
+from gr_bh_xr.disk import redshift_factor
 from gr_bh_xr.geodesic import trace_ray
 from gr_bh_xr.geodesic_ks import _inner_capture_radius, bl_state_to_ks_state, ks_state_to_bl_state, trace_state_ks
 from gr_bh_xr.metric import hamiltonian as bl_hamiltonian, horizon_radius
@@ -63,6 +64,38 @@ def test_ks_escape_direction_matches_bl_reference():
     dot = sum(a * b for a, b in zip(ks_dir, bl_dir))
     angular_error = math.acos(max(-1.0, min(1.0, dot)))
     assert angular_error < 2.0e-6
+
+
+def test_ks_disk_crossing_matches_bl_reference():
+    params = MetricParams(M=1.0, a=0.0)
+    camera = CameraConfig(r_obs=100.0, theta_obs=math.radians(60.0), alpha=3.0, beta=3.0)
+    cfg = TraceConfig(max_lambda=900.0, r_escape=200.0, horizon_eps=0.3, max_step=1.0)
+
+    bl = trace_ray(params, camera, cfg)
+    ks = trace_state_ks(params, bl_state_to_ks_state(params, initial_ray_state(params, camera)), cfg, r_obs=100.0)
+
+    assert bl.disk_crossings >= 1
+    assert ks.disk_crossings >= 1
+    assert ks.disk_crossing_order[0] == 0
+    assert abs(ks.disk_crossing_r[0] - bl.disk_crossing_r[0]) < 1.0e-8
+    assert abs(math.atan2(
+        math.sin(ks.disk_crossing_phi[0] - bl.disk_crossing_phi[0]),
+        math.cos(ks.disk_crossing_phi[0] - bl.disk_crossing_phi[0]),
+    )) < 1.0e-8
+    assert abs(ks.disk_crossing_t[0] - bl.disk_crossing_t[0]) < 1.0e-8
+    bl_g = redshift_factor(
+        params,
+        r=bl.disk_crossing_r[0],
+        p_t=bl.disk_crossing_p_t[0],
+        p_phi=bl.disk_crossing_p_phi[0],
+    )
+    ks_g = redshift_factor(
+        params,
+        r=ks.disk_crossing_r[0],
+        p_t=ks.disk_crossing_p_t[0],
+        p_phi=ks.disk_crossing_p_phi[0],
+    )
+    assert abs(ks_g - bl_g) < 1.0e-10
 
 
 def test_ks_schwarzschild_capture_continues_inside_outer_horizon():

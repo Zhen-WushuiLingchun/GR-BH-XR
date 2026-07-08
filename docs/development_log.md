@@ -19,6 +19,40 @@ from here.
 
 ## Log
 
+### 2026-07-08 - Kerr-Schild disk-transfer cross-check
+
+- Goal: Add the first KS equatorial disk-crossing gate and compare it against
+  the existing BL thin-disk transfer semantics.
+- Changed files / components: Extended `src/gr_bh_xr/geodesic_ks.py` with
+  non-terminal `z = 0` crossing records, added
+  `src/gr_bh_xr/validate_ks_disk_transfer.py`, and added unit coverage for KS
+  disk crossings and the BL-vs-KS disk-transfer comparison.
+- Academic reason: Near-horizon keyframes and finite-distance transfer maps
+  need the horizon-penetrating tracer to preserve the same `(r_m, phi_m, g_m,
+  Delta t_m)` contract as the audited BL disk-transfer pipeline before GPU or
+  Unity consumers use the data.
+- Physical correspondence: Crossing order `m` remains the true equatorial
+  crossing order. KS crossing states are converted back to exterior BL
+  coordinates only for ring hits where the disk transfer is defined; the BL
+  azimuth removes the ingoing Kerr-Schild `_phi_shift`.
+- Assumptions and conventions: The current disk gate is an exterior annulus
+  comparison and does not claim BL validity through the horizon. Carter `Q` and
+  KS critical-curve regression remain separate Stage A gates.
+- Validation: Small Kerr grid smoke test passed with
+  `disk_validity_mismatch_count = 0`, `compare_sample_count = 35`,
+  `max |Delta r_m| = 2.23e-8 M`, `max |Delta phi_m| = 2.10e-10 rad`,
+  `max |Delta t_m| = 5.11e-9 M`, `max |Delta g_m| = 1.10e-10`, and
+  `max |H|_KS = 6.56e-10`. Formal `64x64`, `a = 0.9`, `i = 60 deg` gate with
+  `workers = 8` passed with `event_mismatch_count = 0`,
+  `disk_validity_mismatch_count = 0`, `valid_by_order = [1900, 60]`,
+  `compare_sample_count = 1960`, `max |Delta r_m| = 2.37e-7 M`,
+  `max |Delta phi_m| = 4.80e-9 rad`, `max |Delta t_m| = 2.47e-7 M`,
+  `max |Delta g_m| = 4.34e-9`, and `max |H|_KS = 9.58e-9`.
+- References: Existing disk-transfer references (`bardeen1972rotatingBlackHoles`
+  and `cunningham1975kerrDiskSpectrum`); no new source added.
+- Open issues / next steps: Run the formal `64x64` disk gate, add exterior
+  Carter `Q` diagnostics, and add the KS critical-curve regression.
+
 ### 2026-07-08 - Kerr-Schild BL cross-chart fan gate
 
 - Goal: Version the reviewed BL-vs-KS fan cross-check as a reproducible

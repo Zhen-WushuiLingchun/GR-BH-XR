@@ -369,10 +369,9 @@ Stage A CPU Kerr-Schild reference checks:
   Schwarzschild limit, finite outer-horizon behavior, and analytic derivative
   agreement with finite differences under test.
 - `src/gr_bh_xr/geodesic_ks.py` must use the Hamiltonian form with Cartesian
-  Kerr-Schild inverse metric derivatives and record horizon crossing and escape
-  without Boyer-Lindquist horizon/axis failures. Disk-crossing events,
-  Carter-constant diagnostics, and stronger escape-direction comparison remain
-  follow-up gates.
+  Kerr-Schild inverse metric derivatives and record horizon crossing, escape,
+  and equatorial disk crossings without Boyer-Lindquist horizon/axis failures.
+  Carter-constant diagnostics remain a follow-up gate.
 - Captured rays should be continued inside the outer horizon only far enough to
   prove horizon penetration. For near-extremal spins, the numerical capture
   surface must remain outside the Cauchy horizon, e.g. by using
@@ -390,6 +389,11 @@ Stage A CPU Kerr-Schild reference checks:
   and `ks_invalid_bl_valid = 0`; any `bl_invalid_ks_valid` rays are recorded as
   BL coordinate-pathology improvements only when KS Hamiltonian residuals remain
   bounded.
+- `python -m gr_bh_xr.validate_ks_disk_transfer` records the KS-vs-BL thin-disk
+  transfer gate. The formal `64x64` even grid should use matched screen bounds,
+  observer radius, horizon cutoff, disk annulus, and crossing order; accepted
+  output has `disk_validity_mismatch_count = 0` and reports `Delta r_m`,
+  wrapped `Delta phi_m`, `Delta t_m`, and `Delta g_m` error fields.
 - Kerr critical-curve regression must recover the existing `a = 0.9`,
   `i = 60 deg` center and error thresholds before any near-horizon visual claim.
 - Conserved quantities `E`, `L_z`, Carter `Q`, and Hamiltonian residuals must be
