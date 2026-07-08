@@ -19,6 +19,38 @@ from here.
 
 ## Log
 
+### 2026-07-08 - Kerr-Schild GPU low-radius observer gate
+
+- Goal: Add the dedicated low-`r_obs` finite-observer gate needed before using
+  the KS GPU kernel for realtime-cost or near-horizon transfer-map claims.
+- Changed files / components: Added
+  `src/gr_bh_xr/gpu/validate_ks_near_horizon.py`; extended
+  `src/gr_bh_xr/gpu/validate_ks.py` with explicit `r_escape`; updated GPU
+  tests, `docs/validation_targets.md`, and `validation/kerr_schild/README.md`.
+- Academic reason: The default `r_obs = 100M` Task 2 gate had too little
+  statistical power in the near-horizon exterior band. Low-radius observers
+  must be checked directly before frustum benchmarks can be interpreted as
+  near-horizon evidence.
+- Physical correspondence: The gate samples finite-observer full-sky directions
+  at `r_obs = 10M, 5M, 3M` using the same static-observer tetrad initializer,
+  then compares CPU f64 KS traces with GPU f32 KS traces while keeping the
+  escape sphere fixed at `r_escape = 200M`.
+- Assumptions and conventions: This remains a transfer-map validation, not
+  free-flight. It validates event classification and escaped momentum
+  directions for static low-radius observers; arbitrary worldlines and moving
+  observers remain Stage B/C work.
+- Validation: Formal `a = 0.9`, `i = 60 deg`, `256`-direction-per-radius gate
+  produced minimum resolved/stable event agreement `1.0`, total
+  both-unclassified max-lambda samples `0`, total GPU failures outside
+  exclusions `0`, and `10` near-horizon-exterior escaped-direction samples.
+  Median/max escaped-direction errors were `7.52e-7/1.23e-5 rad` at `10M`,
+  `1.23e-6/1.02e-4 rad` at `5M`, and `2.57e-6/4.56e-5 rad` at `3M`.
+- References: Existing Kerr-Schild and Kerr geodesic references; no new source
+  added.
+- Open issues / next steps: Proceed to finite-distance object intersections and
+  then the frustum-only realtime benchmark that measures `r_obs = 20, 10, 5,
+  3, 2M` cost curves.
+
 ### 2026-07-08 - Kerr-Schild GPU photon-shell step audit
 
 - Goal: Fix the Task 2 WGSL Kerr-Schild adaptive-step rule after the new

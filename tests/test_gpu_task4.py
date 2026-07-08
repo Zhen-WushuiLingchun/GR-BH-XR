@@ -19,6 +19,7 @@ from gr_bh_xr.gpu.validate import validate_cpu_vs_gpu
 from gr_bh_xr.gpu.validate_disk_transfer import validate_disk_transfer_cpu_vs_gpu
 from gr_bh_xr.gpu.validate_full_sky_transfer import validate_full_sky_transfer
 from gr_bh_xr.gpu.validate_ks import validate_ks_gpu
+from gr_bh_xr.gpu.validate_ks_near_horizon import validate_near_horizon_ks_gpu
 from gr_bh_xr.types import CameraConfig, MetricParams, TraceConfig
 
 
@@ -149,6 +150,7 @@ def test_gpu_kerr_schild_validator_writes_summary_and_h5(tmp_path):
         params=MetricParams(M=1.0, a=0.9),
         inclination_deg=60.0,
         r_obs=100.0,
+        r_escape=None,
         fan_samples=5,
         fan_alpha_max=8.0,
         fan_betas=(0.0,),
@@ -183,6 +185,37 @@ def test_gpu_kerr_schild_validator_writes_summary_and_h5(tmp_path):
         assert handle["gpu_final_x"].shape[1] == 4
         assert handle["gpu_final_p"].shape[1] == 4
         assert "gpu_h_max_abs" in handle
+
+
+def test_gpu_kerr_schild_near_horizon_wrapper_writes_case_summaries(tmp_path):
+    _require_vulkan_adapter()
+    out = tmp_path / "ks_near_horizon.json"
+
+    summary = validate_near_horizon_ks_gpu(
+        params=MetricParams(M=1.0, a=0.5),
+        inclination_deg=60.0,
+        r_obs_values=(10.0, 5.0),
+        samples=12,
+        r_escape=80.0,
+        step_size=0.02,
+        steps=12000,
+        max_lambda=400.0,
+        max_step=1.0,
+        step_r_ref=5.0,
+        adaptive_step=True,
+        horizon_eps=0.3,
+        out=out,
+        command="pytest ks near horizon",
+    )
+
+    assert out.exists()
+    assert (tmp_path / "ks_near_horizon_r10.json").exists()
+    assert (tmp_path / "ks_near_horizon_r5.json").exists()
+    assert summary["schema"] == "gr-bh-xr.tier2.ks_gpu_near_horizon_validation.v1"
+    assert summary["r_escape"] == pytest.approx(80.0)
+    assert len(summary["cases"]) == 2
+    assert summary["min_resolved_event_agreement"] >= 0.98
+    assert summary["total_gpu_failure_outside_exclusions"] == 0
 
 
 def test_gpu_full_sky_transfer_cubemap_writes_boundary_free_package(tmp_path):

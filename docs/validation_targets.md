@@ -437,9 +437,15 @@ Task 2 WGSL Kerr-Schild checks:
   step floor. A photon-shell proxy band
   `r_+ + max(0.1M, 2 horizon_eps) < min_r <= 5.5M` is reported separately; in
   the current run it has `50` escaped-direction samples, median `7.55e-5 rad`,
-  max `9.66e-3 rad`, and GPU `max |H| = 6.07e-6`. The near-horizon exterior
-  direction-error band currently has only `3` samples, so Task 4 still requires
-  a dedicated low-`r_obs` near-horizon fan before realtime claims.
+  max `9.66e-3 rad`, and GPU `max |H| = 6.07e-6`.
+- `python -m gr_bh_xr.gpu.validate_ks_near_horizon` records the dedicated
+  low-observer-radius Task 2 gate. The current `a = 0.9`, `i = 60 deg`,
+  `r_obs = 10M, 5M, 3M`, `256`-direction runs use `r_escape = 200M` and report
+  minimum resolved/stable event agreement `1.0`, total both-side
+  max-lambda-unclassified samples `0`, total GPU failures outside exclusions
+  `0`, and `10` near-horizon-exterior escaped-direction samples. Median/max
+  escaped-direction errors are `7.52e-7/1.23e-5 rad` at `10M`,
+  `1.23e-6/1.02e-4 rad` at `5M`, and `2.57e-6/4.56e-5 rad` at `3M`.
 - This Task 2 shader does not yet implement arbitrary observer worldlines,
   finite-distance object intersections, or headset-rate near-horizon free
   flight.

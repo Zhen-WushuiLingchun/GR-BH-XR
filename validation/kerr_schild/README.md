@@ -246,3 +246,50 @@ the photon-shell band.  The current rule keeps the strong-field floor at
 `h0 = 0.01M`, preserves weak-field acceleration, and reports the remaining
 near-critical f32 direction tail as a separate photon-shell diagnostic instead
 of mixing it into ordinary weak-outer accuracy claims.
+
+### Near-horizon finite-observer GPU gate
+
+The default Task 2 gate starts at `r_obs = 100M`, so it has limited statistical
+power for rays launched by observers already close to the hole.  The
+near-horizon gate reuses the same CPU-vs-GPU KS comparison but samples
+finite-observer full-sky directions at smaller radii while keeping the escape
+sphere in the far zone.
+
+Formal command:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.gpu.validate_ks_near_horizon --spin 0.9 --inclination-deg 60 --r-obs-values 10,5,3 --samples 256 --r-escape 200 --step-size 0.01 --steps 20000 --max-lambda 800 --max-step 1 --step-r-ref 5 --out outputs/tier2/ks_gpu_near_horizon_a0.9_i60.json
+```
+
+Current result:
+
+```text
+r_obs values = 10M, 5M, 3M
+samples per r_obs = 256
+r_escape = 200M
+min_resolved_event_agreement = 1.0
+min_stable_event_agreement = 1.0
+total_both_unclassified_max_lambda = 0
+total_gpu_failure_outside_exclusions = 0
+total_near_horizon_exterior_direction_samples = 10
+
+r_obs = 10M:
+  event counts = capture 9, escape 247, invalid 0
+  escape-direction median/max = 7.52e-7 / 1.23e-5 rad
+  max |H| horizon-crossing = 1.75e-5
+
+r_obs = 5M:
+  event counts = capture 51, escape 205, invalid 0
+  escape-direction median/max = 1.23e-6 / 1.02e-4 rad
+  max |H| horizon-crossing = 6.97e-6
+
+r_obs = 3M:
+  event counts = capture 122, escape 134, invalid 0
+  escape-direction median/max = 2.57e-6 / 4.56e-5 rad
+  max |H| horizon-crossing = 4.70e-6
+```
+
+This gate is still a finite-observer transfer-map comparison, not headset-rate
+free flight.  It provides the low-radius accuracy evidence needed before
+frustum-only realtime benchmarks can be interpreted.

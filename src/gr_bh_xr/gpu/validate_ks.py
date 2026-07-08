@@ -32,6 +32,7 @@ def validate_ks_gpu(
     params: MetricParams,
     inclination_deg: float,
     r_obs: float,
+    r_escape: float | None,
     fan_samples: int,
     fan_alpha_max: float,
     fan_betas: tuple[float, ...],
@@ -51,6 +52,7 @@ def validate_ks_gpu(
 
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    r_escape_value = 2.0 * r_obs if r_escape is None else float(r_escape)
     states, sample_kind = _build_samples(
         params=params,
         inclination_deg=inclination_deg,
@@ -68,7 +70,7 @@ def validate_ks_gpu(
         max_step=max_step,
         step_r_ref=step_r_ref,
         adaptive_step=adaptive_step,
-        r_escape=2.0 * r_obs,
+        r_escape=r_escape_value,
         horizon_eps=horizon_eps,
     )
     gpu = trace_ks_states(config, states)
@@ -80,6 +82,7 @@ def validate_ks_gpu(
         max_lambda=max_lambda,
         max_step=max_step,
         r_obs=r_obs,
+        r_escape=r_escape_value,
         horizon_eps=horizon_eps,
     )
     comparison = _compare(params=params, cpu=cpu, gpu=gpu, horizon_eps=horizon_eps)
@@ -102,7 +105,7 @@ def validate_ks_gpu(
         "adaptive_step": adaptive_step,
         "horizon_eps": horizon_eps,
         "capture_r": config.capture_r,
-        "r_escape": config.r_escape,
+        "r_escape": r_escape_value,
         "backend": gpu["backend"],
         "cpu_event_counts": _counts(cpu["event_code"], SCHEMA_EVENT_CODES),
         "gpu_event_counts": _counts(gpu["event_code"], SCHEMA_EVENT_CODES),
@@ -164,11 +167,12 @@ def _trace_cpu(
     max_lambda: float,
     max_step: float,
     r_obs: float,
+    r_escape: float,
     horizon_eps: float,
 ) -> dict[str, np.ndarray]:
     config = TraceConfig(
         max_lambda=max_lambda,
-        r_escape=2.0 * r_obs,
+        r_escape=r_escape,
         horizon_eps=horizon_eps,
         max_step=max_step,
     )
@@ -419,6 +423,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mass", type=float, default=1.0)
     parser.add_argument("--inclination-deg", type=float, default=60.0)
     parser.add_argument("--r-obs", type=float, default=100.0)
+    parser.add_argument("--r-escape", type=float)
     parser.add_argument("--fan-samples", type=int, default=55)
     parser.add_argument("--fan-alpha-max", type=float, default=8.0)
     parser.add_argument("--fan-betas", type=_parse_betas, default=(0.0, 4.0, -4.0))
@@ -442,6 +447,7 @@ def main() -> None:
         params=params,
         inclination_deg=args.inclination_deg,
         r_obs=args.r_obs,
+        r_escape=args.r_escape,
         fan_samples=args.fan_samples,
         fan_alpha_max=args.fan_alpha_max,
         fan_betas=args.fan_betas,
