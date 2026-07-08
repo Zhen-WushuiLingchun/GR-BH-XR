@@ -50,6 +50,10 @@ def validate_ks_bl_crosscheck(
     rows: list[dict[str, Any]] = []
     direction_errors: list[float] = []
     event_mismatches = 0
+    both_valid_event_mismatches = 0
+    bl_invalid_ks_valid = 0
+    ks_invalid_bl_valid = 0
+    bl_invalid_ks_valid_h_values: list[float] = []
     for alpha in alphas:
         camera = CameraConfig(r_obs=r_obs, theta_obs=theta_obs, alpha=float(alpha), beta=beta)
         bl = trace_ray(params, camera, cfg)
@@ -71,14 +75,28 @@ def validate_ks_bl_crosscheck(
             direction_error = _angular_error(ks_dir, bl_dir)
             if math.isfinite(direction_error):
                 direction_errors.append(direction_error)
+        classification = "same"
         if bl.event != ks.event:
             event_mismatches += 1
+            if bl.event != "invalid" and ks.event != "invalid":
+                both_valid_event_mismatches += 1
+                classification = "both_valid_mismatch"
+            elif bl.event == "invalid" and ks.event != "invalid":
+                bl_invalid_ks_valid += 1
+                bl_invalid_ks_valid_h_values.append(ks.h_max_abs)
+                classification = "bl_invalid_ks_valid"
+            elif bl.event != "invalid" and ks.event == "invalid":
+                ks_invalid_bl_valid += 1
+                classification = "ks_invalid_bl_valid"
+            else:
+                classification = "both_invalid_different"
         rows.append(
             {
                 "alpha": float(alpha),
                 "beta": float(beta),
                 "bl_event": bl.event,
                 "ks_event": ks.event,
+                "event_comparison": classification,
                 "direction_error_rad": direction_error,
                 "bl_min_r": bl.min_r,
                 "ks_min_r": ks.min_r,
@@ -89,8 +107,9 @@ def validate_ks_bl_crosscheck(
         )
 
     finite = np.asarray(direction_errors, dtype=np.float64)
+    bl_invalid_ks_valid_h = np.asarray(bl_invalid_ks_valid_h_values, dtype=np.float64)
     summary: dict[str, Any] = {
-        "schema": "gr-bh-xr.tier2.ks_bl_crosscheck.v1",
+        "schema": "gr-bh-xr.tier2.ks_bl_crosscheck.v2",
         "generationCommand": command,
         "metric": {"M": params.M, "a": params.a},
         "inclination_deg": inclination_deg,
@@ -102,6 +121,12 @@ def validate_ks_bl_crosscheck(
         "r_escape": r_escape,
         "horizon_eps": horizon_eps,
         "event_mismatches": event_mismatches,
+        "both_valid_event_mismatches": both_valid_event_mismatches,
+        "bl_invalid_ks_valid": bl_invalid_ks_valid,
+        "ks_invalid_bl_valid": ks_invalid_bl_valid,
+        "bl_invalid_ks_valid_max_h": float(np.max(bl_invalid_ks_valid_h))
+        if bl_invalid_ks_valid_h.size
+        else math.nan,
         "escape_direction_sample_count": int(finite.size),
         "escape_direction_max_error_rad": float(np.max(finite)) if finite.size else math.nan,
         "escape_direction_rms_error_rad": float(np.sqrt(np.mean(finite * finite))) if finite.size else math.nan,

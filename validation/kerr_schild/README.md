@@ -40,14 +40,50 @@ The formal CLI compares a deterministic screen-coordinate fan in BL and KS:
 $env:PYTHONPATH='src'
 python -m gr_bh_xr.validate_ks_bl_crosscheck --spin 0.9 --inclination-deg 60 --alpha-min -8 --alpha-max 8 --beta 0 --samples 55 --out outputs/tier2/ks_bl_crosscheck_a0.9_i60.json
 python -m gr_bh_xr.validate_ks_bl_crosscheck --spin 0.9 --inclination-deg 90 --alpha-min -8 --alpha-max 8 --beta 0 --samples 55 --out outputs/tier2/ks_bl_crosscheck_a0.9_i90.json
+python -m gr_bh_xr.validate_ks_bl_crosscheck --spin 0.9 --inclination-deg 60 --alpha-min -8 --alpha-max 8 --beta 4 --samples 25 --out outputs/tier2/ks_bl_crosscheck_a0.9_i60_b4.json
+python -m gr_bh_xr.validate_ks_bl_crosscheck --spin 0.9 --inclination-deg 90 --alpha-min -8 --alpha-max 8 --beta -4 --samples 25 --out outputs/tier2/ks_bl_crosscheck_a0.9_i90_b-4.json
 ```
 
 Current reviewed result:
 
 ```text
-a = 0.9, i = 60 deg: event_mismatches = 0, max escape-dir error = 2.11e-8 rad
-a = 0.9, i = 90 deg: event_mismatches = 0, max escape-dir error = 2.11e-8 rad
+a = 0.9, i = 60 deg, beta = 0:
+  event_mismatches = 0
+  both_valid_event_mismatches = 0
+  max escape-dir error = 2.11e-8 rad
+
+a = 0.9, i = 90 deg, beta = 0:
+  event_mismatches = 0
+  both_valid_event_mismatches = 0
+  max escape-dir error = 2.11e-8 rad
+
+a = 0.9, i = 60 deg, beta = +4:
+  event_mismatches = 1
+  both_valid_event_mismatches = 0
+  bl_invalid_ks_valid = 1
+  ks_invalid_bl_valid = 0
+  bl_invalid_ks_valid_max_h = 6.13e-9
+
+a = 0.9, i = 90 deg, beta = -4:
+  event_mismatches = 1
+  both_valid_event_mismatches = 0
+  bl_invalid_ks_valid = 1
+  ks_invalid_bl_valid = 0
+  bl_invalid_ks_valid_max_h = 3.43e-9
 ```
+
+The `2.1e-8 rad` escaped-direction value is the double-precision `acos`
+resolution floor when the dot product differs from `1` by one ulp; it should
+not be interpreted as a physical error plateau.
+
+The v2 event fields intentionally separate:
+
+- `both_valid_event_mismatches`: hard failures where BL and KS both classify a
+  ray but disagree;
+- `ks_invalid_bl_valid`: hard failures where the new KS path fails where the
+  validated BL exterior path remains valid;
+- `bl_invalid_ks_valid`: improvement evidence where the BL chart reaches an
+  axis/horizon coordinate pathology but KS continues with bounded residuals.
 
 The output JSON files are generated artifacts under ignored `outputs/tier2/`.
 

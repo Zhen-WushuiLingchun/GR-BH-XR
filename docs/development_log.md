@@ -32,14 +32,20 @@ from here.
 - Physical correspondence: The validation samples a screen-coordinate fan,
   traces each ray in both charts, transforms escaped KS final states back to BL
   only in the exterior, and compares momentum-derived escape directions.
-- Assumptions and conventions: This gate tests exterior rays only. It does not
-  yet test disk crossings, Carter `Q`, or the Kerr critical curve with the KS
-  tracer.
+- Assumptions and conventions: This gate tests exterior rays and explicitly
+  separates hard event disagreements from BL coordinate failures that KS
+  resolves. It does not yet test disk crossings, Carter `Q`, or the Kerr
+  critical curve with the KS tracer.
 - Validation: `python -m pytest tests/test_validate_ks_bl_crosscheck.py -q`
-  passed with `2 passed`. Formal fan runs for `a = 0.9`, `i = 60 deg` and
+  passed with `3 passed`. Formal fan runs for `a = 0.9`, `i = 60 deg` and
   `i = 90 deg`, `alpha in [-8M, 8M]`, `beta = 0`, and `55` rays produced
-  `event_mismatches = 0` and maximum escaped-direction error
-  `2.1073424255447017e-08 rad` in both cases.
+  `both_valid_event_mismatches = 0` and maximum escaped-direction error
+  `2.1073424255447017e-08 rad` in both cases. The non-equatorial
+  `beta = +4` / `beta = -4`, `25`-ray fans had one `bl_invalid_ks_valid` sample
+  each, zero hard event mismatches, zero `ks_invalid_bl_valid` samples, and
+  bounded KS residuals (`6.13e-9` and `3.43e-9` maximum `|H|`). This records the
+  first automated evidence that KS cures BL polar-axis chart failure for
+  `L_z = 0` rays.
 - References: Existing BL/Kerr and Kerr-Schild references; no new source added.
 - Open issues / next steps: Add disk events and Carter diagnostics to the KS
   tracer, then run KS critical-curve regression.

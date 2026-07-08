@@ -383,8 +383,13 @@ Stage A CPU Kerr-Schild reference checks:
   full-sky sampling remains required before transfer-map keyframe claims.
 - `python -m gr_bh_xr.validate_ks_bl_crosscheck` records the current exterior
   fan gate. The reviewed `a = 0.9`, `i = 60 deg` and `i = 90 deg`,
-  `alpha in [-8M, 8M]`, `beta = 0`, `55`-ray fans have `event_mismatches = 0`
-  and maximum escaped-direction error about `2.1e-8 rad`.
+  `alpha in [-8M, 8M]`, `beta = 0`, `55`-ray fans have
+  `both_valid_event_mismatches = 0` and maximum escaped-direction error about
+  `2.1e-8 rad`, which is the double-precision `acos` resolution floor. The
+  `beta = +4` / `beta = -4` fans also require `both_valid_event_mismatches = 0`
+  and `ks_invalid_bl_valid = 0`; any `bl_invalid_ks_valid` rays are recorded as
+  BL coordinate-pathology improvements only when KS Hamiltonian residuals remain
+  bounded.
 - Kerr critical-curve regression must recover the existing `a = 0.9`,
   `i = 60 deg` center and error thresholds before any near-horizon visual claim.
 - Conserved quantities `E`, `L_z`, Carter `Q`, and Hamiltonian residuals must be
