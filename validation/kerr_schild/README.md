@@ -247,6 +247,30 @@ the photon-shell band.  The current rule keeps the strong-field floor at
 near-critical f32 direction tail as a separate photon-shell diagnostic instead
 of mixing it into ordinary weak-outer accuracy claims.
 
+Post-review step-size scans showed that the photon-shell direction tail is not
+primarily a truncation-error problem.  In the Lyapunov-sensitive shell band,
+smaller f32 steps increase the number of RK4 updates and amplify roundoff
+random walk:
+
+```text
+effective shell step       shell-band direction-error max
+h = 0.001 fixed            3.42e-1 rad
+h = 0.005 with floor       1.82e-2 rad
+h = 0.01 with floor        9.66e-3 rad
+h ~= 0.024 without floor   1.83e-3 rad
+```
+
+The current policy is therefore:
+
+- keep `photon_shell_proxy` as a recorded diagnostic band rather than a hard
+  escaped-direction pass/fail threshold for f32 realtime kernels;
+- for offline near-critical keyframes, retrace texels near the analytic
+  critical curve with the CPU f64 reference and merge those results into the
+  transfer map;
+- for realtime paths, document that f32 fixed-step photon-ring features may
+  carry `~1e-3` to `~1e-2 rad` direction noise, while the weak-outer main image
+  remains governed by the stricter weak-outer thresholds above.
+
 ### Near-horizon finite-observer GPU gate
 
 The default Task 2 gate starts at `r_obs = 100M`, so it has limited statistical

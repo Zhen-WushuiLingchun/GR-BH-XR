@@ -438,6 +438,16 @@ Task 2 WGSL Kerr-Schild checks:
   `r_+ + max(0.1M, 2 horizon_eps) < min_r <= 5.5M` is reported separately; in
   the current run it has `50` escaped-direction samples, median `7.55e-5 rad`,
   max `9.66e-3 rad`, and GPU `max |H| = 6.07e-6`.
+- Post-review step-size scans showed that the `photon_shell_proxy` direction
+  tail is f32 roundoff random walk amplified by the photon-shell Lyapunov
+  instability, not a monotonic truncation-error limit: fixed `h = 0.001`
+  reached shell-band max error `3.42e-1 rad`, `h = 0.005` with floor
+  `1.82e-2 rad`, current `h = 0.01` with floor `9.66e-3 rad`, and the
+  previous no-floor shell step `h ~= 0.024` `1.83e-3 rad`. Therefore
+  `photon_shell_proxy` remains a recorded diagnostic band rather than a hard
+  f32 direction threshold. Offline keyframe generation should CPU-f64 retrace
+  texels near the analytic critical curve, while realtime paths must document
+  the expected `~1e-3` to `~1e-2 rad` photon-ring direction noise.
 - `python -m gr_bh_xr.gpu.validate_ks_near_horizon` records the dedicated
   low-observer-radius Task 2 gate. The current `a = 0.9`, `i = 60 deg`,
   `r_obs = 10M, 5M, 3M`, `256`-direction runs use `r_escape = 200M` and report

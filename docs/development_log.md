@@ -19,6 +19,34 @@ from here.
 
 ## Log
 
+### 2026-07-08 - Kerr-Schild photon-shell f32 floor policy
+
+- Goal: Record the post-review reinterpretation of the KS GPU photon-shell
+  direction tail and prevent future tuning work from treating it as a simple
+  step-size truncation problem.
+- Changed files / components: Updated `validation/kerr_schild/README.md`,
+  `docs/validation_targets.md`, and this log.
+- Academic reason: The validation layer must distinguish ordinary weak-field
+  transfer accuracy from near-critical photon-shell behavior, where small f32
+  trajectory differences are exponentially amplified.
+- Physical correspondence: Step-size scans showed the shell-band direction
+  error worsens as the effective f32 RK4 step is made smaller:
+  `h = 0.001` fixed gave `3.42e-1 rad`, `h = 0.005` with floor `1.82e-2 rad`,
+  current `h = 0.01` with floor `9.66e-3 rad`, and the previous no-floor
+  shell step `h ~= 0.024` `1.83e-3 rad`. This is consistent with f32 roundoff
+  random walk amplified by photon-shell Lyapunov sensitivity.
+- Assumptions and conventions: `photon_shell_proxy` remains a diagnostic band,
+  not a hard f32 direction threshold. Offline near-critical keyframes should
+  CPU-f64 retrace texels near the analytic critical curve; realtime paths
+  should document `~1e-3` to `~1e-2 rad` photon-ring direction noise.
+- Validation: No solver code changed. The policy is based on the reviewed
+  local step-scan artifacts generated under ignored `outputs/tier2/`.
+- References: Existing Kerr photon-shell and Kerr-Schild references; no new
+  source added.
+- Open issues / next steps: Implement finite-distance object intersection, then
+  use this mixed-precision policy when the frustum realtime benchmark and
+  transfer-keyframe path reach the photon-ring band.
+
 ### 2026-07-08 - Kerr-Schild GPU low-radius observer gate
 
 - Goal: Add the dedicated low-`r_obs` finite-observer gate needed before using
