@@ -40,6 +40,7 @@ def validate_ks_gpu(
     steps: int,
     max_lambda: float,
     max_step: float,
+    step_r_ref: float,
     adaptive_step: bool,
     horizon_eps: float,
     out: Path | str,
@@ -65,6 +66,7 @@ def validate_ks_gpu(
         steps=steps,
         max_lambda=max_lambda,
         max_step=max_step,
+        step_r_ref=step_r_ref,
         adaptive_step=adaptive_step,
         r_escape=2.0 * r_obs,
         horizon_eps=horizon_eps,
@@ -96,6 +98,7 @@ def validate_ks_gpu(
         "steps": steps,
         "max_lambda": max_lambda,
         "max_step": max_step,
+        "step_r_ref": step_r_ref,
         "adaptive_step": adaptive_step,
         "horizon_eps": horizon_eps,
         "capture_r": config.capture_r,
@@ -277,6 +280,7 @@ def _compare(
         "excluded_cpu_invalid": int(np.count_nonzero(~cpu_resolved)),
         "excluded_near_capture": int(np.count_nonzero(near_capture)),
         "near_capture_radius": near_capture_radius,
+        "photon_shell_proxy_outer_radius": 5.5 * params.M,
         "gpu_failure_outside_exclusions": int(np.count_nonzero(gpu_unexpected_failure)),
         "escape_direction_sample_count": int(finite_error.size),
         "escape_direction_max_error_rad": float(np.max(finite_error))
@@ -309,10 +313,15 @@ def _h_residual_bands(
     params: MetricParams, cpu_min_r: np.ndarray, gpu_h_max_abs: np.ndarray, horizon_eps: float
 ) -> dict[str, dict[str, float | int]]:
     rp = horizon_radius(params)
+    near_capture_radius = rp + max(0.1 * params.M, 2.0 * horizon_eps)
+    photon_shell_proxy_outer = 5.5 * params.M
     bands = {
         "outer": cpu_min_r > rp + max(1.0 * params.M, 2.0 * horizon_eps),
         "near_horizon_exterior": (cpu_min_r > rp) & (cpu_min_r <= rp + max(1.0 * params.M, 2.0 * horizon_eps)),
         "horizon_crossing": cpu_min_r <= rp,
+        "weak_outer": cpu_min_r > photon_shell_proxy_outer,
+        "photon_shell_proxy": (cpu_min_r > near_capture_radius)
+        & (cpu_min_r <= photon_shell_proxy_outer),
     }
     out: dict[str, dict[str, float | int]] = {}
     for name, mask in bands.items():
@@ -329,11 +338,16 @@ def _direction_error_bands(
     params: MetricParams, cpu_min_r: np.ndarray, direction_error: np.ndarray, horizon_eps: float
 ) -> dict[str, dict[str, float | int]]:
     rp = horizon_radius(params)
+    near_capture_radius = rp + max(0.1 * params.M, 2.0 * horizon_eps)
+    photon_shell_proxy_outer = 5.5 * params.M
     bands = {
         "outer": cpu_min_r > rp + max(1.0 * params.M, 2.0 * horizon_eps),
         "near_horizon_exterior": (cpu_min_r > rp)
         & (cpu_min_r <= rp + max(1.0 * params.M, 2.0 * horizon_eps)),
         "horizon_crossing": cpu_min_r <= rp,
+        "weak_outer": cpu_min_r > photon_shell_proxy_outer,
+        "photon_shell_proxy": (cpu_min_r > near_capture_radius)
+        & (cpu_min_r <= photon_shell_proxy_outer),
     }
     out: dict[str, dict[str, float | int]] = {}
     for name, mask in bands.items():
@@ -413,6 +427,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--steps", type=int, default=KsGpuTraceConfig.steps)
     parser.add_argument("--max-lambda", type=float, default=KsGpuTraceConfig.max_lambda)
     parser.add_argument("--max-step", type=float, default=KsGpuTraceConfig.max_step)
+    parser.add_argument("--step-r-ref", type=float, default=KsGpuTraceConfig.step_r_ref)
     parser.add_argument("--fixed-step", action="store_true")
     parser.add_argument("--horizon-eps", type=float, default=TraceConfig.horizon_eps)
     parser.add_argument("--out", type=Path, required=True)
@@ -435,6 +450,7 @@ def main() -> None:
         steps=args.steps,
         max_lambda=args.max_lambda,
         max_step=args.max_step,
+        step_r_ref=args.step_r_ref,
         adaptive_step=not args.fixed_step,
         horizon_eps=args.horizon_eps,
         out=args.out,

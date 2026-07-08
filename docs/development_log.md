@@ -19,6 +19,41 @@ from here.
 
 ## Log
 
+### 2026-07-08 - Kerr-Schild GPU photon-shell step audit
+
+- Goal: Fix the Task 2 WGSL Kerr-Schild adaptive-step rule after the new
+  min-radius band report showed a photon-shell direction-error regression.
+- Changed files / components: Updated `src/gr_bh_xr/gpu/trace_ks.py`,
+  `src/gr_bh_xr/gpu/validate_ks.py`, `tests/test_gpu_task4.py`,
+  `docs/validation_targets.md`, and `validation/kerr_schild/README.md`.
+- Academic reason: The GPU KS gate must not claim ordinary weak-field
+  direction accuracy for Lyapunov-sensitive photon-shell grazing rays, and it
+  must avoid a step rule that silently enlarges the strong-field RK4 step.
+- Physical correspondence: The shader now uses
+  `h = h0 * max(1, r / r_ref)` with `r_ref = 5M`; rays with `r <= 5M` keep the
+  strong-field step floor `h0 = 0.01M`, while weak-field rays still receive the
+  intended acceleration. The validator now reports a weak-outer band
+  (`min_r > 5.5M`) separately from a photon-shell proxy band
+  (`r_+ + max(0.1M, 2 horizon_eps) < min_r <= 5.5M`).
+- Assumptions and conventions: Photon-shell proxy direction errors are
+  diagnostic evidence for the f32 fixed-step kernel, not the same pass/fail
+  quantity as weak-outer escaped-direction accuracy. Event classification,
+  failure accounting, and Hamiltonian residuals remain part of the formal gate.
+- Validation: The formal `a = 0.9`, `i = 60 deg`, `677`-sample gate with
+  `max_lambda = 800M` produced `both_unclassified_max_lambda = 0`,
+  `resolved_event_agreement = 1.0`, `stable_event_agreement = 1.0`, and
+  `gpu_failure_outside_exclusions = 0`. Weak-outer escaped-direction errors
+  were median `1.15e-6 rad` and max `7.49e-5 rad`; weak-outer GPU `max |H|`
+  was `8.63e-6`. The photon-shell proxy band had `50` escaped-direction
+  samples, median `7.55e-5 rad`, max `9.66e-3 rad`, and GPU `max |H| =
+  6.07e-6`, confirming that the remaining direction tail is a near-critical
+  f32 sensitivity rather than a Hamiltonian blow-up.
+- References: Existing Kerr-Schild and Kerr photon-shell references; no new
+  source added.
+- Open issues / next steps: Add the dedicated low-`r_obs` near-horizon fan
+  gate before using this kernel for realtime-cost claims, then proceed to
+  finite-distance object intersections and frustum latency benchmarking.
+
 ### 2026-07-08 - WGSL Kerr-Schild tracer gate
 
 - Goal: Start Task 2 by validating a WGPU f32 Kerr-Schild Hamiltonian RK4

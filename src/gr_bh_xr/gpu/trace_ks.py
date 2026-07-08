@@ -37,6 +37,7 @@ class KsGpuTraceConfig:
     steps: int = 20000
     max_lambda: float = 800.0
     max_step: float = 1.0
+    step_r_ref: float = 5.0
     adaptive_step: bool = True
     r_escape: float = 200.0
     horizon_eps: float = TraceConfig.horizon_eps
@@ -50,6 +51,8 @@ class KsGpuTraceConfig:
             raise ValueError("max_lambda must be positive.")
         if self.max_step <= 0.0:
             raise ValueError("max_step must be positive.")
+        if self.step_r_ref <= 0.0:
+            raise ValueError("step_r_ref must be positive.")
         if self.r_escape <= 0.0:
             raise ValueError("r_escape must be positive.")
 
@@ -70,6 +73,7 @@ class KsGpuTraceConfig:
             "steps": self.steps,
             "max_lambda": self.max_lambda,
             "max_step": self.max_step,
+            "step_r_ref": self.step_r_ref,
             "adaptive_step": self.adaptive_step,
             "r_escape": self.r_escape,
             "horizon_eps": self.horizon_eps,
@@ -244,6 +248,7 @@ def _shader_params(config: KsGpuTraceConfig, n_rays: int) -> np.ndarray:
             1.0 if config.adaptive_step else 0.0,
             config.max_step,
             config.max_lambda,
+            config.step_r_ref,
         ],
         dtype=np.float32,
     )
@@ -492,10 +497,11 @@ fn adaptive_step_size(s: StateKS, lambda_used: f32) -> f32 {
     let adaptive = params[8] > 0.5;
     let max_h = params[9];
     let max_lambda = params[10];
+    let r_ref = max(params[11], 1.0e-6);
     var h = base_h;
     if (adaptive) {
-        let r = max(ks_radius_xyz(s.x, s.y, s.z), 1.0);
-        h = clamp(base_h * r, base_h, max_h);
+        let r = ks_radius_xyz(s.x, s.y, s.z);
+        h = clamp(base_h * max(1.0, r / r_ref), base_h, max_h);
     }
     return min(h, max(max_lambda - lambda_used, 0.0));
 }

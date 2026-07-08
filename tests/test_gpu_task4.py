@@ -157,6 +157,7 @@ def test_gpu_kerr_schild_validator_writes_summary_and_h5(tmp_path):
         steps=4000,
         max_lambda=400.0,
         max_step=1.0,
+        step_r_ref=5.0,
         adaptive_step=True,
         horizon_eps=0.3,
         out=out,
@@ -168,6 +169,14 @@ def test_gpu_kerr_schild_validator_writes_summary_and_h5(tmp_path):
     assert summary["stable_event_agreement"] >= 0.98
     assert summary["resolved_event_agreement"] >= 0.98
     assert summary["gpu_failure_outside_exclusions"] == 0
+    assert summary["step_r_ref"] == pytest.approx(5.0)
+    direction_bands = summary["escape_direction_error_by_min_r_band"]
+    assert "weak_outer" in direction_bands
+    assert "photon_shell_proxy" in direction_bands
+    assert direction_bands["weak_outer"]["count"] > 0
+    assert direction_bands["weak_outer"]["median"] < 5.0e-6
+    assert direction_bands["weak_outer"]["max"] < 1.0e-5
+    assert direction_bands["photon_shell_proxy"]["count"] > 0
     assert out.exists()
     with h5py.File(h5, "r") as handle:
         assert handle.attrs["schema"] == "gr-bh-xr.tier2.ks_gpu_validation.v1"

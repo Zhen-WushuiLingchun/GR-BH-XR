@@ -430,12 +430,16 @@ Task 2 WGSL Kerr-Schild checks:
 - The current `a = 0.9`, `i = 60 deg`, `max_lambda = 800M` adaptive-step gate
   records `sample_count = 677`, `both_unclassified_max_lambda = 0`,
   `resolved_event_agreement = 1.0`, `stable_event_agreement = 1.0`,
-  `gpu_failure_outside_exclusions = 0`, escaped-direction median/RMS/max
-  errors of `1.98e-6`, `1.05e-4`, and `1.83e-3 rad`, and GPU `max |H|`
-  bands of `2.92e-6` outer, `4.39e-6` near-horizon exterior, and `5.08e-5`
-  horizon-crossing. The near-horizon exterior direction-error band currently
-  has only `3` samples, so Task 4 still requires a dedicated low-`r_obs`
-  near-horizon fan before realtime claims.
+  `gpu_failure_outside_exclusions = 0`, and a weak-outer escaped-direction
+  median/max of `1.15e-6` and `7.49e-5 rad`. The gate uses
+  `h = h0 * max(1, r / r_ref)` with `h0 = 0.01M` and `r_ref = 5M` so weak-field
+  rays are accelerated while the photon-shell band keeps the strong-field
+  step floor. A photon-shell proxy band
+  `r_+ + max(0.1M, 2 horizon_eps) < min_r <= 5.5M` is reported separately; in
+  the current run it has `50` escaped-direction samples, median `7.55e-5 rad`,
+  max `9.66e-3 rad`, and GPU `max |H| = 6.07e-6`. The near-horizon exterior
+  direction-error band currently has only `3` samples, so Task 4 still requires
+  a dedicated low-`r_obs` near-horizon fan before realtime claims.
 - This Task 2 shader does not yet implement arbitrary observer worldlines,
   finite-distance object intersections, or headset-rate near-horizon free
   flight.

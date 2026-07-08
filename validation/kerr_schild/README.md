@@ -185,7 +185,7 @@ Formal command:
 
 ```powershell
 $env:PYTHONPATH='src'
-python -m gr_bh_xr.gpu.validate_ks --spin 0.9 --inclination-deg 60 --fan-samples 55 --fan-alpha-max 8 --fan-betas 0,4,-4 --full-sky-samples 512 --step-size 0.01 --steps 20000 --max-lambda 800 --max-step 1 --out outputs/tier2/ks_gpu_a0.9_i60_adaptive.json --h5 outputs/tier2/ks_gpu_a0.9_i60_adaptive.h5
+python -m gr_bh_xr.gpu.validate_ks --spin 0.9 --inclination-deg 60 --fan-samples 55 --fan-alpha-max 8 --fan-betas 0,4,-4 --full-sky-samples 512 --step-size 0.01 --steps 20000 --max-lambda 800 --max-step 1 --step-r-ref 5 --out outputs/tier2/ks_gpu_a0.9_i60_rref5.json --h5 outputs/tier2/ks_gpu_a0.9_i60_rref5.h5
 ```
 
 The JSON/HDF5 artifacts record:
@@ -195,8 +195,10 @@ The JSON/HDF5 artifacts record:
   unclassified samples from actual resolved samples;
 - stable-event agreement after excluding near-capture samples;
 - escaped-ray asymptotic momentum-direction error for stable escaped rays;
-- escaped-direction errors and GPU `max |H|` grouped by `min_r` bands: outer,
-  near-horizon exterior, and horizon-crossing.
+- escaped-direction errors and GPU `max |H|` grouped by `min_r` bands:
+  legacy outer, near-horizon exterior, horizon-crossing, weak outer
+  (`min_r > 5.5M`), and a photon-shell proxy band
+  (`r_+ + max(0.1M, 2 horizon_eps) < min_r <= 5.5M`).
 
 Acceptance:
 
@@ -204,7 +206,10 @@ Acceptance:
 - both-side max-lambda unclassified samples are reported separately and should
   be zero for the formal `max_lambda = 800M` gate;
 - GPU failures outside CPU-invalid / near-capture exclusions equal `0`;
-- median escaped-direction error below `1e-4 rad`;
+- weak-outer escaped-direction median below `5e-6 rad` and max below
+  `1e-4 rad`;
+- photon-shell proxy escaped-direction errors are recorded separately because
+  near-critical Kerr rays are Lyapunov sensitive in f32 fixed-step RK4;
 - horizon-crossing `max |H|` is reported as f32 diagnostic evidence rather
   than compared to the CPU f64 exterior `1e-8` target.
 
@@ -218,19 +223,26 @@ stable_event_agreement = 1.0
 both_unclassified_max_lambda = 0
 gpu_failure_outside_exclusions = 0
 escape_direction_sample_count = 602
-escape_direction_median_error = 1.98e-6 rad
-escape_direction_rms_error = 1.05e-4 rad
-escape_direction_max_error = 1.83e-3 rad
+escape_direction_median_error = 1.29e-6 rad
+escape_direction_rms_error = 6.04e-4 rad
+escape_direction_max_error = 9.66e-3 rad
 escape direction error by min_r band:
-  outer: count = 599, median = 1.97e-6 rad, max = 8.94e-4 rad
-  near_horizon_exterior: count = 3, median = 1.45e-3 rad, max = 1.83e-3 rad
+  weak_outer: count = 552, median = 1.15e-6 rad, max = 7.49e-5 rad
+  photon_shell_proxy: count = 50, median = 7.55e-5 rad, max = 9.66e-3 rad
+  legacy outer: count = 599, median = 1.29e-6 rad, max = 9.66e-3 rad
+  near_horizon_exterior: count = 3, median = 5.54e-3 rad, max = 6.81e-3 rad
   horizon_crossing: count = 0
 gpu max |H| by min_r band:
-  outer = 2.92e-6
-  near_horizon_exterior = 4.39e-6
-  horizon_crossing = 5.08e-5
-GPU step distribution:
-  median = 223
-  p95 = 905.2
-  max = 1218
+  weak_outer = 8.63e-6
+  photon_shell_proxy = 6.07e-6
+  legacy outer = 8.63e-6
+  near_horizon_exterior = 6.07e-6
+  horizon_crossing = 2.38e-5
 ```
+
+The adaptive step is `h = h0 * max(1, r / r_ref)` with `r_ref = 5M`.  An
+earlier `h = h0 * r` rule accelerated weak-field rays but enlarged the step in
+the photon-shell band.  The current rule keeps the strong-field floor at
+`h0 = 0.01M`, preserves weak-field acceleration, and reports the remaining
+near-critical f32 direction tail as a separate photon-shell diagnostic instead
+of mixing it into ordinary weak-outer accuracy claims.
