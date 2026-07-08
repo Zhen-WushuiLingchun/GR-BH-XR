@@ -37,6 +37,8 @@ def test_ks_trace_matches_bl_escape_classification_and_min_radius():
     assert ks.h_max_abs < 1.0e-8
     assert ks.e_drift_abs < 1.0e-11
     assert ks.lz_drift_abs < 1.0e-8
+    assert ks.q_sample_count > 0
+    assert ks.q_drift_abs < 1.0e-7
 
 
 def test_ks_escape_direction_matches_bl_reference():
@@ -50,6 +52,8 @@ def test_ks_escape_direction_matches_bl_reference():
 
     assert bl.event == "escape"
     assert ks.event == "escape"
+    assert ks.q_sample_count > 0
+    assert ks.q_drift_abs < 1.0e-7
     ks_dir = momentum_direction_from_state(
         params,
         r=float(ks_bl_final.x[1]),
@@ -109,6 +113,9 @@ def test_ks_schwarzschild_capture_continues_inside_outer_horizon():
     assert ks.min_r < 2.0
     assert ks.h_max_abs < 1.0e-8
     assert ks.e_drift_abs < 1.0e-11
+    assert ks.q_sample_count > 0
+    assert ks.q_skipped_count > 0
+    assert ks.q_drift_abs < 1.0e-7
 
 
 def test_ks_inner_capture_radius_stays_outside_cauchy_horizon_near_extremal_spin():

@@ -19,6 +19,30 @@ from here.
 
 ## Log
 
+### 2026-07-08 - Kerr-Schild exterior Carter diagnostic
+
+- Goal: Add a Carter `Q` drift diagnostic to the KS tracer without pretending
+  that BL coordinates remain valid through the horizon.
+- Changed files / components: Extended `src/gr_bh_xr/geodesic_ks.py`,
+  `tests/test_geodesic_ks.py`, `docs/validation_targets.md`, and
+  `validation/kerr_schild/README.md`.
+- Academic reason: Carter drift is an independent integrator diagnostic for
+  Kerr null geodesics, but the scalar is easiest to evaluate in BL coordinates.
+  The diagnostic therefore needs an explicit exterior-only contract.
+- Physical correspondence: KS states are converted back to BL only when the
+  sample radius is safely outside `r_+` and away from the axis. Samples inside
+  the horizon are skipped and counted, while `H`, `E`, and `L_z` remain native
+  KS diagnostics across the crossing.
+- Assumptions and conventions: `q_drift_abs` is an exterior diagnostic. It is
+  not used to validate the interior segment of a horizon-penetrating ray.
+- Validation: `tests/test_geodesic_ks.py` passed. Representative `a = 0.9`,
+  `i = 60 deg`, escaped ray had `q_drift_abs = 1.60e-10` over `307` exterior
+  samples. A Schwarzschild captured equatorial ray had `q_drift_abs = 1.37e-31`,
+  `q_sample_count = 127`, and `q_skipped_count = 3`.
+- References: Existing Carter/Kerr geodesic references; no new source added.
+- Open issues / next steps: Add KS critical-curve regression and then migrate
+  the KS RHS into WGSL.
+
 ### 2026-07-08 - Kerr-Schild disk-transfer cross-check
 
 - Goal: Add the first KS equatorial disk-crossing gate and compare it against

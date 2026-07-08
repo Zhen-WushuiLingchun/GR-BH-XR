@@ -31,6 +31,24 @@ Covered by `tests/test_geodesic_ks.py`:
   Hamiltonian residual.
 - Representative Kerr escaped-ray direction matches BL to `< 2e-6 rad`.
 - Near-extremal capture surface remains between `r_-` and `r_+`.
+- Exterior-only Carter `Q` diagnostics are reported by the KS tracer. The
+  diagnostic converts KS states back to BL only for samples safely outside the
+  outer horizon and away from the axis; horizon-interior samples are counted as
+  skipped instead of forcing a singular BL conversion.
+
+Current representative values:
+
+```text
+a = 0.9, i = 60 deg, escape ray (alpha=8, beta=2):
+  q_drift_abs = 1.60e-10
+  q_sample_count = 307
+  q_skipped_count = 0
+
+a = 0, captured equatorial ray:
+  q_drift_abs = 1.37e-31
+  q_sample_count = 127
+  q_skipped_count = 3
+```
 
 ### Exterior fan cross-check
 
@@ -128,7 +146,6 @@ max |H|_KS = 9.58e-9
 
 ## Remaining Stage A Gates
 
-- Convert KS states to BL only where valid and record Carter `Q` drift.
 - Run Kerr critical-curve regression with the KS tracer.
 - Add a denser full-sky KS/BL exterior cross-check before any keyframe transfer
   map claims.

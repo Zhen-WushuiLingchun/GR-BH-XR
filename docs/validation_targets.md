@@ -371,7 +371,8 @@ Stage A CPU Kerr-Schild reference checks:
 - `src/gr_bh_xr/geodesic_ks.py` must use the Hamiltonian form with Cartesian
   Kerr-Schild inverse metric derivatives and record horizon crossing, escape,
   and equatorial disk crossings without Boyer-Lindquist horizon/axis failures.
-  Carter-constant diagnostics remain a follow-up gate.
+  Carter-constant diagnostics must convert KS states to BL only in the safe
+  exterior and report skipped samples rather than forcing a singular conversion.
 - Captured rays should be continued inside the outer horizon only far enough to
   prove horizon penetration. For near-extremal spins, the numerical capture
   surface must remain outside the Cauchy horizon, e.g. by using
@@ -396,9 +397,10 @@ Stage A CPU Kerr-Schild reference checks:
   wrapped `Delta phi_m`, `Delta t_m`, and `Delta g_m` error fields.
 - Kerr critical-curve regression must recover the existing `a = 0.9`,
   `i = 60 deg` center and error thresholds before any near-horizon visual claim.
-- Conserved quantities `E`, `L_z`, Carter `Q`, and Hamiltonian residuals must be
-  reported through and across the outer horizon; bounded residuals near `r_+`
-  are the direct evidence that the horizon-penetrating coordinates are doing
+- Conserved quantities `E`, `L_z`, exterior Carter `Q`, and Hamiltonian
+  residuals must be reported through and across the outer horizon; bounded
+  residuals near `r_+` are the direct evidence that the horizon-penetrating
+  coordinates are doing
   useful work.
 
 Stage B observer checks:

@@ -13,7 +13,7 @@ import math
 import numpy as np
 from scipy.integrate import solve_ivp
 
-from .metric import delta, hamiltonian as bl_hamiltonian, horizon_radius
+from .metric import carter_constant, delta, hamiltonian as bl_hamiltonian, horizon_radius
 from .metric_ks import (
     bl_to_ks_cartesian,
     ks_cartesian_to_bl,
@@ -33,6 +33,9 @@ class KSRayDiagnostics:
     h_max_abs: float
     e_drift_abs: float
     lz_drift_abs: float
+    q_drift_abs: float
+    q_sample_count: int
+    q_skipped_count: int
     lambda_end: float
     steps: int
     min_r: float
@@ -237,6 +240,8 @@ def _diagnostics_ks(
     e_values = -ps[:, 0]
     lz_values = xs[:, 1] * ps[:, 2] - xs[:, 2] * ps[:, 1]
     radii = np.array([ks_radius(params, x[1:4]) for x in xs], dtype=np.float64)
+    q_values = np.array([_safe_ks_carter_constant(params, x, p) for x, p in zip(xs, ps)], dtype=np.float64)
+    q_sample_count = int(np.count_nonzero(np.isfinite(q_values)))
     crossing_lam_tuple: tuple[float, ...] = ()
     crossing_order_tuple: tuple[int, ...] = ()
     crossing_t_tuple: tuple[float, ...] = ()
@@ -263,6 +268,9 @@ def _diagnostics_ks(
         h_max_abs=_nanmax_abs(h_values),
         e_drift_abs=float(np.max(e_values) - np.min(e_values)),
         lz_drift_abs=float(np.max(lz_values) - np.min(lz_values)),
+        q_drift_abs=_nan_drift(q_values),
+        q_sample_count=q_sample_count,
+        q_skipped_count=int(q_values.size - q_sample_count),
         lambda_end=float(lambda_end),
         steps=int(y_values.shape[0]),
         min_r=float(np.min(radii)),
@@ -279,6 +287,20 @@ def _diagnostics_ks(
         disk_crossing_p_phi=crossing_p_phi_tuple,
         message=message,
     )
+
+
+def _safe_ks_carter_constant(params: MetricParams, x_ks: np.ndarray, p_ks: np.ndarray) -> float:
+    try:
+        radius = ks_radius(params, x_ks[1:4])
+        if radius <= horizon_radius(params) + 1.0e-5 * params.M:
+            return math.nan
+        bl_state = ks_state_to_bl_state(params, RayState(x=np.array(x_ks), p=np.array(p_ks)))
+        theta = float(bl_state.x[2])
+        if math.sin(theta) ** 2 <= 1.0e-10:
+            return math.nan
+        return carter_constant(params, bl_state.x, bl_state.p)
+    except Exception:
+        return math.nan
 
 
 def _safe_ks_crossing_to_bl(params: MetricParams, x_ks: np.ndarray, p_ks: np.ndarray) -> tuple[float, ...]:
@@ -360,3 +382,8 @@ def _phi_shift(params: MetricParams, r: float) -> float:
 def _nanmax_abs(values: np.ndarray) -> float:
     finite = values[np.isfinite(values)]
     return float(np.max(np.abs(finite))) if finite.size else math.nan
+
+
+def _nan_drift(values: np.ndarray) -> float:
+    finite = values[np.isfinite(values)]
+    return float(np.max(finite) - np.min(finite)) if finite.size else math.nan
