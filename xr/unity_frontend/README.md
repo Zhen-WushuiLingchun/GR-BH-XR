@@ -124,6 +124,16 @@ transfer cubemap with yaw `0/2/4 deg` captures. It still does not close the
 Quest headset-runtime requirement; physical head translation would require
 regenerating or interpolating a different transfer map.
 
+The optional disk hot-spot mode is also a transfer-map lookup. It uses the
+validated disk cubemap channels `(r_m, sin(phi_m), cos(phi_m), g_m)` to draw a
+Gaussian feature at disk coordinates `(r0, phi0)`, with brightness multiplied by
+the same documented `g^p` convention as the disk visual mode. Orbit animation
+advects the feature with the Keplerian `Omega(r0)` parameter written by the
+runtime settings. The current Unity disk cubemap does not yet carry a separate
+`Delta t_m` texture channel, so this first hot-spot display does not include
+light-travel-time delay; the Python/HDF5 transfer buffers remain the audit
+source for `Delta t_m`.
+
 The package does not perform real-time geodesic integration. It renders a
 precomputed transfer map in real time:
 

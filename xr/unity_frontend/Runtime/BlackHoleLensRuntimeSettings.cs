@@ -13,12 +13,26 @@ namespace GRBHXR
         [SerializeField] private float diskBrightness = 1.0f;
         [SerializeField] private float diskGPower = 3.0f;
         [SerializeField] private float diskSecondaryScale = 0.32f;
+        [SerializeField] private bool diskHotSpotEnabled;
+        [SerializeField] private bool diskHotSpotAnimate;
+        [SerializeField] private float diskHotSpotRadius = 8.0f;
+        [SerializeField] private float diskHotSpotPhase;
+        [SerializeField] private float diskHotSpotSigmaR = 1.0f;
+        [SerializeField] private float diskHotSpotSigmaPhi = 0.18f;
+        [SerializeField] private float diskHotSpotBrightness = 2.0f;
+        [SerializeField] private float diskSpin = 0.9f;
+        [SerializeField] private float diskInnerRadius = 2.32f;
+        [SerializeField] private float diskOuterRadius = 30.0f;
 
         public bool DiskVisualMode => diskVisualMode;
         public int DiskAuditMode => diskAuditMode;
         public float DiskOpacity => diskOpacity;
         public float DiskBrightness => diskBrightness;
         public float DiskGPower => diskGPower;
+        public bool DiskHotSpotEnabled => diskHotSpotEnabled;
+        public bool DiskHotSpotAnimate => diskHotSpotAnimate;
+        public float DiskHotSpotRadius => diskHotSpotRadius;
+        public float DiskHotSpotPhase => diskHotSpotPhase;
 
         private void Awake()
         {
@@ -80,6 +94,52 @@ namespace GRBHXR
             Apply();
         }
 
+        public void ToggleDiskHotSpot()
+        {
+            diskHotSpotEnabled = !diskHotSpotEnabled;
+            if (diskHotSpotEnabled)
+            {
+                diskVisualMode = true;
+                diskAuditMode = 0;
+            }
+            Apply();
+        }
+
+        public void ToggleDiskHotSpotAnimation()
+        {
+            diskHotSpotAnimate = !diskHotSpotAnimate;
+            Apply();
+        }
+
+        public void AddDiskHotSpotRadius(float delta)
+        {
+            diskHotSpotRadius = Mathf.Clamp(
+                diskHotSpotRadius + delta,
+                diskInnerRadius + Mathf.Max(diskHotSpotSigmaR, 0.05f),
+                diskOuterRadius - Mathf.Max(diskHotSpotSigmaR, 0.05f)
+            );
+            Apply();
+        }
+
+        public void AddDiskHotSpotPhase(float delta)
+        {
+            diskHotSpotPhase = NormalizeAngle(diskHotSpotPhase + delta);
+            Apply();
+        }
+
+        public void AddDiskHotSpotWidth(float delta)
+        {
+            diskHotSpotSigmaR = Mathf.Clamp(diskHotSpotSigmaR + delta, 0.1f, 6.0f);
+            diskHotSpotSigmaPhi = Mathf.Clamp(diskHotSpotSigmaPhi + 0.08f * delta, 0.03f, 1.2f);
+            AddDiskHotSpotRadius(0.0f);
+        }
+
+        public void AddDiskHotSpotBrightness(float delta)
+        {
+            diskHotSpotBrightness = Mathf.Clamp(diskHotSpotBrightness + delta, 0.0f, 8.0f);
+            Apply();
+        }
+
         public string StatusText()
         {
             string diskMode = diskVisualMode ? "visual" : "off";
@@ -94,6 +154,7 @@ namespace GRBHXR
             return
                 $"Disk {diskMode}  opacity {diskOpacity:F2}\n" +
                 $"g^{diskGPower:F1}  bright {diskBrightness:F2}\n" +
+                $"Hotspot {(diskHotSpotEnabled ? "on" : "off")} r {diskHotSpotRadius:F1} phi {diskHotSpotPhase:F2}\n" +
                 "X: disk visual  Y: disk audit";
         }
 
@@ -109,6 +170,17 @@ namespace GRBHXR
             diskBrightness = Mathf.Clamp(diskBrightness, 0.0f, 4.0f);
             diskGPower = Mathf.Clamp(diskGPower, 0.0f, 6.0f);
             diskSecondaryScale = Mathf.Clamp01(diskSecondaryScale);
+            diskInnerRadius = Mathf.Max(0.01f, diskInnerRadius);
+            diskOuterRadius = Mathf.Max(diskInnerRadius + 0.1f, diskOuterRadius);
+            diskHotSpotSigmaR = Mathf.Clamp(diskHotSpotSigmaR, 0.1f, 6.0f);
+            diskHotSpotSigmaPhi = Mathf.Clamp(diskHotSpotSigmaPhi, 0.03f, 1.2f);
+            diskHotSpotBrightness = Mathf.Clamp(diskHotSpotBrightness, 0.0f, 8.0f);
+            diskHotSpotRadius = Mathf.Clamp(
+                diskHotSpotRadius,
+                diskInnerRadius + diskHotSpotSigmaR,
+                diskOuterRadius - diskHotSpotSigmaR
+            );
+            diskHotSpotPhase = NormalizeAngle(diskHotSpotPhase);
 
             material.SetFloat("_DiskVisualMode", diskVisualMode ? 1.0f : 0.0f);
             material.SetFloat("_DiskAuditMode", diskAuditMode);
@@ -116,6 +188,32 @@ namespace GRBHXR
             material.SetFloat("_DiskBrightness", diskBrightness);
             material.SetFloat("_DiskGPower", diskGPower);
             material.SetFloat("_DiskSecondaryScale", diskSecondaryScale);
+            material.SetFloat("_DiskHotSpotEnabled", diskHotSpotEnabled ? 1.0f : 0.0f);
+            material.SetFloat("_DiskHotSpotAnimate", diskHotSpotAnimate ? 1.0f : 0.0f);
+            material.SetFloat("_DiskHotSpotRadius", diskHotSpotRadius);
+            material.SetFloat("_DiskHotSpotPhase", diskHotSpotPhase);
+            material.SetFloat("_DiskHotSpotSigmaR", diskHotSpotSigmaR);
+            material.SetFloat("_DiskHotSpotSigmaPhi", diskHotSpotSigmaPhi);
+            material.SetFloat("_DiskHotSpotBrightness", diskHotSpotBrightness);
+            material.SetFloat("_DiskHotSpotOmega", KeplerianOmega(diskHotSpotRadius));
+        }
+
+        private float KeplerianOmega(float radius)
+        {
+            return 1.0f / (Mathf.Pow(Mathf.Max(radius, 1.0e-3f), 1.5f) + diskSpin);
+        }
+
+        private static float NormalizeAngle(float angle)
+        {
+            while (angle > Mathf.PI)
+            {
+                angle -= 2.0f * Mathf.PI;
+            }
+            while (angle <= -Mathf.PI)
+            {
+                angle += 2.0f * Mathf.PI;
+            }
+            return angle;
         }
 
         private Material ResolveMaterial()

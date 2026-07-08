@@ -12,7 +12,7 @@ namespace GRBHXR
         [SerializeField] private BlackHoleLensAnchorControls controls;
         [SerializeField] private BlackHoleLensRuntimeSettings runtimeSettings;
         [SerializeField] private Vector3 cameraLocalOffset = new Vector3(0.0f, -0.08f, 1.65f);
-        [SerializeField] private Vector2 panelSize = new Vector2(0.72f, 0.54f);
+        [SerializeField] private Vector2 panelSize = new Vector2(0.78f, 0.74f);
         [SerializeField] private float pixelsPerMeter = 900.0f;
         [SerializeField] private float dragDistance = 1.65f;
         [SerializeField] private bool visible;
@@ -227,8 +227,22 @@ namespace GRBHXR
             AddTwoButtonRow("g Power -", "g Power +", y - 240.0f,
                 () => runtimeSettings?.AddDiskGPower(-0.25f),
                 () => runtimeSettings?.AddDiskGPower(0.25f));
-            AddButton("Request closer r_obs map", y - 288.0f, () => controls?.RequestObserverRadiusChange(50.0f));
-            AddButton("Request farther r_obs map", y - 336.0f, () => controls?.RequestObserverRadiusChange(200.0f));
+            AddButton("Hot Spot On/Off", y - 288.0f, () => runtimeSettings?.ToggleDiskHotSpot());
+            AddButton("Hot Spot Orbit On/Off", y - 336.0f, () => runtimeSettings?.ToggleDiskHotSpotAnimation());
+            AddTwoButtonRow("Spot r -", "Spot r +", y - 384.0f,
+                () => runtimeSettings?.AddDiskHotSpotRadius(-0.5f),
+                () => runtimeSettings?.AddDiskHotSpotRadius(0.5f));
+            AddTwoButtonRow("Spot phi -", "Spot phi +", y - 432.0f,
+                () => runtimeSettings?.AddDiskHotSpotPhase(-0.15f),
+                () => runtimeSettings?.AddDiskHotSpotPhase(0.15f));
+            AddTwoButtonRow("Spot width -", "Spot width +", y - 480.0f,
+                () => runtimeSettings?.AddDiskHotSpotWidth(-0.25f),
+                () => runtimeSettings?.AddDiskHotSpotWidth(0.25f));
+            AddTwoButtonRow("Spot dim", "Spot bright", y - 528.0f,
+                () => runtimeSettings?.AddDiskHotSpotBrightness(-0.25f),
+                () => runtimeSettings?.AddDiskHotSpotBrightness(0.25f));
+            AddButton("Request closer r_obs map", y - 576.0f, () => controls?.RequestObserverRadiusChange(50.0f));
+            AddButton("Request farther r_obs map", y - 624.0f, () => controls?.RequestObserverRadiusChange(200.0f));
 
             footerText = CreateText("Footer", root, "", 14, TextAnchor.MiddleCenter);
             SetRect(footerText.rectTransform, new Vector2(24, 20), new Vector2(root.sizeDelta.x - 48, 30), new Vector2(0, 0));

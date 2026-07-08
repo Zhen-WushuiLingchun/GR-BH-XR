@@ -20,6 +20,14 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
         _DiskBrightness ("Disk Brightness", Float) = 1.0
         _DiskGPower ("Disk g Power", Float) = 3.0
         _DiskSecondaryScale ("Disk Secondary Scale", Float) = 0.32
+        _DiskHotSpotEnabled ("Disk Hot Spot Enabled", Float) = 0
+        _DiskHotSpotAnimate ("Disk Hot Spot Animate", Float) = 0
+        _DiskHotSpotRadius ("Disk Hot Spot Radius", Float) = 8
+        _DiskHotSpotPhase ("Disk Hot Spot Phase", Float) = 0
+        _DiskHotSpotSigmaR ("Disk Hot Spot Sigma R", Float) = 1
+        _DiskHotSpotSigmaPhi ("Disk Hot Spot Sigma Phi", Float) = 0.18
+        _DiskHotSpotBrightness ("Disk Hot Spot Brightness", Float) = 2
+        _DiskHotSpotOmega ("Disk Hot Spot Omega", Float) = 0.04
         _ProbeMode ("Probe Mode", Float) = 0
         _SkyboxLodBias ("Skybox LOD Bias", Float) = 0
         _StrongLensLodBias ("Strong Lens LOD Bias", Float) = 0.85
@@ -65,6 +73,14 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
             float _DiskBrightness;
             float _DiskGPower;
             float _DiskSecondaryScale;
+            float _DiskHotSpotEnabled;
+            float _DiskHotSpotAnimate;
+            float _DiskHotSpotRadius;
+            float _DiskHotSpotPhase;
+            float _DiskHotSpotSigmaR;
+            float _DiskHotSpotSigmaPhi;
+            float _DiskHotSpotBrightness;
+            float _DiskHotSpotOmega;
             float _ProbeMode;
             float _SkyboxLodBias;
             float _StrongLensLodBias;
@@ -168,6 +184,25 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 return lerp(warm, hot, smoothstep(0.42, 0.82, t));
             }
 
+            float diskHotSpotWeight(float4 disk)
+            {
+                if (_DiskHotSpotEnabled <= 0.5 || !diskSampleValid(disk))
+                {
+                    return 0.0;
+                }
+                float phase = _DiskHotSpotPhase + (_DiskHotSpotAnimate > 0.5 ? _DiskHotSpotOmega * _Time.y : 0.0);
+                float sinPhi = disk.y;
+                float cosPhi = disk.z;
+                float sinPhase = sin(phase);
+                float cosPhase = cos(phase);
+                float sinDelta = sinPhi * cosPhase - cosPhi * sinPhase;
+                float cosDelta = cosPhi * cosPhase + sinPhi * sinPhase;
+                float dPhi = atan2(sinDelta, cosDelta);
+                float dR = (disk.x - _DiskHotSpotRadius) / max(_DiskHotSpotSigmaR, 1.0e-3);
+                float dA = dPhi / max(_DiskHotSpotSigmaPhi, 1.0e-3);
+                return exp(-0.5 * (dR * dR + dA * dA));
+            }
+
             fixed4 diskVisualLayer(float4 disk, float order)
             {
                 if (!diskSampleValid(disk))
@@ -182,11 +217,15 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 float emissivity = pow(saturate(6.0 / r), 2.2) * innerGate * outerGate;
                 float orderScale = order > 0.5 ? _DiskSecondaryScale : 1.0;
                 float observedWeight = emissivity * pow(g, max(_DiskGPower, 0.0)) * _DiskBrightness * orderScale;
+                float hotSpot = diskHotSpotWeight(disk);
+                observedWeight += hotSpot * pow(g, max(_DiskGPower, 0.0)) * _DiskHotSpotBrightness * orderScale;
 
                 // This first visual mode is a documented thin-disk emissivity
                 // proxy over the validated (r_m, phi_m, g_m) transfer map. It is
                 // not yet a Page-Thorne flux model or radiative-transfer result.
-                float3 color = blackbodyRamp(g) * observedWeight;
+                // The hot spot uses (r_m, phi_m) from the transfer map; the
+                // current Unity cube does not yet carry Delta t_m.
+                float3 color = lerp(blackbodyRamp(g), float3(1.0, 0.92, 0.62), saturate(hotSpot)) * observedWeight;
                 float alpha = saturate(observedWeight * _DiskOpacity);
                 return fixed4(color, alpha);
             }

@@ -19,6 +19,32 @@ from here.
 
 ## Log
 
+### 2026-07-08 - Unity disk hot-spot lookup controls
+
+- Goal: Add a first interactive disk hot-spot visual mode over the existing
+  transfer cubemap without claiming runtime geodesic integration.
+- Changed files / components: Extended the Unity preview shader, runtime disk
+  settings, XR controller controls, settings panel, Unity README, and validation
+  target notes.
+- Academic reason: A localized disk feature is the simplest finite-distance
+  source that can be moved interactively while staying inside the validated
+  stationary axisymmetric transfer-map contract.
+- Physical correspondence: The hot spot is evaluated in disk coordinates using
+  `(r_m, sin(phi_m), cos(phi_m), g_m)`. Its observed brightness follows the
+  existing `g^p` convention and optional Keplerian phase advection
+  `phi0 + Omega(r0) t`.
+- Assumptions and conventions: This Unity texture path currently lacks a
+  separate `Delta t_m` channel, so the visual hot-spot animation does not yet
+  include light-travel-time delay. The HDF5 transfer buffers remain the audit
+  source for delayed disk variability.
+- Validation: Shader/C# changes are scoped to existing material properties and
+  runtime controls. Full Unity batch screenshots remain the required gate before
+  using this as a visual claim.
+- References: Existing disk-transfer references; no new source added.
+- Open issues / next steps: Add a display texture channel for `Delta t_m`, then
+  capture four hot-spot desktop screenshots covering direct/secondary,
+  approaching, and receding disk features.
+
 ### 2026-07-08 - Kerr-Schild critical-curve regression
 
 - Goal: Close the KS Stage A shadow-boundary gate by comparing the KS

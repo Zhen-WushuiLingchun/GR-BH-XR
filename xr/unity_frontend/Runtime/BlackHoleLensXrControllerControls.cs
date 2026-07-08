@@ -22,6 +22,8 @@ namespace GRBHXR
         [SerializeField] private bool requireGripOrTriggerForStickRotation;
         [SerializeField] private float yawPitchDegreesPerSecond = 45.0f;
         [SerializeField] private float rollDegreesPerSecond = 45.0f;
+        [SerializeField] private float hotSpotRadiusPerSecond = 3.0f;
+        [SerializeField] private float hotSpotPhaseRadiansPerSecond = 1.4f;
         [SerializeField] private float stickDeadZone = 0.15f;
 
         private readonly List<InputDevice> devices = new List<InputDevice>();
@@ -147,8 +149,16 @@ namespace GRBHXR
                 return;
             }
 
+            bool gripHeld = TryGetButton(left, CommonUsages.gripButton);
             bool rotationHeld = !requireGripOrTriggerForStickRotation || IsRotationModifierHeld(left);
-            if (rollOnLeftStick && rotationHeld && TryGetAxis(left, out Vector2 axis))
+            bool panelOpen = settingsPanel != null && settingsPanel.IsVisible;
+            bool hasAxis = TryGetAxis(left, out Vector2 axis);
+            if (hasAxis && runtimeSettings != null && gripHeld && !panelOpen)
+            {
+                runtimeSettings.AddDiskHotSpotPhase(axis.x * hotSpotPhaseRadiansPerSecond * Time.deltaTime);
+                runtimeSettings.AddDiskHotSpotRadius(axis.y * hotSpotRadiusPerSecond * Time.deltaTime);
+            }
+            else if (rollOnLeftStick && rotationHeld && hasAxis)
             {
                 controls.AddRollDegrees(axis.x * rollDegreesPerSecond * Time.deltaTime);
             }
@@ -177,7 +187,7 @@ namespace GRBHXR
                     settingsPanel.ActivateSelected();
                 }
                 previousLeftTriggerButton = trigger;
-                if (TryGetButton(left, CommonUsages.gripButton))
+                if (gripHeld)
                 {
                     settingsPanel.DragToRay(GetDevicePositionOrCamera(left), GetDeviceForwardOrCamera(left));
                 }
@@ -192,7 +202,7 @@ namespace GRBHXR
             return
                 $"R ctrl n={rightDeviceCount} axis=({rightAxis.x:F2},{rightAxis.y:F2}) A={rightPrimaryButton} B={rightSecondaryButton}\n" +
                 $"L ctrl n={leftDeviceCount} axis=({leftAxis.x:F2},{leftAxis.y:F2}) X={leftPrimaryButton} Y={leftSecondaryButton}\n" +
-                gate;
+                $"{gate}  L grip+stick moves hot spot";
         }
 
         private bool TryGetDevice(InputDeviceCharacteristics handedness, out InputDevice device)

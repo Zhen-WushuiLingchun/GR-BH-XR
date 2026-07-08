@@ -291,6 +291,10 @@ Required checks:
   map with disk-frame advection
   `phi_emit = phi_m - Omega(r_m) * (t - Delta t_m)`; it must not retrace
   geodesics per frame unless the metric or observer changes;
+- the first Unity hot-spot demo may use the display cubemap channels
+  `(r_m, sin(phi_m), cos(phi_m), g_m)` for a stationary-axisymmetric lookup,
+  but it must document when the Unity package lacks a separate `Delta t_m`
+  channel and therefore omits light-travel-time delay in the visual shader;
 - the display convention chooses and documents whether observed intensity is
   weighted by `g^3` or `g^4`, and tests the selected convention on a simple
   disk pattern before visual mode is accepted.
