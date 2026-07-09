@@ -326,18 +326,22 @@ def test_gpu_full_sky_transfer_cubemap_writes_boundary_free_package(tmp_path):
         command="pytest full sky cubemap",
     )
 
-    assert summary["schema"] == "gr-bh-xr.task5.full_sky_transfer_cubemap.v1"
+    assert summary["schema"] == "gr-bh-xr.task5.full_sky_transfer_cubemap.v2"
     assert summary["faceSize"] == 4
     assert summary["totalPixels"] == 6 * 4 * 4
     assert summary["validEscapePixels"] > 0
     assert summary["diskTransfer"]["orderCount"] == 2
-    assert summary["diskTransfer"]["channels"] == "r_m, sin(phi_m), cos(phi_m), g_m"
+    assert summary["diskTransfer"]["channels"] == "coverage-premultiplied r_m, sin(phi_m), cos(phi_m), coverage"
+    assert "coverage-premultiplied g_m" in summary["diskTransfer"]["redshiftChannels"]
+    assert summary["diskTransfer"]["coverageSubsamplesPerAxis"] == 4
     assert "no alpha/beta window fallback" in summary["boundaryNote"]
     assert (out_dir / "full_sky_transfer_metadata.json").exists()
     assert (out_dir / "event_cube_rgba8.bytes").stat().st_size == 6 * 4 * 4 * 4
     assert (out_dir / "escape_dir_unity_cube_rgba32f.bytes").stat().st_size == 6 * 4 * 4 * 16
     assert (out_dir / "disk_order0_transfer_cube_rgba16f.bytes").stat().st_size == 6 * 4 * 4 * 4 * 2
     assert (out_dir / "disk_order1_transfer_cube_rgba16f.bytes").stat().st_size == 6 * 4 * 4 * 4 * 2
+    assert (out_dir / "disk_order0_redshift_cube_rgba16f.bytes").stat().st_size == 6 * 4 * 4 * 4 * 2
+    assert (out_dir / "disk_order1_redshift_cube_rgba16f.bytes").stat().st_size == 6 * 4 * 4 * 4 * 2
 
 
 def test_gpu_full_sky_tetrad_validator_matches_cpu_reference(tmp_path):

@@ -272,6 +272,19 @@ The gate writes `unity_gate_fullsky_disk_visual_proxy_square_1024.png` and
 forces the historical proxy ramp; the second forces the Page-Thorne/blackbody
 LUT path using the same transfer map.
 
+Disk-transfer cubemap schema v2 stores boundary coverage explicitly. The
+`disk_order*_transfer_cube_rgba16f.bytes` files contain coverage-premultiplied
+`r_m`, `sin(phi_m)`, `cos(phi_m)`, and coverage; the companion
+`disk_order*_redshift_cube_rgba16f.bytes` files contain coverage-premultiplied
+`g_m` in the red channel. Unity divides the interpolated channels by coverage
+and uses coverage as opacity. This is required because disk-hit validity is a
+sub-texel coverage quantity near the lensed disk edge; a binary valid/invalid
+gate produces blocky texel steps when the inner disk image is magnified around
+the shadow. The historical proxy ramp can expose those steps strongly because
+it stays bright at the inner edge, while the Page-Thorne LUT path partially
+hides them by making the zero-torque ISCO edge dimmer. Formal Quest screenshots
+should use v2 coverage assets, not legacy binary-validity disk cubes.
+
 ## PCVR Sky-Shell First-Run Scene
 
 The Quest first-run scene should use the full-sky transfer map on a camera-

@@ -246,6 +246,12 @@ Required checks:
   `[-8M, 8M]` window boundary, adjacent valid protractor samples may differ by
   at most one 10-degree band except where capture/invalid event masks
   intervene;
+- Unity disk visual captures used for Quest readiness must consume disk
+  transfer cubemap schema v2 or later: `disk_order*_transfer_cube_rgba16f`
+  stores coverage-premultiplied `r_m`, `sin(phi_m)`, `cos(phi_m)`, and
+  coverage, while `disk_order*_redshift_cube_rgba16f` stores
+  coverage-premultiplied `g_m`. Legacy binary-validity disk cubes are allowed
+  for older audit images but not for final disk-edge visual acceptance;
 - the Unity shader includes single-pass instanced stereo macros so Quest/OpenXR
   does not render a missing or eye-shifted lens map in one eye;
 - the angular-window yaw test is interpreted only as head-rotation anchoring
@@ -292,7 +298,9 @@ Required checks:
   `phi_emit = phi_m - Omega(r_m) * (t - Delta t_m)`; it must not retrace
   geodesics per frame unless the metric or observer changes;
 - the first Unity hot-spot demo may use the display cubemap channels
-  `(r_m, sin(phi_m), cos(phi_m), g_m)` for a stationary-axisymmetric lookup,
+  `(r_m, sin(phi_m), cos(phi_m), coverage)` plus a redshift companion cube for
+  `g_m` in schema v2, or the legacy `(r_m, sin(phi_m), cos(phi_m), g_m)` cube
+  in older non-final assets, for a stationary-axisymmetric lookup,
   but it must document when the Unity package lacks a separate `Delta t_m`
   channel and therefore omits light-travel-time delay in the visual shader;
 - the display convention chooses and documents whether observed intensity is

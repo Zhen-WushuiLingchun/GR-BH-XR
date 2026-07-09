@@ -104,6 +104,8 @@ namespace GRBHXR
         [SerializeField] private TextAsset escapeDirectionUnityCubeRgba32fBytes;
         [SerializeField] private TextAsset diskOrder0TransferCubeRgba16fBytes;
         [SerializeField] private TextAsset diskOrder1TransferCubeRgba16fBytes;
+        [SerializeField] private TextAsset diskOrder0RedshiftCubeRgba16fBytes;
+        [SerializeField] private TextAsset diskOrder1RedshiftCubeRgba16fBytes;
         [Header("Optional disk color and emissivity LUTs")]
         [SerializeField] private TextAsset diskColorLutMetadataJson;
         [SerializeField] private TextAsset diskColorLutRgba32fBytes;
@@ -118,6 +120,8 @@ namespace GRBHXR
         public Cubemap EscapeDirectionCube { get; private set; }
         public Cubemap DiskOrder0Cube { get; private set; }
         public Cubemap DiskOrder1Cube { get; private set; }
+        public Cubemap DiskOrder0RedshiftCube { get; private set; }
+        public Cubemap DiskOrder1RedshiftCube { get; private set; }
         public DiskColorLutMetadata DiskColorLutMetadata { get; private set; }
         public DiskRadialLutMetadata DiskRadialLutMetadata { get; private set; }
         public Texture2D DiskColorLutTexture { get; private set; }
@@ -193,6 +197,16 @@ namespace GRBHXR
             {
                 material.SetTexture("_DiskOrder1Cube", DiskOrder1Cube);
             }
+            bool useCoverageDiskTransfer = DiskOrder0RedshiftCube != null;
+            material.SetFloat("_UseDiskCoverageTransfer", useCoverageDiskTransfer ? 1.0f : 0.0f);
+            if (DiskOrder0RedshiftCube != null)
+            {
+                material.SetTexture("_DiskOrder0RedshiftCube", DiskOrder0RedshiftCube);
+            }
+            if (DiskOrder1RedshiftCube != null)
+            {
+                material.SetTexture("_DiskOrder1RedshiftCube", DiskOrder1RedshiftCube);
+            }
             bool useDiskColorLut = DiskColorLutTexture != null && DiskRadialLutTexture != null;
             material.SetFloat("_UseDiskColorLut", useDiskColorLut ? 1.0f : 0.0f);
             if (useDiskColorLut)
@@ -263,6 +277,8 @@ namespace GRBHXR
                 EscapeDirectionCube = null;
                 DiskOrder0Cube = null;
                 DiskOrder1Cube = null;
+                DiskOrder0RedshiftCube = null;
+                DiskOrder1RedshiftCube = null;
                 return;
             }
 
@@ -301,6 +317,22 @@ namespace GRBHXR
                 TextureFormat.RGBAHalf,
                 expectedBytesPerPixel: 8,
                 name: "GR-BH-XR full-sky disk_order1_transfer_cube_rgba16f",
+                filterMode: FilterMode.Bilinear
+            );
+            DiskOrder0RedshiftCube = LoadOptionalRawCubemap(
+                diskOrder0RedshiftCubeRgba16fBytes,
+                FullSkyMetadata.faceSize,
+                TextureFormat.RGBAHalf,
+                expectedBytesPerPixel: 8,
+                name: "GR-BH-XR full-sky disk_order0_redshift_cube_rgba16f",
+                filterMode: FilterMode.Bilinear
+            );
+            DiskOrder1RedshiftCube = LoadOptionalRawCubemap(
+                diskOrder1RedshiftCubeRgba16fBytes,
+                FullSkyMetadata.faceSize,
+                TextureFormat.RGBAHalf,
+                expectedBytesPerPixel: 8,
+                name: "GR-BH-XR full-sky disk_order1_redshift_cube_rgba16f",
                 filterMode: FilterMode.Bilinear
             );
         }

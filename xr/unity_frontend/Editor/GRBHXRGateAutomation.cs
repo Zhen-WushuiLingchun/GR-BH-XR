@@ -214,6 +214,8 @@ namespace GRBHXR.EditorTools
             TextAsset escapeCubeBytes = null;
             TextAsset diskOrder0CubeBytes = null;
             TextAsset diskOrder1CubeBytes = null;
+            TextAsset diskOrder0RedshiftCubeBytes = null;
+            TextAsset diskOrder1RedshiftCubeBytes = null;
             TextAsset diskColorLutMetadata = null;
             TextAsset diskColorLutBytes = null;
             TextAsset diskRadialLutMetadata = null;
@@ -229,6 +231,12 @@ namespace GRBHXR.EditorTools
                 );
                 diskOrder1CubeBytes = AssetDatabase.LoadAssetAtPath<TextAsset>(
                     $"{options.FullSkyTransferDir}/disk_order1_transfer_cube_rgba16f.bytes"
+                );
+                diskOrder0RedshiftCubeBytes = AssetDatabase.LoadAssetAtPath<TextAsset>(
+                    $"{options.FullSkyTransferDir}/disk_order0_redshift_cube_rgba16f.bytes"
+                );
+                diskOrder1RedshiftCubeBytes = AssetDatabase.LoadAssetAtPath<TextAsset>(
+                    $"{options.FullSkyTransferDir}/disk_order1_redshift_cube_rgba16f.bytes"
                 );
                 diskColorLutMetadata = AssetDatabase.LoadAssetAtPath<TextAsset>(
                     $"{options.FullSkyTransferDir}/disk_color_lut_metadata.json"
@@ -352,6 +360,8 @@ namespace GRBHXR.EditorTools
             AssignSerializedObject(lensMap, "escapeDirectionUnityCubeRgba32fBytes", escapeCubeBytes);
             AssignSerializedObject(lensMap, "diskOrder0TransferCubeRgba16fBytes", diskOrder0CubeBytes);
             AssignSerializedObject(lensMap, "diskOrder1TransferCubeRgba16fBytes", diskOrder1CubeBytes);
+            AssignSerializedObject(lensMap, "diskOrder0RedshiftCubeRgba16fBytes", diskOrder0RedshiftCubeBytes);
+            AssignSerializedObject(lensMap, "diskOrder1RedshiftCubeRgba16fBytes", diskOrder1RedshiftCubeBytes);
             AssignSerializedObject(lensMap, "diskColorLutMetadataJson", diskColorLutMetadata);
             AssignSerializedObject(lensMap, "diskColorLutRgba32fBytes", diskColorLutBytes);
             AssignSerializedObject(lensMap, "diskRadialLutMetadataJson", diskRadialLutMetadata);

@@ -12,6 +12,8 @@ from gr_bh_xr.gpu.backend import select_vulkan_adapter
 from gr_bh_xr.gpu.generate_transfer_cubemap import (
     UNITY_CUBE_FACES,
     _face_directions,
+    _premultiply_disk_samples,
+    _validity_boundary_mask,
 )
 from gr_bh_xr.gpu.generate_lens_map import generate_gpu_lens_map
 from gr_bh_xr.types import MetricParams
@@ -300,6 +302,9 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     assert "_EventCube" in shader
     assert "_DiskOrder0Cube" in shader
     assert "_DiskOrder1Cube" in shader
+    assert "_DiskOrder0RedshiftCube" in shader
+    assert "_DiskOrder1RedshiftCube" in shader
+    assert "_UseDiskCoverageTransfer" in shader
     assert "_DiskColorLut" in shader
     assert "_DiskRadialLut" in shader
     assert "_UseDiskColorLut" in shader
@@ -330,6 +335,8 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     assert "lensDirectionToWorld(dir.xyz)" in shader
     assert "if (_UseFullSkyTransfer > 0.5)" in shader
     assert "diskAuditColor" in shader
+    assert "unpackDiskSample" in shader
+    assert "coverage = saturate(transfer.w)" in shader
     assert "sampleDiskColorLut" in shader
     assert "sampleDiskRadialLut" in shader
     assert "diskVisualLayer" in shader
@@ -338,6 +345,8 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     assert "g^4 weighting" in shader
     assert "texCUBE(_DiskOrder0Cube, localRay)" in shader
     assert "texCUBE(_DiskOrder1Cube, localRay)" in shader
+    assert "texCUBE(_DiskOrder0RedshiftCube, localRay)" in shader
+    assert "texCUBE(_DiskOrder1RedshiftCube, localRay)" in shader
     assert "texCUBE(_EscapeDirCube, localRay)" in shader
     assert "texCUBE(_EventCube, localRay)" in shader
     assert "fullSkyColor" in shader
@@ -362,6 +371,8 @@ def test_unity_lens_map_loader_keeps_raw_textures_linear():
     assert "LoadFullSkyCubemapIfPresent" in source
     assert "diskOrder0TransferCubeRgba16fBytes" in source
     assert "diskOrder1TransferCubeRgba16fBytes" in source
+    assert "diskOrder0RedshiftCubeRgba16fBytes" in source
+    assert "diskOrder1RedshiftCubeRgba16fBytes" in source
     assert "diskColorLutRgba32fBytes" in source
     assert "diskRadialLutRgba32fBytes" in source
     assert "DiskColorLutMetadata" in source
@@ -375,6 +386,9 @@ def test_unity_lens_map_loader_keeps_raw_textures_linear():
     assert '"_EventCube"' in source
     assert '"_DiskOrder0Cube"' in source
     assert '"_DiskOrder1Cube"' in source
+    assert '"_DiskOrder0RedshiftCube"' in source
+    assert '"_DiskOrder1RedshiftCube"' in source
+    assert '"_UseDiskCoverageTransfer"' in source
     assert '"_DiskColorLut"' in source
     assert '"_DiskRadialLut"' in source
     assert '"_UseDiskColorLut"' in source
@@ -519,6 +533,8 @@ def test_unity_editor_gate_automation_is_versioned():
     assert "escape_dir_unity_cube_rgba32f.bytes" in source
     assert "disk_order0_transfer_cube_rgba16f.bytes" in source
     assert "disk_order1_transfer_cube_rgba16f.bytes" in source
+    assert "disk_order0_redshift_cube_rgba16f.bytes" in source
+    assert "disk_order1_redshift_cube_rgba16f.bytes" in source
     assert "disk_color_lut_metadata.json" in source
     assert "disk_color_lut_rgba32f.bytes" in source
     assert "disk_radial_lut_metadata.json" in source
@@ -654,6 +670,39 @@ def test_full_sky_protractor_loader_matches_generated_cubemap_faces(tmp_path):
             sampled = module.bilinear_cubemap_direction(loaded, direction)
             np.testing.assert_allclose(sampled[:3], direction, atol=1.0e-6)
             assert sampled[3] == pytest.approx(1.0)
+
+
+def test_full_sky_disk_transfer_premultiplies_coverage_channels():
+    face_disk = np.zeros((2, 4, 4), dtype=np.float32)
+    face_disk[0, 0] = [6.0, 0.25, 0.97, 0.8]
+    face_disk[0, 1] = [7.0, -0.1, 0.99, 1.1]
+    face_disk[1, 2] = [12.0, 0.5, 0.86, 0.6]
+
+    transfer, redshift, coverage = _premultiply_disk_samples(face_disk)
+
+    np.testing.assert_allclose(coverage[0], [1.0, 1.0, 0.0, 0.0])
+    np.testing.assert_allclose(coverage[1], [0.0, 0.0, 1.0, 0.0])
+    np.testing.assert_allclose(transfer[0, 0], [6.0, 0.25, 0.97, 1.0])
+    np.testing.assert_allclose(redshift[0, 0], [0.8, 0.0, 0.0, 0.0])
+    np.testing.assert_allclose(redshift[1, 2], [0.6, 0.0, 0.0, 0.0])
+
+
+def test_disk_validity_boundary_mask_marks_both_sides_of_edge():
+    valid = np.asarray(
+        [
+            [False, False, False],
+            [False, True, True],
+            [False, False, False],
+        ],
+        dtype=bool,
+    )
+
+    boundary = _validity_boundary_mask(valid)
+
+    assert boundary[1, 1]
+    assert boundary[1, 2]
+    assert boundary[0, 1]
+    assert boundary[2, 2]
 
 
 def _load_module(path: Path, name: str):

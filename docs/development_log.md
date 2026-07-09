@@ -19,6 +19,36 @@ from here.
 
 ## Log
 
+### 2026-07-09 - Disk transfer coverage encoding
+
+- Goal: Remove blocky disk-edge artifacts in Unity disk playback without
+  changing the underlying Kerr geodesic or disk-transfer physics.
+- Changed files / components: Updated
+  `src/gr_bh_xr/gpu/generate_transfer_cubemap.py`,
+  `xr/unity_frontend/Runtime/BlackHoleLensMap.cs`,
+  `xr/unity_frontend/Runtime/BlackHoleLensStaticPreview.shader`,
+  `xr/unity_frontend/Editor/GRBHXRGateAutomation.cs`,
+  `tests/test_xr_export.py`, and `validation/quest_pcvr/README.md`.
+- Academic reason: A binary disk-hit validity texture becomes a display
+  artifact when a strong-lensing region magnifies one cubemap texel into many
+  screen pixels.  That artifact should not be confused with a physical disk
+  feature.
+- Physical correspondence: Disk-hit validity is now treated as sub-texel
+  coverage at valid/invalid boundaries.  The transfer cube stores
+  coverage-premultiplied `r_m`, `sin(phi_m)`, `cos(phi_m)`, and coverage, while
+  a companion redshift cube stores coverage-premultiplied `g_m`.  Unity divides
+  by coverage before using transfer quantities and uses coverage as opacity.
+- Assumptions and conventions: Four-by-four sub-rays are traced only for disk
+  validity boundary texels.  Legacy disk cubes without redshift companions still
+  fall back to the older `r_m, sin(phi_m), cos(phi_m), g_m` interpretation.
+- Validation: Added pure Python packing/boundary tests and Unity source tests
+  for the new redshift-cube and shader decoding path.
+- References: No new literature; this is a renderer sampling/asset-format
+  correction built on the existing disk-transfer validation.
+- Open issues / next steps: Regenerate display disk cubemaps before formal
+  Quest screenshots.  Stage B transported observer tetrads remain the next
+  physics track.
+
 ### 2026-07-09 - Unity Page-Thorne disk LUT path
 
 - Goal: Move the Unity disk visual path from a hard-coded color proxy toward
