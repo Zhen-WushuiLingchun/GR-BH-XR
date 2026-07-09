@@ -24,6 +24,9 @@ is replaced.
   `T_eff(r) proportional to F(r)^(1/4)`, and integrates blackbody spectra
   against analytic CIE 1931 color-matching fits for future disk-color LUTs.
   The result is dimensionless until an accretion-rate and mass scale are chosen.
+  For nonzero Kerr spin, the numerical radial integral is checked against the
+  Page-Thorne root/log closed form in `x = sqrt(r/M)`, using the roots of
+  `x^3 - 3x + 2a = 0`.
 
 Crossing order `m` is the zero-based order of true equatorial-plane crossings
 before annulus filtering. Crossings outside `r_ISCO <= r_m <= r_out` are not
@@ -110,6 +113,9 @@ Attributes record `M`, `a`, `inclination_deg`, `r_obs`, screen bounds,
   `L_z(r=6M)=sqrt(12)`, enforce `F(r_ISCO)=0`, produce positive flux outside
   the ISCO, and place a `6504K` blackbody near the expected D65-like
   chromaticity.
+- The Kerr `a=0.9` Page-Thorne numerical integral and closed-form expression
+  match to relative `3e-6`; `a=0.998` gives the expected thin-disk efficiency
+  anchor `1-E_ISCO = 0.320994`.
 
 Next validation target: add emissivity and observed-intensity buffers, then
 compare a rendered high-inclination Schwarzschild disk image against the

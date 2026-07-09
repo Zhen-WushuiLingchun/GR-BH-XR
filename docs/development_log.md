@@ -19,6 +19,30 @@ from here.
 
 ## Log
 
+### 2026-07-09 - Page-Thorne closed-form flux gate
+
+- Goal: Add an independent analytic reference for the CPU Page-Thorne flux
+  shape instead of validating the disk color seed only by limiting cases.
+- Changed files / components: Extended `src/gr_bh_xr/disk_spectrum.py` and
+  `tests/test_disk_spectrum.py`; updated disk equations, validation targets,
+  thin-disk transfer notes, and the disk-color source note.
+- Academic reason: The numerical radial integral should be checked against the
+  Page-Thorne closed form before it is used for disk color LUTs or Unity
+  shader replacement work.
+- Physical correspondence: The closed form uses `x = sqrt(r/M)` and the three
+  roots of `x^3 - 3 x + 2 a = 0`, matching the zero-torque Page-Thorne flux
+  shape for nonzero Kerr spin.
+- Assumptions and conventions: The root/log helper is currently the nonzero
+  spin analytic gate. The Schwarzschild limit remains covered by its own
+  circular-orbit and ISCO/flux tests.
+- Validation: `tests/test_disk_spectrum.py` compares the numerical integral
+  and closed form for `a = 0.9` across radii from just outside ISCO to `20M`
+  with relative tolerance `3e-6`; it also verifies the `a = 0.998`
+  radiative-efficiency anchor `1-E_ISCO = 0.320994`.
+- References: Existing `page1974diskAccretionStructure` source note.
+- Open issues / next steps: Add the redshifted temperature/intensity LUT output
+  and then wire it into the Unity disk shader as a separate visual gate.
+
 ### 2026-07-09 - ZAMO near-horizon probe and KS chart bridge
 
 - Goal: Add the first Stage B-2 bridge from exterior BL observer frames to

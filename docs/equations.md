@@ -203,6 +203,11 @@ F(r <= r_in) = 0
 T_eff(r) proportional to F(r)^(1/4)
 ```
 
+For nonzero Kerr spin, the CPU validation layer also implements the equivalent
+Page-Thorne root/log closed form in `x = sqrt(r/M)` using the three roots of
+`x^3 - 3 x + 2 a = 0`; this is the analytic gate for the numerical radial
+integral.
+
 The current CPU helper stores only the dimensionless shape: the accretion-rate,
 mass-to-SI scaling, and overall luminosity normalization remain display-asset
 parameters rather than validation constants.

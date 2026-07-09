@@ -353,6 +353,10 @@ Delta t_m is recorded and reported; its tighter threshold is set after display-s
   `L_z(r=6M)=sqrt(12)`, enforces zero torque at `r_ISCO`, checks positive flux
   outside the ISCO for Schwarzschild and Kerr, and verifies blackbody
   chromaticity against the expected D65-like Planckian locus near `6504K`.
+  The Page-Thorne numerical integral is independently checked against the
+  nonzero-spin root/log closed form based on `x^3 - 3x + 2a = 0`; the current
+  `a = 0.9` gate matches to relative `3e-6`. The near-extremal
+  `a = 0.998` ISCO efficiency anchor is `1-E_ISCO = 0.320994`.
   This seed is an asset-generation and validation path; the Unity shader still
   uses the older visual proxy until a separate disk-color integration gate
   replaces it.

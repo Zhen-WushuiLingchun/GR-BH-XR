@@ -23,6 +23,10 @@
 - Project use: `src/gr_bh_xr/disk_spectrum.py` uses the circular-orbit
   `E`, `L_z`, `Omega`, and radial integral structure as a dimensionless flux
   shape for future disk-color lookup tables.
+- Closed-form gate: the implementation also includes the Page-Thorne root/log
+  expression in `x = sqrt(r/M)` for nonzero spin, using the roots of
+  `x^3 - 3x + 2a = 0`. This gives an analytic reference independent of the
+  numerical radial integral.
 - Limitations: The current helper omits accretion-rate normalization, mass-to-SI
   scaling, limb darkening, returning radiation, and radiative-transfer optical
   depth. It is a validation/asset-generation seed, not yet a full disk image
@@ -61,5 +65,9 @@
     `E=sqrt(8/9)`, `L_z=sqrt(12)`;
   - zero flux at `r_ISCO`;
   - positive flux outside `r_ISCO`;
+  - agreement between numerical Page-Thorne integral and root/log closed form
+    for `a=0.9`;
+  - the near-extremal `a=0.998` radiative efficiency anchor
+    `1-E_ISCO=0.320994`;
   - a `6504K` blackbody chromaticity near the expected D65-like Planckian
     locus.

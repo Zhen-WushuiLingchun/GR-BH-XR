@@ -94,6 +94,47 @@ def page_thorne_flux_shape(
     return max(0.0, float(flux))
 
 
+def page_thorne_flux_shape_closed_form(
+    params: MetricParams,
+    r: float,
+    *,
+    prograde: bool = True,
+    r_in: float | None = None,
+) -> float:
+    """Return the Page-Thorne flux shape using the root/log closed form.
+
+    This is the independent analytic reference for the numerical integral in
+    `page_thorne_flux_shape`.  It follows the standard `x = sqrt(r / M)` form
+    with the three roots of `x^3 - 3 x + 2 a = 0`; the Schwarzschild limit is
+    intentionally left to the numerical integral until its separate limiting
+    expression is needed.
+    """
+
+    spin = abs(params.a) / params.M
+    signed_spin = spin if prograde else -spin
+    if abs(signed_spin) <= 1.0e-12:
+        raise ValueError("Closed-form Page-Thorne root expression is used for nonzero Kerr spin.")
+    if abs(signed_spin) >= 1.0:
+        raise ValueError("Closed-form Page-Thorne root expression requires |a| < M.")
+
+    inner = isco_radius(params, prograde=prograde) if r_in is None else float(r_in)
+    if r <= inner:
+        return 0.0
+
+    x = math.sqrt(float(r) / params.M)
+    x0 = math.sqrt(inner / params.M)
+    roots = _page_thorne_roots(signed_spin)
+    bracket = x - x0 - 1.5 * signed_spin * math.log(x / x0)
+    for idx, root in enumerate(roots):
+        other = [roots[j] for j in range(3) if j != idx]
+        coefficient = (root - signed_spin) ** 2 / (root * (root - other[0]) * (root - other[1]))
+        bracket -= 3.0 * coefficient * math.log((x - root) / (x0 - root))
+    denominator = x**4 * (x**3 - 3.0 * x + 2.0 * signed_spin)
+    if denominator <= 0.0 or not math.isfinite(denominator):
+        return math.nan
+    return float(1.5 * bracket / (params.M * denominator))
+
+
 def effective_temperature_shape(flux_shape: float) -> float:
     """Return dimensionless `T_eff` shape from dimensionless flux."""
 
@@ -188,6 +229,16 @@ def _omega_derivative(params: MetricParams, r: float, *, prograde: bool) -> floa
         keplerian_omega(params, r + step, prograde=prograde)
         - keplerian_omega(params, r - step, prograde=prograde)
     ) / (2.0 * step)
+
+
+def _page_thorne_roots(signed_spin: float) -> tuple[float, float, float]:
+    angle = math.acos(max(-1.0, min(1.0, -signed_spin))) / 3.0
+    roots = (
+        2.0 * math.cos(angle),
+        2.0 * math.cos(angle - 2.0 * math.pi / 3.0),
+        2.0 * math.cos(angle + 2.0 * math.pi / 3.0),
+    )
+    return tuple(sorted(roots))
 
 
 def _piecewise_gaussian(wave: np.ndarray, center: float, left_tau: float, right_tau: float) -> np.ndarray:
