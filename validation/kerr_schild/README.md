@@ -173,6 +173,24 @@ min_r = 1.4158898944 M
 - Add analytic-horizon-crossing comparison from the indexed
   horizon-penetrating literature when the formula contract is selected.
 
+## Stage B ZAMO / LNRF Observer Seed
+
+The first Stage B observer-frame gate adds an exterior Boyer-Lindquist ZAMO
+frame following the locally nonrotating-frame construction of
+`bardeen1972rotatingBlackHoles`.  This is not yet a transported worldline or a
+near-horizon roaming camera; it is the local frame primitive needed before
+worldline keyframes.
+
+Covered by `tests/test_observers.py`:
+
+- `omega = -g_tphi / g_phiphi` matches the analytic Kerr expression
+  `2 M a r / A`;
+- the lapse matches `sqrt(Sigma Delta / A)`;
+- the tetrad Gram matrix is `diag(-1, 1, 1, 1)`;
+- inside the equatorial ergoregion, the static observer tetrad fails while the
+  ZAMO tetrad remains orthonormal outside the outer horizon;
+- at `r = 1e4M`, the ZAMO tetrad converges to the static-observer tetrad.
+
 ## Task 2 WGSL Kerr-Schild Tracer Gate
 
 The first GPU KS path validates the horizon-penetrating Hamiltonian RHS and RK4

@@ -538,6 +538,11 @@ Stage B observer checks:
 
 - Observer worldlines must state their domain: static/ZAMO-like, circular,
   radial free fall, or explicitly accelerated craft.
+- The first ZAMO / LNRF tetrad gate must validate
+  `omega = -g_tphi / g_phiphi = 2 M a r / A`, the lapse
+  `alpha = sqrt(Sigma Delta / A)`, tetrad orthonormality, far-field convergence
+  to the static-observer tetrad, and static-frame failure inside the
+  ergoregion where the ZAMO frame remains defined outside `r_+`.
 - Camera tetrads must be transported along the worldline, with orthonormality
   drift recorded.
 - Large-radius/low-speed tetrad launch must reduce to the existing static

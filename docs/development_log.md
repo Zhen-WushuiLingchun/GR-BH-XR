@@ -19,6 +19,29 @@ from here.
 
 ## Log
 
+### 2026-07-09 - Stage B ZAMO observer tetrad seed
+
+- Goal: Start Stage B observer work with an exterior ZAMO / LNRF tetrad before
+  implementing worldline transport or near-horizon keyframe playback.
+- Changed files / components: Added `src/gr_bh_xr/observers.py` and
+  `tests/test_observers.py`; updated equations, validation targets, and the
+  Kerr-Schild validation README.
+- Academic reason: Static observers fail in the Kerr ergoregion. Near-horizon
+  transfer-map keyframes need observer frames whose physical domain is explicit
+  before any roaming or falling-camera claim.
+- Physical correspondence: The ZAMO angular velocity is
+  `omega = -g_tphi / g_phiphi = 2 M a r / A`, the lapse is
+  `alpha = sqrt(Sigma Delta / A)`, and the BL exterior tetrad is checked by
+  `g_mu nu e_(a)^mu e_(b)^nu = eta_(a)(b)`.
+- Validation: `tests/test_observers.py` verifies the analytic `omega` and
+  lapse formulae, tetrad orthonormality, static-tetrad failure inside the
+  equatorial ergoregion at `a = 0.9`, `r = 1.8M`, and far-field convergence
+  between ZAMO and static tetrads at `r = 1e4M`.
+- References: Existing `bardeen1972rotatingBlackHoles` LNRF reference.
+- Open issues / next steps: Add circular/free-fall worldlines and transported
+  tetrads; the current BL ZAMO helper is not yet a full near-horizon roaming
+  camera or Kerr-Schild transported frame.
+
 ### 2026-07-09 - Finite-sphere lens gate detection repair
 
 - Goal: Repair the finite-distance weak-lens gate after review showed that a

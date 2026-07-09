@@ -99,6 +99,38 @@ Schwarzschild shadow validation:
 b_c = 3 sqrt(3) M
 ```
 
+## Finite-Radius Observer Frames
+
+The first Stage B observer-frame target is the Boyer-Lindquist ZAMO / LNRF
+(`bardeen1972rotatingBlackHoles`) in the exterior domain. For the stationary
+axisymmetric Kerr metric,
+
+```text
+omega = -g_tphi / g_phiphi
+u_ZAMO^mu = alpha^-1 (1, 0, 0, omega)
+alpha = sqrt(g_tphi^2 - g_tt g_phiphi) / sqrt(g_phiphi)
+```
+
+Equivalently, in standard Kerr notation,
+
+```text
+A = (r^2 + a^2)^2 - a^2 Delta sin^2(theta)
+omega = 2 M a r / A
+alpha = sqrt(Sigma Delta / A)
+```
+
+The spatial triad used for the current exterior BL check is
+
+```text
+e_r^mu     = (0, 1 / sqrt(g_rr), 0, 0)
+e_theta^mu = (0, 0, 1 / sqrt(g_thetatheta), 0)
+e_phi^mu   = (0, 0, 0, 1 / sqrt(g_phiphi))
+```
+
+with `g_mu nu e_(a)^mu e_(b)^nu = eta_(a)(b)`.  Static-observer frames remain
+available only where `g_tt < 0`; inside the ergoregion the static tetrad is
+not physical while the ZAMO frame remains valid outside the horizon.
+
 ## Thin Disk Surface Transfer
 
 Initial optically thick thin-disk surface (`r_ISCO(a)` from
