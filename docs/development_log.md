@@ -19,6 +19,31 @@ from here.
 
 ## Log
 
+### 2026-07-09 - ZAMO near-horizon probe and KS chart bridge
+
+- Goal: Add the first Stage B-2 bridge from exterior BL observer frames to
+  Cartesian Kerr-Schild coordinates without claiming a transported worldline
+  tetrad.
+- Changed files / components: Extended `src/gr_bh_xr/observers.py`,
+  exposed `bl_to_ks_jacobian` from `src/gr_bh_xr/geodesic_ks.py`, expanded
+  `tests/test_observers.py`, and updated equation/validation notes.
+- Academic reason: Near-horizon keyframes will launch rays in Kerr-Schild
+  coordinates, but the reviewed ZAMO/LNRF frame is currently formulated in BL
+  exterior coordinates. The chart bridge lets those facts coexist explicitly.
+- Physical correspondence: The exterior probe records
+  `omega -> Omega_H = a/(2 M r_+)` and `lapse proportional to sqrt(r-r_+)`.
+  The pushed tetrad uses `partial x_KS^mu / partial x_BL^nu` and is verified
+  against the Kerr-Schild metric.
+- Assumptions and conventions: The pushed tetrad is a coordinate transform of
+  an exterior observer basis. It is not a Fermi-Walker or parallel-transported
+  camera frame and is not a formal horizon-crossing gate.
+- Validation: `tests/test_observers.py` checks the horizon-limit scaling probe
+  and the Kerr-Schild Gram matrix of the pushed ZAMO tetrad.
+- References: Existing `bardeen1972rotatingBlackHoles` and Kerr-Schild
+  validation references.
+- Open issues / next steps: Add actual observer worldlines and transported
+  tetrads before near-horizon roaming keyframe claims.
+
 ### 2026-07-09 - Page-Thorne disk color CPU seed
 
 - Goal: Start the physically stronger disk-color path that will eventually

@@ -8,6 +8,8 @@ from gr_bh_xr.observers import (
     analytic_kerr_frame_dragging_omega,
     analytic_zamo_lapse,
     gram_matrix,
+    ks_gram_matrix,
+    push_bl_tetrad_to_ks,
     static_observer_tetrad,
     zamo_angular_velocity,
     zamo_lapse,
@@ -62,3 +64,33 @@ def test_zamo_converges_to_static_observer_in_far_field():
     np.testing.assert_allclose(zamo.e_r, static.e_r, atol=1.0e-15)
     np.testing.assert_allclose(zamo.e_theta, static.e_theta, atol=1.0e-15)
     np.testing.assert_allclose(zamo.e_phi, static.e_phi, atol=2.0e-8)
+
+
+def test_zamo_horizon_limit_probe():
+    params = MetricParams(M=1.0, a=0.9)
+    r_plus = horizon_radius(params)
+    omega_h = params.a / (2.0 * params.M * r_plus)
+    theta = math.pi / 2.0
+
+    eps_values = [1.0e-3, 1.0e-4, 1.0e-5]
+    omega_errors = []
+    lapse_scaled = []
+    for eps in eps_values:
+        r = r_plus + eps
+        omega_errors.append(abs(zamo_angular_velocity(params, r, theta) / omega_h - 1.0))
+        lapse_scaled.append(zamo_lapse(params, r, theta) / math.sqrt(eps))
+
+    assert omega_errors[1] < 0.12 * omega_errors[0]
+    assert omega_errors[2] < 0.12 * omega_errors[1]
+    assert lapse_scaled[2] == pytest.approx(lapse_scaled[1], rel=5.0e-4)
+
+
+def test_pushed_zamo_tetrad_is_orthonormal_in_ks_chart():
+    params = MetricParams(M=1.0, a=0.9)
+    bl_tetrad = zamo_tetrad(params, r=3.2, theta=1.1, phi=0.4)
+
+    ks_tetrad = push_bl_tetrad_to_ks(params, bl_tetrad)
+    gram = ks_gram_matrix(params, ks_tetrad)
+
+    assert ks_tetrad.kind == "zamo_pushed_to_ks"
+    np.testing.assert_allclose(gram, np.diag([-1.0, 1.0, 1.0, 1.0]), atol=2.0e-10)

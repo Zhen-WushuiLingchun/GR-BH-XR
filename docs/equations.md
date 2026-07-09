@@ -133,6 +133,19 @@ with `g_mu nu e_(a)^mu e_(b)^nu = eta_(a)(b)`.  Static-observer frames remain
 available only where `g_tt < 0`; inside the ergoregion the static tetrad is
 not physical while the ZAMO frame remains valid outside the horizon.
 
+Near the outer horizon, the ZAMO probe is recorded as a coordinate-domain
+check rather than a formal pass/fail horizon gate:
+
+```text
+omega -> Omega_H = a / (2 M r_+)
+alpha proportional to sqrt(r - r_+)
+```
+
+The BL tetrad may be pushed into ingoing Cartesian Kerr-Schild coordinates by
+the exterior Jacobian `partial x_KS^mu / partial x_BL^nu`; the pushed tetrad is
+used only as a chart-transformed observer basis. A transported worldline tetrad
+and any claim inside the BL horizon remain separate Stage B work.
+
 ## Thin Disk Surface Transfer
 
 Initial optically thick thin-disk surface (`r_ISCO(a)` from

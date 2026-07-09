@@ -551,6 +551,14 @@ Stage B observer checks:
   `alpha = sqrt(Sigma Delta / A)`, tetrad orthonormality, far-field convergence
   to the static-observer tetrad, and static-frame failure inside the
   ergoregion where the ZAMO frame remains defined outside `r_+`.
+- The ZAMO near-horizon probe records `omega -> Omega_H` and
+  `alpha proportional to sqrt(r-r_+)` as exterior BL-coordinate behavior. It is
+  not a formal horizon-crossing gate because the BL ZAMO helper remains
+  exterior-only.
+- The exterior BL ZAMO tetrad may be pushed into the Cartesian Kerr-Schild
+  chart by the BL-to-KS Jacobian and must remain orthonormal under the
+  Kerr-Schild metric. This validates the chart bridge only; transported
+  worldline tetrads remain a later Stage B gate.
 - Camera tetrads must be transported along the worldline, with orthonormality
   drift recorded.
 - Large-radius/low-speed tetrad launch must reduce to the existing static

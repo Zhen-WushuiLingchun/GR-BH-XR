@@ -311,6 +311,18 @@ def ks_state_to_bl_state(params: MetricParams, state: RayState) -> RayState:
     return RayState(x=x_bl, p=p_bl)
 
 
+def bl_to_ks_jacobian(params: MetricParams, r: float, theta: float, phi_bl: float) -> FloatArray:
+    """Return the coordinate Jacobian `partial x_KS^mu / partial x_BL^nu`.
+
+    This public wrapper lets observer-frame code push contravariant tetrad
+    vectors into the horizon-penetrating chart without reaching into the
+    canonical-state transform internals. The Jacobian is singular at the BL
+    horizon, so it remains an exterior-domain helper.
+    """
+
+    return _bl_to_ks_jacobian(params, r, theta, phi_bl)
+
+
 def _extract_sphere_surface_hit(
     sol: object,
     *,

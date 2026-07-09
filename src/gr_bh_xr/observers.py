@@ -13,13 +13,30 @@ import math
 
 import numpy as np
 
+from .geodesic_ks import bl_to_ks_jacobian
 from .metric import covariant_metric, delta, horizon_radius, sigma
+from .metric_ks import bl_to_ks_cartesian, ks_metric
 from .types import FloatArray, MetricParams
 
 
 @dataclass(frozen=True)
 class BLObserverTetrad:
     """Contravariant orthonormal tetrad in Boyer-Lindquist coordinates."""
+
+    x: FloatArray
+    e_time: FloatArray
+    e_r: FloatArray
+    e_theta: FloatArray
+    e_phi: FloatArray
+    kind: str
+
+    def vectors(self) -> tuple[FloatArray, FloatArray, FloatArray, FloatArray]:
+        return self.e_time, self.e_r, self.e_theta, self.e_phi
+
+
+@dataclass(frozen=True)
+class KSObserverTetrad:
+    """Contravariant orthonormal tetrad in Cartesian Kerr-Schild coordinates."""
 
     x: FloatArray
     e_time: FloatArray
@@ -41,12 +58,29 @@ def frame_inner_product(params: MetricParams, x: FloatArray, u: FloatArray, v: F
     return float(np.asarray(u, dtype=np.float64) @ g @ np.asarray(v, dtype=np.float64))
 
 
+def ks_frame_inner_product(params: MetricParams, x: FloatArray, u: FloatArray, v: FloatArray) -> float:
+    """Return `g_mu nu u^mu v^nu` for KS-coordinate contravariant vectors."""
+
+    g = ks_metric(params, np.asarray(x, dtype=np.float64)[1:4])
+    return float(np.asarray(u, dtype=np.float64) @ g @ np.asarray(v, dtype=np.float64))
+
+
 def gram_matrix(params: MetricParams, tetrad: BLObserverTetrad) -> FloatArray:
     """Return the tetrad Gram matrix, expected to be diag(-1, 1, 1, 1)."""
 
     vectors = tetrad.vectors()
     return np.array(
         [[frame_inner_product(params, tetrad.x, left, right) for right in vectors] for left in vectors],
+        dtype=np.float64,
+    )
+
+
+def ks_gram_matrix(params: MetricParams, tetrad: KSObserverTetrad) -> FloatArray:
+    """Return the KS tetrad Gram matrix, expected to be diag(-1, 1, 1, 1)."""
+
+    vectors = tetrad.vectors()
+    return np.array(
+        [[ks_frame_inner_product(params, tetrad.x, left, right) for right in vectors] for left in vectors],
         dtype=np.float64,
     )
 
@@ -144,6 +178,31 @@ def static_observer_tetrad(
     )
 
 
+def push_bl_tetrad_to_ks(params: MetricParams, tetrad: BLObserverTetrad) -> KSObserverTetrad:
+    """Push an exterior BL tetrad into ingoing Cartesian Kerr-Schild coordinates.
+
+    This is a chart transform for existing exterior observer frames, not a
+    transported near-horizon worldline frame. It is used as the first Stage B-2
+    bridge so the already validated ZAMO/LNRF basis can initialize future
+    Kerr-Schild rays without changing its physical observer definition.
+    """
+
+    r = float(tetrad.x[1])
+    theta = float(tetrad.x[2])
+    phi_bl = float(tetrad.x[3])
+    jac = bl_to_ks_jacobian(params, r, theta, phi_bl)
+    xyz = bl_to_ks_cartesian(r, theta, phi_bl + _ks_phi_shift_from_jacobian(params, r, jac), params.a)
+    x_ks = np.array([float(tetrad.x[0]) + _ks_time_shift_from_jacobian(params, r, jac), *xyz], dtype=np.float64)
+    return KSObserverTetrad(
+        x=x_ks,
+        e_time=jac @ tetrad.e_time,
+        e_r=jac @ tetrad.e_r,
+        e_theta=jac @ tetrad.e_theta,
+        e_phi=jac @ tetrad.e_phi,
+        kind=f"{tetrad.kind}_pushed_to_ks",
+    )
+
+
 def analytic_kerr_frame_dragging_omega(params: MetricParams, r: float, theta: float) -> float:
     """Return `2 M a r / A`, used as an independent ZAMO omega check."""
 
@@ -162,3 +221,29 @@ def analytic_zamo_lapse(params: MetricParams, r: float, theta: float) -> float:
     dlt = delta(params, r)
     a_term = (r * r + a * a) ** 2 - a * a * dlt * s * s
     return math.sqrt(sigma(params, r, theta) * dlt / a_term)
+
+
+def _ks_phi_shift_from_jacobian(params: MetricParams, r: float, jac: FloatArray) -> float:
+    """Recover the KS azimuth shift used by the shared Jacobian helper.
+
+    The public Jacobian intentionally exposes only derivatives. For the pushed
+    tetrad position we need the matching coordinate map; keeping this local
+    avoids exposing another low-level transform while preserving exact
+    consistency with `geodesic_ks.bl_to_ks_jacobian`.
+    """
+
+    if abs(params.a) <= 1.0e-14:
+        return 0.0
+    # d phi_shift / dr is the Jacobian's implicit `a / Delta`; integrate with
+    # the same closed form as the canonical KS state transform.
+    rp = horizon_radius(params)
+    rm = params.M - math.sqrt(params.M * params.M - params.a * params.a)
+    gap = rp - rm
+    return params.a / gap * (math.log(abs(r - rp)) - math.log(abs(r - rm)))
+
+
+def _ks_time_shift_from_jacobian(params: MetricParams, r: float, jac: FloatArray) -> float:
+    rp = horizon_radius(params)
+    rm = params.M - math.sqrt(params.M * params.M - params.a * params.a)
+    gap = rp - rm
+    return (2.0 * params.M / gap) * (rp * math.log(abs(r - rp)) - rm * math.log(abs(r - rm)))

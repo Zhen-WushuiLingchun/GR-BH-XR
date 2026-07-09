@@ -189,7 +189,13 @@ Covered by `tests/test_observers.py`:
 - the tetrad Gram matrix is `diag(-1, 1, 1, 1)`;
 - inside the equatorial ergoregion, the static observer tetrad fails while the
   ZAMO tetrad remains orthonormal outside the outer horizon;
-- at `r = 1e4M`, the ZAMO tetrad converges to the static-observer tetrad.
+- at `r = 1e4M`, the ZAMO tetrad converges to the static-observer tetrad;
+- as `r -> r_+` from the exterior, `omega` approaches
+  `Omega_H = a / (2 M r_+)` and the lapse scales as `sqrt(r-r_+)`. This is a
+  recorded near-horizon exterior probe, not a formal horizon-crossing gate;
+- pushing the exterior ZAMO tetrad through the BL-to-KS Jacobian preserves the
+  tetrad Gram matrix under the Cartesian Kerr-Schild metric. This is a chart
+  bridge for launch initialization, not a transported worldline tetrad.
 
 ## Task 2 WGSL Kerr-Schild Tracer Gate
 
