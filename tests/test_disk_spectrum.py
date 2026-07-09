@@ -1,15 +1,20 @@
 import math
 
+import numpy as np
 import pytest
 
 from gr_bh_xr.disk import isco_radius
 from gr_bh_xr.disk_spectrum import (
     blackbody_linear_srgb,
+    blackbody_lut,
     blackbody_xyz,
     circular_orbit_energy_lz,
     effective_temperature_shape,
+    intensity_redshift_weight,
+    observed_temperature,
     page_thorne_flux_shape,
     page_thorne_flux_shape_closed_form,
+    write_blackbody_lut_npz,
 )
 from gr_bh_xr.types import MetricParams
 
@@ -68,3 +73,27 @@ def test_blackbody_cie_chromaticity_anchors() -> None:
     assert warm[0] > warm[2]
     assert hot[2] == pytest.approx(1.0, abs=1.0e-12)
     assert hot[2] > hot[0]
+
+
+def test_redshift_temperature_and_intensity_weights() -> None:
+    assert observed_temperature(6000.0, 0.5) == pytest.approx(3000.0)
+    assert intensity_redshift_weight(0.5, bolometric=False) == pytest.approx(0.125)
+    assert intensity_redshift_weight(0.5, bolometric=True) == pytest.approx(0.0625)
+
+
+def test_blackbody_lut_and_npz_writer(tmp_path) -> None:
+    temperatures, xyz, rgb = blackbody_lut(temperature_min_k=1000.0, temperature_max_k=10000.0, samples=8)
+
+    assert temperatures.shape == (8,)
+    assert xyz.shape == (8, 3)
+    assert rgb.shape == (8, 3)
+    assert np.all(np.diff(temperatures) > 0.0)
+    assert np.all(np.isfinite(rgb))
+    assert rgb[0, 0] > rgb[0, 2]
+    assert rgb[-1, 2] >= rgb[-1, 0]
+
+    out = tmp_path / "disk_color_lut.npz"
+    summary = write_blackbody_lut_npz(out, temperature_min_k=1000.0, temperature_max_k=10000.0, samples=8)
+    loaded = np.load(out)
+    assert summary["samples"] == 8
+    assert loaded["linear_srgb"].shape == (8, 3)

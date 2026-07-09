@@ -19,6 +19,30 @@ from here.
 
 ## Log
 
+### 2026-07-09 - Redshifted blackbody LUT generator
+
+- Goal: Finish the CPU-side color asset seed by separating redshifted thermal
+  chromaticity from physical brightness weighting.
+- Changed files / components: Extended `src/gr_bh_xr/disk_spectrum.py`; added
+  `src/gr_bh_xr/generate_disk_color_lut.py`; extended disk-spectrum tests and
+  thin-disk validation notes.
+- Academic reason: The disk shader needs an auditable route from transfer-map
+  redshift `g_m` and disk temperature to displayed color before the current
+  visual proxy can be replaced.
+- Physical correspondence: The helper applies `T_obs = g T_emit`, records
+  `g^3` for specific intensity and `g^4` for bolometric blackbody weighting,
+  and writes a blackbody chromaticity LUT in max-normalized linear sRGB.
+- Assumptions and conventions: The LUT stores hue/chromaticity only. Brightness
+  must remain a separate channel such as `F(r) * g^p`; this prevents the
+  max-normalized color table from discarding physical luminosity information.
+- Validation: `tests/test_disk_spectrum.py` checks the redshift law, `g^3` and
+  `g^4` weights, monotonic LUT temperatures, finite colors, and `.npz` output
+  shape.
+- References: Existing `wyman2013cieMatchingFits` and CIE 1931 data reference.
+- Open issues / next steps: Package the LUT into Unity texture assets and add a
+  disk shader audit mode that displays Page-Thorne color/brightness against the
+  CPU transfer plots.
+
 ### 2026-07-09 - Page-Thorne closed-form flux gate
 
 - Goal: Add an independent analytic reference for the CPU Page-Thorne flux

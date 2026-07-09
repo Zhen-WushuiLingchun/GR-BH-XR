@@ -9,6 +9,7 @@ shader is upgraded.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import numpy as np
 
@@ -221,6 +222,79 @@ def blackbody_linear_srgb(temperature_k: float) -> tuple[float, float, float]:
         return math.nan, math.nan, math.nan
     rgb = rgb / max_channel
     return float(rgb[0]), float(rgb[1]), float(rgb[2])
+
+
+def observed_temperature(emit_temperature_k: float, redshift_g: float) -> float:
+    """Return `T_obs = g T_emit` for a thermal emitter."""
+
+    if emit_temperature_k <= 0.0:
+        raise ValueError("emit_temperature_k must be positive.")
+    if redshift_g <= 0.0 or not math.isfinite(redshift_g):
+        return math.nan
+    return float(redshift_g * emit_temperature_k)
+
+
+def intensity_redshift_weight(redshift_g: float, *, bolometric: bool = True) -> float:
+    """Return the invariant-intensity redshift weight.
+
+    For specific intensity, `I_nu / nu^3` gives a `g^3` factor.  For a
+    bolometric/blackbody-integrated proxy, the additional frequency integration
+    gives `g^4`.
+    """
+
+    if redshift_g < 0.0 or not math.isfinite(redshift_g):
+        return math.nan
+    power = 4 if bolometric else 3
+    return float(redshift_g**power)
+
+
+def blackbody_lut(
+    *,
+    temperature_min_k: float = 1000.0,
+    temperature_max_k: float = 40000.0,
+    samples: int = 256,
+) -> tuple[FloatArray, FloatArray, FloatArray]:
+    """Return `(temperature_k, xyz_chromaticity, linear_srgb)` LUT arrays."""
+
+    if temperature_min_k <= 0.0 or temperature_max_k <= temperature_min_k:
+        raise ValueError("Invalid blackbody LUT temperature range.")
+    if samples < 2:
+        raise ValueError("blackbody LUT requires at least two samples.")
+    temperatures = np.geomspace(temperature_min_k, temperature_max_k, samples, dtype=np.float64)
+    xyz = np.array([blackbody_xyz(float(value)) for value in temperatures], dtype=np.float64)
+    rgb = np.array([blackbody_linear_srgb(float(value)) for value in temperatures], dtype=np.float64)
+    return temperatures, xyz, rgb
+
+
+def write_blackbody_lut_npz(
+    out: str | Path,
+    *,
+    temperature_min_k: float = 1000.0,
+    temperature_max_k: float = 40000.0,
+    samples: int = 256,
+) -> dict[str, float | int | str]:
+    """Write a compressed CPU blackbody color LUT for later texture packaging."""
+
+    temperatures, xyz, rgb = blackbody_lut(
+        temperature_min_k=temperature_min_k,
+        temperature_max_k=temperature_max_k,
+        samples=samples,
+    )
+    path = Path(out)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        path,
+        temperature_k=temperatures,
+        xyz_chromaticity=xyz,
+        linear_srgb=rgb,
+    )
+    return {
+        "path": str(path),
+        "samples": int(samples),
+        "temperature_min_k": float(temperature_min_k),
+        "temperature_max_k": float(temperature_max_k),
+        "color_space": "max-normalized linear sRGB chromaticity",
+    }
 
 
 def _omega_derivative(params: MetricParams, r: float, *, prograde: bool) -> float:

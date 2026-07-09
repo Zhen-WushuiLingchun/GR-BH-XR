@@ -63,6 +63,13 @@ python -m gr_bh_xr.generate_disk_transfer --spin 0 --inclination-deg 80 --grid 6
 python -m gr_bh_xr.plot_disk_transfer --input outputs/task6/disk_transfer_luminet_i80_64_even.h5 --out outputs/task6/luminet_equal_radius_i80_64_even.pdf
 ```
 
+For the CPU blackbody color LUT seed:
+
+```text
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.generate_disk_color_lut --temperature-min-k 1000 --temperature-max-k 40000 --samples 256 --out outputs/task6/disk_color_lut_1000_40000_256.npz
+```
+
 This figure is a geometric transfer diagnostic: it shows direct (`m = 0`) and
 secondary (`m = 1`) equal-radius curves plus the direct-image redshift buffer.
 It is not yet a Luminet intensity image because emissivity, optical depth, and
@@ -116,6 +123,9 @@ Attributes record `M`, `a`, `inclination_deg`, `r_obs`, screen bounds,
 - The Kerr `a=0.9` Page-Thorne numerical integral and closed-form expression
   match to relative `3e-6`; `a=0.998` gives the expected thin-disk efficiency
   anchor `1-E_ISCO = 0.320994`.
+- Redshift application helpers enforce `T_obs = g T_emit`, `g^3` specific
+  intensity weighting, `g^4` bolometric weighting, and a reproducible
+  blackbody LUT file with monotonic temperature samples and finite colors.
 
 Next validation target: add emissivity and observed-intensity buffers, then
 compare a rendered high-inclination Schwarzschild disk image against the

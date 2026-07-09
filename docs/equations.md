@@ -222,7 +222,14 @@ I_nu_o = g^3 I_nu_e(nu_o / g)
 CPU asset generation approximates the CIE 1931 2-degree color matching curves
 with the analytic Wyman-Sloan-Shirley fits (`wyman2013cieMatchingFits`), then
 maps the integrated XYZ chromaticity to max-normalized linear sRGB. This is a
-color-LUT seed; it is not yet a full calibrated radiometric renderer.
+color-LUT seed; it is not yet a full calibrated radiometric renderer. The LUT
+stores color/chromaticity, while brightness remains a separate physical channel:
+
+```text
+specific intensity weight: g^3
+bolometric blackbody weight: g^4
+display brightness proxy: F(r) times selected g^p weight
+```
 
 ## Simplified GRRT
 
