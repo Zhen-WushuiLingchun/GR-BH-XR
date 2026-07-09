@@ -335,8 +335,12 @@ object_hit_p_t
 object_hit_redshift_g
 ```
 
-The event function is `|x - c| - R = 0`, terminal on inward crossing.  For a
-static object outside the ergoregion, the recorded redshift is
+The CPU reference does not rely on a direct endpoint sign change of
+`|x - c| - R`: a large DOP853 step can enter and exit a finite target while
+both accepted endpoints remain outside. Instead, the tracer records the
+closest-approach event, checks whether that closest point lies inside the
+sphere, and bisects dense output back to the front surface. For a static
+object outside the ergoregion, the recorded redshift is
 
 ```text
 g = E / (-p_mu u_static^mu),    u_static^t = 1 / sqrt(-g_tt)
@@ -344,6 +348,10 @@ g = E / (-p_mu u_static^mu),    u_static^t = 1 / sqrt(-g_tt)
 
 If `g_tt >= 0`, a static worldline is not physical and the redshift helper
 returns `NaN`.
+
+The static-object redshift is normalized to an observer at infinity. A
+near-horizon camera must divide by its own `-p_mu u_obs^mu` factor rather than
+reuse this value directly.
 
 Current smoke check:
 
@@ -386,16 +394,31 @@ target radius = 5M
 samples = 81
 event counts = object_hit 18, escape 63
 theta_E = 0.011547005383792516 rad
-measured hit-band center = 0.011622782606623652 rad
-relative error = 6.56e-3
+measured hit-band center = 0.011695993464709488 rad
+relative offset from first-order theta_E = 1.290e-2
+second-order Schwarzschild prediction = 0.011694267539429537 rad
+relative residual vs second-order prediction = 1.49e-4
+event counts = object_hit 33, escape 48
 ```
 
 The target has finite radius, so the validation compares the center of the
 hit-angle band with the point-source Einstein angle rather than requiring an
-exact point equality.  The nearby `D_L = 200M`, `D_LS = 100M` configuration is
-not used as this strict gate because it is already close enough to the hole for
-higher-order finite-distance/strong-field corrections to move the image angle
-by several percent.
+exact point equality.  The percent-level first-order offset is not a solver
+failure: using Keeton & Petters' Schwarzschild weak-deflection expansion,
+
+```text
+alpha_hat = 4M / b + 15 pi M^2 / (4 b^2)
+theta ~= theta_E * (1 + 15 pi M / (32 b_E)),    b_E = D_L theta_E
+```
+
+predicts the measured ring angle to `1.5e-4` relative residual.  Scaling both
+distances by four gives a first-order offset `6.414e-3`, second-order
+prediction offset `6.377e-3`, and second-order residual `3.73e-5`.
+
+The nearby `D_L = 200M`, `D_LS = 100M` configuration is not used as this strict
+gate because it is already close enough to the hole for higher-order
+finite-distance/strong-field corrections to move the image angle by several
+percent.
 
 ### GPU finite-sphere intersection gate
 
@@ -417,22 +440,23 @@ D_L = 1000M
 D_LS = 500M
 target radius = 10M
 samples = 81
-CPU events: object_hit 34, escape 47
+CPU events: object_hit 35, escape 46
 GPU events: object_hit 35, escape 46
-event_mismatch_count = 1
+event_mismatch_count = 0
 object_edge_band_count = 8
-edge_band_event_mismatch_count = 1
+edge_band_event_mismatch_count = 0
 stable_event_mismatch_count = 0
 stable_event_agreement = 1.0
 gpu_failure_outside_none = 0
-gpu max |H| = 6.49e-6
+gpu max |H| = 6.37e-6
 ```
 
-The single full-grid mismatch is on the angular edge of the finite target.
-This is the same kind of boundary-band effect as the disk annulus edge: CPU
-DOP853 root finding and GPU f32 fixed-step endpoint detection disagree by about
-one angular sample at the target limb.  The stable interior/exterior region is
-the pass/fail metric.
+The WGSL kernel now checks the closest point on each RK4 segment, not only the
+step endpoint. This removes the previous one-sample limb mismatch for the
+formal gate. The object edge band remains reported separately because future
+f32 segment checks and CPU dense-output surface refinement can still differ at
+the target limb in tighter configurations. The stable interior/exterior region
+is the pass/fail metric.
 
 ### KS frustum realtime benchmark
 

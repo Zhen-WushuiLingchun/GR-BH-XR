@@ -463,15 +463,19 @@ Task 2 WGSL Kerr-Schild checks:
 Task 3 finite-distance object checks:
 
 - `src/gr_bh_xr/geodesic_ks.py` may trace a spherical finite-distance target
-  in Cartesian Kerr-Schild coordinates with event function
-  `|x - c| - R = 0`. The object-hit event records the hit affine parameter,
-  hit position, canonical `p_t`, and static-object redshift when the static
-  worldline is physically allowed.
+  in Cartesian Kerr-Schild coordinates. The CPU reference detects the
+  closest-approach event, verifies whether the closest point is inside the
+  target, and bisects dense output back to the first surface hit. This avoids
+  missing a finite sphere when a DOP853 step enters and exits the target before
+  the next accepted endpoint. The object-hit event records the hit affine
+  parameter, hit position, canonical `p_t`, and static-object redshift when the
+  static worldline is physically allowed.
 - Static finite-distance object redshift uses
   `g = E / (-p_mu u_static^mu)` with `u_static^t = 1 / sqrt(-g_tt)`. If
   `g_tt >= 0`, the static worldline is inside the ergoregion and the helper
   must return `NaN`; callers must not silently render such an object as a
-  static emitter.
+  static emitter. This value is normalized to an observer at infinity; a
+  near-horizon observer must include its own `-p_mu u_obs^mu` factor.
 - The current CPU seed is validated by a Schwarzschild straight-through
   sphere-hit regression that recovers the front-surface intersection and
   `sqrt(1 - 2M/r_hit)` static redshift. It is not yet the finite-distance
@@ -479,24 +483,31 @@ Task 3 finite-distance object checks:
 - `python -m gr_bh_xr.validate_ks_finite_lens` records the weak-field
   finite-distance lensing anchor. It uses Schneider, Ehlers, and Falco's
   standard point-lens Einstein angle
-  `theta_E^2 = 4M D_LS / (D_L D_S)` only in a far-field configuration where
-  the thin-lens approximation is expected to be percent-level accurate. The
-  current `D_L = 10000M`, `D_LS = 5000M`, target-radius `5M`, `81`-sample
-  run gives `theta_E = 0.0115470054 rad`, measured hit-band center
-  `0.0116227826 rad`, and relative error `6.56e-3`.
+  `theta_E^2 = 4M D_LS / (D_L D_S)` as the first-order scale and Keeton &
+  Petters' Schwarzschild second-order bending coefficient
+  `alpha_hat = 4M / b + 15 pi M^2 / (4 b^2)` to interpret the leading
+  percent-level offset. The current `D_L = 10000M`, `D_LS = 5000M`,
+  target-radius `5M`, `81`-sample run gives
+  `theta_E = 0.0115470054 rad`, refined hit-band center
+  `0.0116959935 rad`, first-order relative offset `1.290e-2`, second-order
+  prediction `0.0116942675 rad`, and second-order residual `1.49e-4`.
+  A scaled `D_L = 40000M`, `D_LS = 20000M` run gives first-order offset
+  `6.414e-3`, second-order prediction offset `6.377e-3`, and second-order
+  residual `3.73e-5`.
 - Formal Task 3 GPU acceptance remains pending: add a WGSL sphere-intersection
   path and CPU/GPU comparison. The nearer `D_L = 200M`, `D_LS = 100M`
   configuration is treated as a finite-distance demo configuration rather than
   a strict first-order weak-field pass/fail gate.
 - `python -m gr_bh_xr.gpu.validate_ks_finite_object` records the first WGSL
-  finite-sphere intersection comparison. The current `D_L = 1000M`,
-  `D_LS = 500M`, target-radius `10M`, `81`-sample run has CPU event counts
-  `object_hit = 34`, `escape = 47`; GPU event counts `object_hit = 35`,
-  `escape = 46`; total event mismatch `1`; object-edge-band mismatch `1`;
+  finite-sphere intersection comparison. The WGSL path checks the closest point
+  on each RK4 segment rather than only the step endpoint, matching the CPU
+  closest-approach semantics at validation scale. The current `D_L = 1000M`,
+  `D_LS = 500M`, target-radius `10M`, `81`-sample run has CPU and GPU event
+  counts `object_hit = 35`, `escape = 46`; total event mismatch `0`;
   stable-event mismatch `0`; stable-event agreement `1.0`; GPU failures `0`.
-  The object edge band is reported separately because fixed-step f32 endpoint
-  detection expands/contracts the finite target boundary by about one angular
-  sample, analogous to the disk-annulus edge band.
+  The object edge band remains reported separately for future configurations
+  where f32 segment detection and CPU dense-output surface refinement may
+  still differ at the finite target limb.
 
 Task 4 frustum realtime benchmark:
 

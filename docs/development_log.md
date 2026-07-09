@@ -19,6 +19,39 @@ from here.
 
 ## Log
 
+### 2026-07-09 - Finite-sphere lens gate detection repair
+
+- Goal: Repair the finite-distance weak-lens gate after review showed that a
+  large DOP853 step could pass through a finite target without an endpoint
+  sign change.
+- Changed files / components: Updated `src/gr_bh_xr/geodesic_ks.py` sphere
+  target detection, `src/gr_bh_xr/validate_ks_finite_lens.py`,
+  `src/gr_bh_xr/gpu/trace_ks.py`, finite-lens/GPU tests, references, and
+  Kerr-Schild validation documentation.
+- Academic reason: A finite-distance object gate must test the physical
+  geodesic path, not an artifact of accepted solver step endpoints. The
+  previous weak-lens number underreported the real offset from the first-order
+  Einstein angle because true sphere hits were being missed.
+- Physical correspondence: The CPU reference now records closest approach and
+  bisects dense output to the front sphere surface. The GPU path checks the
+  closest point on each RK4 segment. The weak-field lens anchor now compares
+  the refined hit-band center against both the Schneider/Ehlers/Falco
+  first-order Einstein angle and Keeton/Petters' second-order Schwarzschild
+  bending correction.
+- Validation: Formal `D_L = 10000M`, `D_LS = 5000M`, target-radius `5M` run
+  reported `object_hit = 33`, `escape = 48`, refined center
+  `0.011695993464709488 rad`, first-order relative offset `1.290e-2`, and
+  second-order residual `1.49e-4`. A scaled `D_L = 40000M`,
+  `D_LS = 20000M` run reported first-order offset `6.414e-3` and
+  second-order residual `3.73e-5`. The GPU finite-object gate now has CPU/GPU
+  counts `object_hit = 35`, `escape = 46`, total mismatch `0`, stable
+  agreement `1.0`, and GPU `max |H| = 6.37e-6`.
+- References: Added `keeton2005testingGravityLensingI`; updated
+  `references/source_notes/2026-07-08-finite-distance-lensing-anchor.md`.
+- Open issues / next steps: The finite-sphere target is still a static sphere.
+  Moving finite objects and near-horizon observer redshift require the Stage B
+  observer worldline/tetrad work.
+
 ### 2026-07-08 - Kerr-Schild frustum realtime benchmark
 
 - Goal: Add the Task 4 decision gate that measures whether the current WGSL

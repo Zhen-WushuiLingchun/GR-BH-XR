@@ -138,7 +138,7 @@ def trace_state_ks(
 
     events = [capture_event, escape_event]
     disk_event_index: int | None = None
-    sphere_event_index: int | None = None
+    sphere_closest_event_index: int | None = None
     initial_z = float(y0[3])
     initial_dx = ks_inverse_metric(params, y0[1:4]) @ y0[4:]
     initial_dz = float(initial_dx[3])
@@ -166,13 +166,14 @@ def trace_state_ks(
         center = np.asarray(sphere_target.center_xyz, dtype=np.float64)
         radius = float(sphere_target.radius)
 
-        def sphere_event(_lam: float, y: np.ndarray) -> float:
-            return float(np.linalg.norm(y[1:4] - center) - radius)
+        def sphere_closest_event(_lam: float, y: np.ndarray) -> float:
+            dx = ks_inverse_metric(params, y[1:4]) @ y[4:]
+            return float(np.dot(y[1:4] - center, dx[1:4]))
 
-        sphere_event.terminal = True  # type: ignore[attr-defined]
-        sphere_event.direction = -1.0  # type: ignore[attr-defined]
-        sphere_event_index = len(events)
-        events.append(sphere_event)
+        sphere_closest_event.terminal = False  # type: ignore[attr-defined]
+        sphere_closest_event.direction = 1.0  # type: ignore[attr-defined]
+        sphere_closest_event_index = len(events)
+        events.append(sphere_closest_event)
 
     def rhs(lam: float, y: np.ndarray) -> np.ndarray:
         nonlocal last_lam
@@ -190,6 +191,7 @@ def trace_state_ks(
             atol=cfg.atol,
             max_step=cfg.max_step,
             events=events,
+            dense_output=sphere_target is not None,
         )
     except Exception as exc:  # pragma: no cover - defensive path
         y_values = np.array(rhs_history[:-1] if len(rhs_history) > 1 else rhs_history, dtype=np.float64)
@@ -201,30 +203,46 @@ def trace_state_ks(
     else:
         disk_crossing_lambda = sol.t_events[disk_event_index]
         disk_crossing_states = sol.y_events[disk_event_index]
-    if sphere_event_index is None:
+    if sphere_closest_event_index is None:
         sphere_hit_lambda = np.array([], dtype=np.float64)
         sphere_hit_states = np.empty((0, y0.size), dtype=np.float64)
     else:
-        sphere_hit_lambda = sol.t_events[sphere_event_index]
-        sphere_hit_states = sol.y_events[sphere_event_index]
+        sphere_hit_lambda, sphere_hit_states = _extract_sphere_surface_hit(
+            sol,
+            center=np.asarray(sphere_target.center_xyz, dtype=np.float64),
+            radius=float(sphere_target.radius),
+            closest_lambdas=sol.t_events[sphere_closest_event_index],
+        )
+
+    y_values = sol.y.T
+    lambda_end = float(sol.t[-1])
+    if sphere_hit_lambda.size:
+        hit_lambda = float(sphere_hit_lambda[0])
+        keep = sol.t < hit_lambda
+        y_values = np.vstack([sol.y.T[keep], sphere_hit_states[0]])
+        lambda_end = hit_lambda
+        if disk_crossing_lambda.size:
+            disk_mask = disk_crossing_lambda <= hit_lambda
+            disk_crossing_lambda = disk_crossing_lambda[disk_mask]
+            disk_crossing_states = disk_crossing_states[disk_mask]
 
     event = "invalid"
     message = sol.message
     if sol.success:
-        if sol.t_events[0].size:
+        if sphere_hit_lambda.size:
+            event = "object_hit"
+        elif sol.t_events[0].size:
             event = "capture"
         elif sol.t_events[1].size:
             event = "escape"
-        elif sphere_hit_lambda.size:
-            event = "object_hit"
         elif cfg.stop_on_disk and disk_crossing_lambda.size:
             event = "disk_crossing"
         else:
             message = "Kerr-Schild trace reached max_lambda without capture or escape."
     return _diagnostics_ks(
         params,
-        sol.y.T,
-        float(sol.t[-1]),
+        y_values,
+        lambda_end,
         event,
         message,
         disk_crossing_lambda=disk_crossing_lambda,
@@ -291,6 +309,69 @@ def ks_state_to_bl_state(params: MetricParams, state: RayState) -> RayState:
     jac = _bl_to_ks_jacobian(params, r, theta, phi_bl)
     p_bl = jac.T @ state.p
     return RayState(x=x_bl, p=p_bl)
+
+
+def _extract_sphere_surface_hit(
+    sol: object,
+    *,
+    center: np.ndarray,
+    radius: float,
+    closest_lambdas: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return the first sphere-entry state from dense output, if any.
+
+    A sign-change event on `|x-c|-R` can miss a ray that enters and exits the
+    finite sphere within one accepted DOP853 step.  The closest-approach event
+    is non-terminal and survives that case; if its distance is inside the
+    sphere, dense output is then bisected back to the front surface.
+    """
+
+    dense = getattr(sol, "sol", None)
+    if dense is None:
+        return np.array([], dtype=np.float64), np.empty((0, 8), dtype=np.float64)
+
+    times = np.asarray(getattr(sol, "t"), dtype=np.float64)
+
+    def distance_minus_radius(lam: float) -> float:
+        y = np.asarray(dense(float(lam)), dtype=np.float64)
+        return float(np.linalg.norm(y[1:4] - center) - radius)
+
+    candidate_lambdas: list[float] = []
+    for lam in np.asarray(closest_lambdas, dtype=np.float64):
+        if lam >= 0.0 and distance_minus_radius(float(lam)) <= 1.0e-10 * max(1.0, radius):
+            candidate_lambdas.append(float(lam))
+    for lam in times:
+        if lam >= 0.0 and distance_minus_radius(float(lam)) <= 1.0e-10 * max(1.0, radius):
+            candidate_lambdas.append(float(lam))
+
+    if not candidate_lambdas:
+        return np.array([], dtype=np.float64), np.empty((0, 8), dtype=np.float64)
+
+    if distance_minus_radius(0.0) <= 0.0:
+        hit_lambda = 0.0
+        return np.array([hit_lambda], dtype=np.float64), np.asarray([dense(hit_lambda)], dtype=np.float64)
+
+    for candidate in sorted(set(candidate_lambdas)):
+        if distance_minus_radius(candidate) > 0.0:
+            continue
+        lo = 0.0
+        for lam in reversed(times[times < candidate]):
+            if distance_minus_radius(float(lam)) > 0.0:
+                lo = float(lam)
+                break
+        if distance_minus_radius(lo) <= 0.0:
+            continue
+        hi = float(candidate)
+        for _ in range(80):
+            mid = 0.5 * (lo + hi)
+            if distance_minus_radius(mid) > 0.0:
+                lo = mid
+            else:
+                hi = mid
+        hit_lambda = hi
+        return np.array([hit_lambda], dtype=np.float64), np.asarray([dense(hit_lambda)], dtype=np.float64)
+
+    return np.array([], dtype=np.float64), np.empty((0, 8), dtype=np.float64)
 
 
 def _diagnostics_ks(

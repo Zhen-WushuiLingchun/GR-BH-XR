@@ -224,6 +224,7 @@ def test_gpu_kerr_schild_finite_object_validator_reports_stable_agreement(tmp_pa
         command="pytest finite object gpu compare",
     )
 
+    assert summary["schema"] == "gr-bh-xr.tier2.ks_finite_object_gpu_compare.v2"
     assert summary["stable_event_mismatch_count"] == 0
     assert summary["stable_event_agreement"] == 1.0
     assert summary["gpu_failure_outside_none"] == 0

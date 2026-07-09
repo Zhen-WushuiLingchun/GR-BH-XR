@@ -534,6 +534,17 @@ fn load_state(idx: u32) -> StateKS {
     );
 }
 
+fn segment_hits_sphere(start_pos: vec3<f32>, end_pos: vec3<f32>, center: vec3<f32>, radius: f32) -> bool {
+    let segment = end_pos - start_pos;
+    let denom = dot(segment, segment);
+    var closest = end_pos;
+    if (denom > 0.0) {
+        let u = clamp(dot(center - start_pos, segment) / denom, 0.0, 1.0);
+        closest = start_pos + u * segment;
+    }
+    return distance(closest, center) <= radius;
+}
+
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let idx = gid.x;
@@ -562,7 +573,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             if (dh <= 0.0 || lambda_used >= max_lambda) {
                 break;
             }
+            let prev_pos = vec3<f32>(s.x, s.y, s.z);
             s = rk4_step_ks(s, dh);
+            let curr_pos = vec3<f32>(s.x, s.y, s.z);
             lambda_used = lambda_used + dh;
             step_count = step_count + 1u;
             if (state_is_bad(s)) {
@@ -581,7 +594,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 failure = FAILURE_NONE;
                 break;
             }
-            if (sphere_radius > 0.0 && distance(vec3<f32>(s.x, s.y, s.z), sphere_center) <= sphere_radius) {
+            if (sphere_radius > 0.0 && segment_hits_sphere(prev_pos, curr_pos, sphere_center, sphere_radius)) {
                 event = EVENT_OBJECT_HIT;
                 failure = FAILURE_NONE;
                 break;

@@ -754,3 +754,29 @@ ignored `references/pdfs/local_only/`.
   closer configurations such as `D_L = 200M`, `D_LS = 100M` show higher-order
   finite-distance/strong-field corrections and are not strict pass/fail uses of
   this equation.
+
+### Keeton Petters 2005 - Compact-Object Lensing Expansion
+
+- Source path: `references/source_notes/2026-07-08-finite-distance-lensing-anchor.md`
+- PDF path: Not stored; arXiv source available, PDF not needed for this gate.
+- Code review path: Not applicable; paper reference.
+- BibTeX key: `keeton2005testingGravityLensingI`
+- Stable locator: https://doi.org/10.1103/PhysRevD.72.104006
+- Search date: 2026-07-09
+- Search terms: Keeton Petters 2005 compact object lensing second order
+  Schwarzschild deflection 15 pi over 4
+- Why added: The finite-distance sphere-target gate now resolves the
+  percent-level offset from the first-order Einstein angle and needs a
+  citable second-order weak-field bending coefficient.
+- Short summary: Develops a post-post-Newtonian lensing formalism for compact
+  objects in static, spherically symmetric spacetimes and tabulates the
+  Schwarzschild weak-deflection expansion.
+- Relevant equations / assumptions / methods: Schwarzschild bending expansion
+  `alpha_hat = 4M / b + 15 pi M^2 / (4 b^2)` and the corresponding
+  second-order correction to the aligned Einstein ring.
+- Project use: Reference for the v2 `gr_bh_xr.validate_ks_finite_lens` gate,
+  which compares the refined finite-sphere hit-band center against both the
+  first-order Einstein angle and the second-order Schwarzschild prediction.
+- Limitations / open questions: Still a weak-field expansion; strong-field
+  finite objects and near-horizon observers require direct KS tracing rather
+  than this perturbative anchor.

@@ -19,7 +19,7 @@ from gr_bh_xr.types import MetricParams, RayState, TraceConfig
 from gr_bh_xr.validate_ks_finite_lens import einstein_angle_point_lens
 
 
-SCHEMA = "gr-bh-xr.tier2.ks_finite_object_gpu_compare.v1"
+SCHEMA = "gr-bh-xr.tier2.ks_finite_object_gpu_compare.v2"
 
 
 def validate_ks_finite_object_gpu(
