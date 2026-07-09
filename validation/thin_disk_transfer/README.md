@@ -5,7 +5,9 @@ Phase: Task 6 CPU thin-disk transfer function.
 This is the first formal disk-transfer data product. It records where screen
 rays cross an equatorial, geometrically thin Keplerian disk and computes the
 Cunningham-style redshift factor for those crossings. It does not yet assign a
-disk emissivity, optical depth, or observed intensity.
+disk optical depth or observed intensity. A CPU-side Page-Thorne/color seed now
+exists as a validation and asset-generation path before the Unity visual proxy
+is replaced.
 
 ## Physical Model
 
@@ -17,6 +19,11 @@ disk emissivity, optical depth, or observed intensity.
 - Emitter: equatorial circular Keplerian four-velocity.
 - Redshift: `g = nu_obs / nu_emit = E / (u^t (E - Omega L_z))`, using the
   asymptotic observer convention already used by the Bardeen screen camera.
+- Emissivity/color seed: `src/gr_bh_xr/disk_spectrum.py` computes a
+  Page-Thorne-style zero-torque flux shape `F(r)`, converts it to
+  `T_eff(r) proportional to F(r)^(1/4)`, and integrates blackbody spectra
+  against analytic CIE 1931 color-matching fits for future disk-color LUTs.
+  The result is dimensionless until an accretion-rate and mass scale are chosen.
 
 Crossing order `m` is the zero-based order of true equatorial-plane crossings
 before annulus filtering. Crossings outside `r_ISCO <= r_m <= r_out` are not
@@ -99,6 +106,10 @@ Attributes record `M`, `a`, `inclination_deg`, `r_obs`, screen bounds,
   finite and positive.
 - A Luminet-style equal-radius diagnostic can be produced with separate
   direct and secondary panels from the same HDF5 transfer file.
+- CPU disk-color helpers reproduce `E(r=6M)=sqrt(8/9)`,
+  `L_z(r=6M)=sqrt(12)`, enforce `F(r_ISCO)=0`, produce positive flux outside
+  the ISCO, and place a `6504K` blackbody near the expected D65-like
+  chromaticity.
 
 Next validation target: add emissivity and observed-intensity buffers, then
 compare a rendered high-inclination Schwarzschild disk image against the

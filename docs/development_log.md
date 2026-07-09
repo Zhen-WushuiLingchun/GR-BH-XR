@@ -19,6 +19,35 @@ from here.
 
 ## Log
 
+### 2026-07-09 - Page-Thorne disk color CPU seed
+
+- Goal: Start the physically stronger disk-color path that will eventually
+  replace the Unity power-law disk emissivity proxy.
+- Changed files / components: Added `src/gr_bh_xr/disk_spectrum.py` and
+  `tests/test_disk_spectrum.py`; updated equation, validation, thin-disk
+  transfer, and reference documentation.
+- Academic reason: The visual disk shader should not become the permanent disk
+  emission model. A Page-Thorne flux shape and blackbody/CIE color path provide
+  auditable CPU-side asset-generation primitives before Unity integration.
+- Physical correspondence: The helper implements circular-orbit `E`, `L_z`,
+  Keplerian `Omega`, a Page-Thorne-style zero-torque radial flux integral,
+  `T_eff proportional to F^(1/4)`, Planck spectra, analytic CIE 1931 XYZ fits,
+  and max-normalized linear sRGB chromaticity.
+- Assumptions and conventions: The flux helper returns a dimensionless shape;
+  accretion-rate normalization, black-hole mass scaling, absolute luminosity,
+  limb darkening, optical depth, and Page-Thorne returning radiation are not
+  included in this seed.
+- Validation: `tests/test_disk_spectrum.py` checks the Schwarzschild circular
+  orbit anchor `E(r=6M)=sqrt(8/9)`, `L_z(r=6M)=sqrt(12)`, zero flux at ISCO,
+  positive Schwarzschild/Kerr flux outside ISCO, and a `6504K` blackbody
+  chromaticity near the expected D65-like Planckian locus.
+- References: Added `page1974diskAccretionStructure`,
+  `wyman2013cieMatchingFits`, `cie2019xyz1931Dataset`, and
+  `references/source_notes/2026-07-09-disk-color-sources.md`.
+- Open issues / next steps: Export a display LUT and replace the Unity disk
+  proxy in a separate audited gate; add Page-Thorne normalization choices before
+  making physical luminosity claims.
+
 ### 2026-07-09 - Stage B ZAMO observer tetrad seed
 
 - Goal: Start Stage B observer work with an exterior ZAMO / LNRF tetrad before

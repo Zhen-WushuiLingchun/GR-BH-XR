@@ -629,6 +629,28 @@ ignored `references/pdfs/local_only/`.
 - Project use: Provenance for the redshift and intensity transform in Phase 4.
 - Limitations / open questions: None for citation.
 
+### Page Thorne 1974 - Relativistic Thin-Disk Flux
+
+- Source path: `references/source_notes/2026-07-09-disk-color-sources.md`
+- PDF path: Not stored; pre-arXiv classic, no open-access PDF (see DOI/ADS).
+- Code review path: Not applicable; paper reference.
+- BibTeX key: `page1974diskAccretionStructure`
+- Stable locator: https://ui.adsabs.harvard.edu/abs/1974ApJ...191..499P/abstract
+- Search date: 2026-07-09
+- Search terms: Page Thorne 1974 black hole accretion disk flux zero torque
+- Why added: The Unity disk shader currently uses a visual emissivity proxy;
+  the next physically stronger disk-color path needs a citable thin-disk flux
+  profile with a zero-torque ISCO boundary.
+- Short summary: Derives the time-averaged relativistic thin-disk structure and
+  flux profile around a black hole.
+- Relevant equations / assumptions / methods: Circular-orbit `E`, `L_z`,
+  `Omega`, zero-torque inner boundary, and radial flux integral.
+- Project use: Source for the CPU Page-Thorne flux-shape helper and future disk
+  color LUT generation.
+- Limitations / open questions: The current implementation keeps only the
+  dimensionless shape; accretion-rate, mass scaling, limb darkening, and full
+  radiative transfer remain later gates.
+
 ### Luminet 1979 - First Thin-Disk Black-Hole Image
 
 - Source path: `references/source_notes/2026-06-29-foundational-analytic-references.md`
@@ -780,3 +802,25 @@ ignored `references/pdfs/local_only/`.
 - Limitations / open questions: Still a weak-field expansion; strong-field
   finite objects and near-horizon observers require direct KS tracing rather
   than this perturbative anchor.
+
+### Wyman Sloan Shirley 2013 - Analytic CIE XYZ Fits
+
+- Source path: `references/source_notes/2026-07-09-disk-color-sources.md`
+- PDF path: Not stored; open web/PDF source available from JCGT.
+- Code review path: Not applicable; paper reference.
+- BibTeX key: `wyman2013cieMatchingFits`; data key `cie2019xyz1931Dataset`
+- Stable locator: https://jcgt.org/published/0002/02/01/
+- Search date: 2026-07-09
+- Search terms: Wyman Sloan Shirley analytic CIE XYZ color matching functions
+- Why added: Disk color LUT generation needs a deterministic CPU path from a
+  redshifted blackbody spectrum to display-space RGB without vendoring a large
+  color-matching table.
+- Short summary: Provides compact analytic approximations to the CIE 1931
+  2-degree color matching functions.
+- Relevant equations / assumptions / methods: Piecewise Gaussian fits for
+  `x_bar(lambda)`, `y_bar(lambda)`, and `z_bar(lambda)`; CIE 1931 table remains
+  the underlying reference data.
+- Project use: Source for `blackbody_xyz` / `blackbody_linear_srgb` CPU helpers
+  that will generate disk color lookup tables.
+- Limitations / open questions: The helper returns max-normalized linear sRGB
+  chromaticity for visualization assets, not calibrated absolute luminance.

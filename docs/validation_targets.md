@@ -348,6 +348,14 @@ Delta t_m is recorded and reported; its tighter threshold is set after display-s
   documented visual proxy only. A physically stronger disk visual mode must add
   a Page-Thorne-style relativistic thin-disk flux model with its source indexed
   in `references/` before replacing the proxy in claims.
+- The CPU Page-Thorne/color seed in `src/gr_bh_xr/disk_spectrum.py` validates
+  the Schwarzschild circular-orbit anchor `E(r=6M)=sqrt(8/9)`,
+  `L_z(r=6M)=sqrt(12)`, enforces zero torque at `r_ISCO`, checks positive flux
+  outside the ISCO for Schwarzschild and Kerr, and verifies blackbody
+  chromaticity against the expected D65-like Planckian locus near `6504K`.
+  This seed is an asset-generation and validation path; the Unity shader still
+  uses the older visual proxy until a separate disk-color integration gate
+  replaces it.
 
 ## Phase 5 MR Overlay
 

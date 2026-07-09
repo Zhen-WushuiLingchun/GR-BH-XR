@@ -14,9 +14,11 @@ keys resolve in `references/references.bib`; provenance notes are in
 - Carter constant and separability: `carter1968kerr`.
 - ISCO and locally nonrotating frame: `bardeen1972rotatingBlackHoles`.
 - Disk redshift / transfer function: `cunningham1975kerrDiskSpectrum`.
+- Relativistic thin-disk flux profile: `page1974diskAccretionStructure`.
 - Direct / secondary disk images: `luminet1979blackHoleImage`.
 - Shadow / lensing ring / photon ring and higher-order image scaling:
   `gralla2019shadowsPhotonRings`, `gralla2020lensingKerr`.
+- Blackbody color matching approximation: `wyman2013cieMatchingFits`.
 - Horizon-penetrating Kerr geodesic motivation and future cross-checks:
   `bakun2024kerrHorizonPenetrating`.
 - Simplified and polarized GRRT: `younsi2012grrt`, `bronzwaer2018raptor`,
@@ -175,6 +177,34 @@ Bolometric approximation:
 ```text
 I_o approx sum_m g_m^4 I_e
 ```
+
+The first physically stronger disk color seed uses a Page-Thorne-style
+zero-torque flux shape before it replaces the Unity power-law visual proxy
+(`page1974diskAccretionStructure`):
+
+```text
+F(r) proportional to -Omega_,r / (E - Omega L_z)^2
+                  * integral from r_in to r of (E - Omega L_z) L_z,r dr
+r_in = r_ISCO
+F(r <= r_in) = 0
+T_eff(r) proportional to F(r)^(1/4)
+```
+
+The current CPU helper stores only the dimensionless shape: the accretion-rate,
+mass-to-SI scaling, and overall luminosity normalization remain display-asset
+parameters rather than validation constants.
+
+Observed blackbody color follows the invariant-intensity redshift convention:
+
+```text
+T_obs = g T_emit
+I_nu_o = g^3 I_nu_e(nu_o / g)
+```
+
+CPU asset generation approximates the CIE 1931 2-degree color matching curves
+with the analytic Wyman-Sloan-Shirley fits (`wyman2013cieMatchingFits`), then
+maps the integrated XYZ chromaticity to max-normalized linear sRGB. This is a
+color-LUT seed; it is not yet a full calibrated radiometric renderer.
 
 ## Simplified GRRT
 
