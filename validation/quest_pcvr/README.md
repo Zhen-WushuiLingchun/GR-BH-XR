@@ -258,6 +258,20 @@ when they are present in the full-sky transfer directory, with baseline
 `F(r) g^4` weighting and `T_obs = g T_emit` color. Keplerian pattern advection
 and time-delay use still require exporting `Delta t_m` into Unity disk textures.
 
+For the desktop disk-color A/B gate, first place the four LUT files in the same
+full-sky transfer directory as the disk cubemaps, then run:
+
+```powershell
+$unity = 'D:\unity\Hub\Editor\6000.5.2f1\Editor\Unity.exe'
+$proj = 'F:\UnityProjects\GRBHXR_PCVR_Gate\GRBHXR_PCVR_Gate'
+& $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRGateAutomation.BatchCaptureFullSkyDiskVisualLutGate -grbhxrCaptureDir 'F:\UnityProjects\GRBHXR_PCVR_Gate\unity_gate_fullsky_disk_visual_lut' -grbhxrFullSkyTransferDir Assets/GRBHXR/FullSkyTransferDisk1024
+```
+
+The gate writes `unity_gate_fullsky_disk_visual_proxy_square_1024.png` and
+`unity_gate_fullsky_disk_visual_lut_square_1024.png`. The first screenshot
+forces the historical proxy ramp; the second forces the Page-Thorne/blackbody
+LUT path using the same transfer map.
+
 ## PCVR Sky-Shell First-Run Scene
 
 The Quest first-run scene should use the full-sky transfer map on a camera-

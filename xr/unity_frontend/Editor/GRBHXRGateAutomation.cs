@@ -102,6 +102,56 @@ namespace GRBHXR.EditorTools
             AssetDatabase.Refresh();
         }
 
+        [MenuItem("GR-BH-XR/Gate/Capture Full-Sky Disk Visual LUT Gate")]
+        public static void CaptureFullSkyDiskVisualLutGate()
+        {
+            var options = GateOptions.FromCommandLine();
+            options.UseAngularWindow = true;
+            options.DiskVisualMode = true;
+            ConfigurePreview(options, GateSkyboxKind.Nasa);
+            var material = AssetDatabase.LoadAssetAtPath<Material>(options.MaterialPath);
+            if (material == null)
+            {
+                throw new MissingReferenceException($"Material not found: {options.MaterialPath}");
+            }
+
+            ApplyActiveLensMapsToMaterial(material);
+            material.SetFloat("_UseDiskColorLut", 0.0f);
+            EditorUtility.SetDirty(material);
+            CaptureYaw(
+                options,
+                0.0f,
+                "unity_gate_fullsky_disk_visual_proxy_square_1024.png",
+                1024,
+                1024,
+                refreshLensMaps: false
+            );
+
+            ApplyActiveLensMapsToMaterial(material);
+            if (
+                material.GetFloat("_UseDiskColorLut") <= 0.5f ||
+                material.GetTexture("_DiskColorLut") == null ||
+                material.GetTexture("_DiskRadialLut") == null
+            )
+            {
+                throw new MissingReferenceException(
+                    "Disk LUT gate requires _DiskColorLut and _DiskRadialLut textures. " +
+                    "Generate disk_color_lut_rgba32f.bytes and disk_radial_lut_rgba32f.bytes in the full-sky transfer directory."
+                );
+            }
+            material.SetFloat("_UseDiskColorLut", 1.0f);
+            EditorUtility.SetDirty(material);
+            CaptureYaw(
+                options,
+                0.0f,
+                "unity_gate_fullsky_disk_visual_lut_square_1024.png",
+                1024,
+                1024,
+                refreshLensMaps: false
+            );
+            AssetDatabase.Refresh();
+        }
+
         [MenuItem("GR-BH-XR/Gate/Configure PCVR Sky-Shell First Run")]
         public static void ConfigurePcvrSkyShellFirstRun()
         {
@@ -140,6 +190,11 @@ namespace GRBHXR.EditorTools
         public static void BatchCaptureFullSkyDiskAuditGate()
         {
             CaptureFullSkyDiskAuditGate();
+        }
+
+        public static void BatchCaptureFullSkyDiskVisualLutGate()
+        {
+            CaptureFullSkyDiskVisualLutGate();
         }
 
         public static void BatchConfigurePcvrSkyShellFirstRun()
@@ -456,7 +511,13 @@ namespace GRBHXR.EditorTools
             );
         }
 
-        private static void Capture(GateOptions options, string fileName, int width, int height)
+        private static void Capture(
+            GateOptions options,
+            string fileName,
+            int width,
+            int height,
+            bool refreshLensMaps = true
+        )
         {
             var camera = Camera.main;
             if (camera == null)
@@ -472,16 +533,19 @@ namespace GRBHXR.EditorTools
                 }
             }
 
-            foreach (var lensMap in UnityEngine.Object.FindObjectsByType<BlackHoleLensMap>())
+            if (refreshLensMaps)
             {
-                if (lensMap == null || !lensMap.gameObject.activeInHierarchy)
+                foreach (var lensMap in UnityEngine.Object.FindObjectsByType<BlackHoleLensMap>())
                 {
-                    continue;
-                }
-                var renderer = lensMap.GetComponent<MeshRenderer>();
-                if (renderer != null && renderer.sharedMaterial != null)
-                {
-                    lensMap.ApplyToMaterial(renderer.sharedMaterial);
+                    if (lensMap == null || !lensMap.gameObject.activeInHierarchy)
+                    {
+                        continue;
+                    }
+                    var renderer = lensMap.GetComponent<MeshRenderer>();
+                    if (renderer != null && renderer.sharedMaterial != null)
+                    {
+                        lensMap.ApplyToMaterial(renderer.sharedMaterial);
+                    }
                 }
             }
 
@@ -518,7 +582,25 @@ namespace GRBHXR.EditorTools
             }
         }
 
-        private static void CaptureYaw(GateOptions options, float yawDeg, string fileName, int width, int height)
+        private static void ApplyActiveLensMapsToMaterial(Material material)
+        {
+            foreach (var lensMap in UnityEngine.Object.FindObjectsByType<BlackHoleLensMap>())
+            {
+                if (lensMap != null && lensMap.gameObject.activeInHierarchy)
+                {
+                    lensMap.ApplyToMaterial(material);
+                }
+            }
+        }
+
+        private static void CaptureYaw(
+            GateOptions options,
+            float yawDeg,
+            string fileName,
+            int width,
+            int height,
+            bool refreshLensMaps = true
+        )
         {
             var camera = Camera.main;
             if (camera == null)
@@ -527,7 +609,7 @@ namespace GRBHXR.EditorTools
             }
             camera.transform.rotation = Quaternion.Euler(0.0f, yawDeg, 0.0f);
             Debug.Log($"GR-BH-XR angular yaw capture: yaw={yawDeg:F1} deg, file={fileName}");
-            Capture(options, fileName, width, height);
+            Capture(options, fileName, width, height, refreshLensMaps);
         }
 
         private static Cubemap EnsureQuadrantCubemap(string path)

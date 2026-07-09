@@ -506,6 +506,8 @@ def test_unity_editor_gate_automation_is_versioned():
     assert "BatchCaptureAngularWindowYawGate" in source
     assert "BatchCaptureFullSkyProtractorYawGate" in source
     assert "BatchCaptureFullSkyDiskAuditGate" in source
+    assert "BatchCaptureFullSkyDiskVisualLutGate" in source
+    assert "CaptureFullSkyDiskVisualLutGate" in source
     assert "BatchConfigurePcvrSkyShellFirstRun" in source
     assert "ConfigurePcvrSkyShellFirstRun" in source
     assert "CaptureYaw" in source
@@ -538,6 +540,9 @@ def test_unity_editor_gate_automation_is_versioned():
     assert "unity_gate_fullsky_protractor_yaw_004_square_1024.png" in source
     assert "unity_gate_fullsky_disk_audit_m0_square_1024.png" in source
     assert "unity_gate_fullsky_disk_audit_m1_square_1024.png" in source
+    assert "unity_gate_fullsky_disk_visual_proxy_square_1024.png" in source
+    assert "unity_gate_fullsky_disk_visual_lut_square_1024.png" in source
+    assert "refreshLensMaps: false" in source
     assert "LensSkyShell" in source
     assert "BlackHoleLensAnchor" in source
     assert "BlackHoleXrSkyShell" in source
