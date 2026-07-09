@@ -323,6 +323,18 @@ def bl_to_ks_jacobian(params: MetricParams, r: float, theta: float, phi_bl: floa
     return _bl_to_ks_jacobian(params, r, theta, phi_bl)
 
 
+def bl_to_ks_time_shift(params: MetricParams, r: float) -> float:
+    """Return the ingoing Kerr-Schild time shift used by BL->KS transforms."""
+
+    return _time_shift(params, r)
+
+
+def bl_to_ks_phi_shift(params: MetricParams, r: float) -> float:
+    """Return the ingoing Kerr-Schild azimuth shift used by BL->KS transforms."""
+
+    return _phi_shift(params, r)
+
+
 def _extract_sphere_surface_hit(
     sol: object,
     *,

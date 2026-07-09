@@ -56,6 +56,18 @@ def test_page_thorne_closed_form_matches_integral_gate() -> None:
         assert integral == pytest.approx(closed, rel=3.0e-6, abs=1.0e-12)
 
 
+def test_page_thorne_closed_form_keeps_mass_scaling() -> None:
+    base = MetricParams(M=1.0, a=0.9)
+    scaled = MetricParams(M=2.0, a=1.8)
+
+    for radius_over_m in [3.0, 5.0, 10.0, 20.0]:
+        base_closed = page_thorne_flux_shape_closed_form(base, radius_over_m)
+        scaled_integral = page_thorne_flux_shape(scaled, 2.0 * radius_over_m, integration_samples=4096)
+        scaled_closed = page_thorne_flux_shape_closed_form(scaled, 2.0 * radius_over_m)
+        assert scaled_integral == pytest.approx(scaled_closed, rel=3.0e-6, abs=1.0e-12)
+        assert scaled_closed == pytest.approx(base_closed / 4.0, rel=2.0e-15)
+
+
 def test_near_extremal_isco_efficiency_anchor() -> None:
     params = MetricParams(M=1.0, a=0.998)
     energy_isco, _ = circular_orbit_energy_lz(params, isco_radius(params))

@@ -123,6 +123,8 @@ Attributes record `M`, `a`, `inclination_deg`, `r_obs`, screen bounds,
 - The Kerr `a=0.9` Page-Thorne numerical integral and closed-form expression
   match to relative `3e-6`; `a=0.998` gives the expected thin-disk efficiency
   anchor `1-E_ISCO = 0.320994`.
+- A mass-scaling regression with `M=2`, `a/M=0.9` requires the closed form to
+  scale as `M^-2`, matching the numerical integral.
 - Redshift application helpers enforce `T_obs = g T_emit`, `g^3` specific
   intensity weighting, `g^4` bolometric weighting, and a reproducible
   blackbody LUT file with monotonic temperature samples and finite colors.

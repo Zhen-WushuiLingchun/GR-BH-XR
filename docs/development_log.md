@@ -19,6 +19,28 @@ from here.
 
 ## Log
 
+### 2026-07-09 - Page-Thorne mass scaling and KS shift dedupe
+
+- Goal: Fix the hidden non-`M=1` Page-Thorne closed-form scaling error found in
+  review and remove duplicated BL-to-KS shift formulae from the observer bridge.
+- Changed files / components: Updated `src/gr_bh_xr/disk_spectrum.py`,
+  `src/gr_bh_xr/geodesic_ks.py`, `src/gr_bh_xr/observers.py`,
+  `tests/test_disk_spectrum.py`, and thin-disk validation docs.
+- Academic reason: The project defaults to `M=1` for validation, but formulas
+  that carry physical dimensions must remain correct when asset generation or
+  parameter scans choose another mass scale.
+- Physical correspondence: The Page-Thorne flux has dimension `M^-2`; the
+  root/log closed form now divides by `M^2`, matching the numerical integral.
+  The ZAMO-to-KS bridge now reuses the canonical BL-to-KS time and azimuth
+  shift helpers from `geodesic_ks.py`.
+- Validation: Targeted tests check `M=2`, `a/M=0.9` against the numerical
+  integral and require the closed-form value to scale by `1/4` relative to the
+  same `r/M` at `M=1`.
+- References: Existing `page1974diskAccretionStructure`.
+- Open issues / next steps: Integrate the LUT into a Unity disk audit mode and
+  keep the flux normalization choices explicit before physical luminosity
+  claims.
+
 ### 2026-07-09 - Redshifted blackbody LUT generator
 
 - Goal: Finish the CPU-side color asset seed by separating redshifted thermal

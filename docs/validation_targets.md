@@ -357,6 +357,8 @@ Delta t_m is recorded and reported; its tighter threshold is set after display-s
   nonzero-spin root/log closed form based on `x^3 - 3x + 2a = 0`; the current
   `a = 0.9` gate matches to relative `3e-6`. The near-extremal
   `a = 0.998` ISCO efficiency anchor is `1-E_ISCO = 0.320994`.
+  A separate `M = 2`, `a/M = 0.9` regression requires the closed form to scale
+  as `M^-2`, matching the numerical integral's physical flux dimension.
   Redshift application tests enforce `T_obs = g T_emit`, `g^3` specific
   intensity weighting, `g^4` bolometric weighting, and a reproducible
   `.npz` blackbody LUT with monotonic temperature samples and finite

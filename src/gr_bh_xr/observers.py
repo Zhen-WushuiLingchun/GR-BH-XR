@@ -13,7 +13,7 @@ import math
 
 import numpy as np
 
-from .geodesic_ks import bl_to_ks_jacobian
+from .geodesic_ks import bl_to_ks_jacobian, bl_to_ks_phi_shift, bl_to_ks_time_shift
 from .metric import covariant_metric, delta, horizon_radius, sigma
 from .metric_ks import bl_to_ks_cartesian, ks_metric
 from .types import FloatArray, MetricParams
@@ -191,8 +191,8 @@ def push_bl_tetrad_to_ks(params: MetricParams, tetrad: BLObserverTetrad) -> KSOb
     theta = float(tetrad.x[2])
     phi_bl = float(tetrad.x[3])
     jac = bl_to_ks_jacobian(params, r, theta, phi_bl)
-    xyz = bl_to_ks_cartesian(r, theta, phi_bl + _ks_phi_shift_from_jacobian(params, r, jac), params.a)
-    x_ks = np.array([float(tetrad.x[0]) + _ks_time_shift_from_jacobian(params, r, jac), *xyz], dtype=np.float64)
+    xyz = bl_to_ks_cartesian(r, theta, phi_bl + bl_to_ks_phi_shift(params, r), params.a)
+    x_ks = np.array([float(tetrad.x[0]) + bl_to_ks_time_shift(params, r), *xyz], dtype=np.float64)
     return KSObserverTetrad(
         x=x_ks,
         e_time=jac @ tetrad.e_time,
@@ -221,29 +221,3 @@ def analytic_zamo_lapse(params: MetricParams, r: float, theta: float) -> float:
     dlt = delta(params, r)
     a_term = (r * r + a * a) ** 2 - a * a * dlt * s * s
     return math.sqrt(sigma(params, r, theta) * dlt / a_term)
-
-
-def _ks_phi_shift_from_jacobian(params: MetricParams, r: float, jac: FloatArray) -> float:
-    """Recover the KS azimuth shift used by the shared Jacobian helper.
-
-    The public Jacobian intentionally exposes only derivatives. For the pushed
-    tetrad position we need the matching coordinate map; keeping this local
-    avoids exposing another low-level transform while preserving exact
-    consistency with `geodesic_ks.bl_to_ks_jacobian`.
-    """
-
-    if abs(params.a) <= 1.0e-14:
-        return 0.0
-    # d phi_shift / dr is the Jacobian's implicit `a / Delta`; integrate with
-    # the same closed form as the canonical KS state transform.
-    rp = horizon_radius(params)
-    rm = params.M - math.sqrt(params.M * params.M - params.a * params.a)
-    gap = rp - rm
-    return params.a / gap * (math.log(abs(r - rp)) - math.log(abs(r - rm)))
-
-
-def _ks_time_shift_from_jacobian(params: MetricParams, r: float, jac: FloatArray) -> float:
-    rp = horizon_radius(params)
-    rm = params.M - math.sqrt(params.M * params.M - params.a * params.a)
-    gap = rp - rm
-    return (2.0 * params.M / gap) * (rp * math.log(abs(r - rp)) - rm * math.log(abs(r - rm)))

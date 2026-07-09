@@ -133,7 +133,7 @@ def page_thorne_flux_shape_closed_form(
     denominator = x**4 * (x**3 - 3.0 * x + 2.0 * signed_spin)
     if denominator <= 0.0 or not math.isfinite(denominator):
         return math.nan
-    return float(1.5 * bracket / (params.M * denominator))
+    return float(1.5 * bracket / (params.M * params.M * denominator))
 
 
 def effective_temperature_shape(flux_shape: float) -> float:
