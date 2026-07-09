@@ -159,6 +159,10 @@ namespace GRBHXR.EditorTools
             TextAsset escapeCubeBytes = null;
             TextAsset diskOrder0CubeBytes = null;
             TextAsset diskOrder1CubeBytes = null;
+            TextAsset diskColorLutMetadata = null;
+            TextAsset diskColorLutBytes = null;
+            TextAsset diskRadialLutMetadata = null;
+            TextAsset diskRadialLutBytes = null;
             bool useFullSkyTransfer = !string.IsNullOrWhiteSpace(options.FullSkyTransferDir);
             if (useFullSkyTransfer)
             {
@@ -170,6 +174,18 @@ namespace GRBHXR.EditorTools
                 );
                 diskOrder1CubeBytes = AssetDatabase.LoadAssetAtPath<TextAsset>(
                     $"{options.FullSkyTransferDir}/disk_order1_transfer_cube_rgba16f.bytes"
+                );
+                diskColorLutMetadata = AssetDatabase.LoadAssetAtPath<TextAsset>(
+                    $"{options.FullSkyTransferDir}/disk_color_lut_metadata.json"
+                );
+                diskColorLutBytes = AssetDatabase.LoadAssetAtPath<TextAsset>(
+                    $"{options.FullSkyTransferDir}/disk_color_lut_rgba32f.bytes"
+                );
+                diskRadialLutMetadata = AssetDatabase.LoadAssetAtPath<TextAsset>(
+                    $"{options.FullSkyTransferDir}/disk_radial_lut_metadata.json"
+                );
+                diskRadialLutBytes = AssetDatabase.LoadAssetAtPath<TextAsset>(
+                    $"{options.FullSkyTransferDir}/disk_radial_lut_rgba32f.bytes"
                 );
             }
             var metadata = JsonUtility.FromJson<LensMapMetadata>(metadataAsset.text);
@@ -220,6 +236,10 @@ namespace GRBHXR.EditorTools
             material.SetFloat("_DiskBrightness", 1.0f);
             material.SetFloat("_DiskGPower", 3.0f);
             material.SetFloat("_DiskSecondaryScale", 0.32f);
+            material.SetFloat(
+                "_UseDiskColorLut",
+                diskColorLutBytes != null && diskRadialLutBytes != null ? 1.0f : 0.0f
+            );
             material.SetFloat("_ProbeMode", skyboxKind == GateSkyboxKind.Protractor ? 1.0f : 0.0f);
             material.SetFloat("_SkyboxLodBias", 0.0f);
             material.SetFloat("_StrongLensLodBias", 0.85f);
@@ -277,6 +297,10 @@ namespace GRBHXR.EditorTools
             AssignSerializedObject(lensMap, "escapeDirectionUnityCubeRgba32fBytes", escapeCubeBytes);
             AssignSerializedObject(lensMap, "diskOrder0TransferCubeRgba16fBytes", diskOrder0CubeBytes);
             AssignSerializedObject(lensMap, "diskOrder1TransferCubeRgba16fBytes", diskOrder1CubeBytes);
+            AssignSerializedObject(lensMap, "diskColorLutMetadataJson", diskColorLutMetadata);
+            AssignSerializedObject(lensMap, "diskColorLutRgba32fBytes", diskColorLutBytes);
+            AssignSerializedObject(lensMap, "diskRadialLutMetadataJson", diskRadialLutMetadata);
+            AssignSerializedObject(lensMap, "diskRadialLutRgba32fBytes", diskRadialLutBytes);
 
             var binder = previewObject.GetComponent<BlackHoleLensMaterialBinder>();
             if (binder == null)

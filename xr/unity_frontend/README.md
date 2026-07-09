@@ -75,6 +75,9 @@ For the first PCVR pass:
    - optionally, for full-sky background lensing,
      `full_sky_transfer_metadata.json`, `event_cube_rgba8.bytes`, and
      `escape_dir_unity_cube_rgba32f.bytes`.
+   - optionally, for Page-Thorne/blackbody disk color,
+     `disk_color_lut_metadata.json`, `disk_color_lut_rgba32f.bytes`,
+     `disk_radial_lut_metadata.json`, and `disk_radial_lut_rgba32f.bytes`.
 5. Add `BlackHoleLensMaterialBinder` and assign a material using
    `GR-BH-XR/Kerr Lens Static Preview`.
 6. Assign a test cubemap to `_SkyboxCubemap`.
@@ -87,6 +90,13 @@ transfer cubemap everywhere, then blends the high-resolution local
 `alpha/beta` texture over the central angular window for shadow-edge clarity.
 Pixels outside the local patch must not fall back to the raw skybox for
 background-lensing claims.
+
+Disk visual mode has two layers. If the disk LUT assets are absent, the shader
+keeps the documented proxy color ramp. If both LUT assets are assigned, the
+baseline disk emission samples the Page-Thorne radial table and blackbody color
+table: `T_obs = g T_scale F_norm^(1/4)` and brightness is proportional to
+`F_norm g^4`. This is still a display normalization, not an absolute
+luminosity claim.
 
 The shader still contains an opt-in `_UseAngularWindow` mode that computes the
 world view ray, transforms that ray into the lens-screen object's local basis,

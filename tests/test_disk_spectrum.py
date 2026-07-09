@@ -1,4 +1,5 @@
 import math
+import json
 
 import numpy as np
 import pytest
@@ -14,7 +15,10 @@ from gr_bh_xr.disk_spectrum import (
     observed_temperature,
     page_thorne_flux_shape,
     page_thorne_flux_shape_closed_form,
+    page_thorne_radial_lut,
     write_blackbody_lut_npz,
+    write_blackbody_lut_unity_raw,
+    write_page_thorne_radial_lut_unity_raw,
 )
 from gr_bh_xr.types import MetricParams
 
@@ -109,3 +113,63 @@ def test_blackbody_lut_and_npz_writer(tmp_path) -> None:
     loaded = np.load(out)
     assert summary["samples"] == 8
     assert loaded["linear_srgb"].shape == (8, 3)
+
+
+def test_unity_blackbody_lut_raw_writer(tmp_path) -> None:
+    raw = tmp_path / "disk_color_lut_rgba32f.bytes"
+    meta = tmp_path / "disk_color_lut_metadata.json"
+
+    summary = write_blackbody_lut_unity_raw(
+        raw,
+        metadata_out=meta,
+        temperature_min_k=1000.0,
+        temperature_max_k=40000.0,
+        samples=16,
+    )
+    rgba = np.frombuffer(raw.read_bytes(), dtype=np.float32).reshape(16, 4)
+    metadata = json.loads(meta.read_text(encoding="utf8"))
+
+    assert summary["bytes"] == 16 * 4 * 4
+    assert metadata["schema"] == "gr-bh-xr.task6.disk_color_lut.v1"
+    assert metadata["temperatureSpacing"] == "log"
+    assert rgba[0, 0] > rgba[0, 2]
+    assert rgba[-1, 2] == pytest.approx(1.0, abs=1.0e-6)
+    assert np.all(rgba[:, 3] == 1.0)
+
+
+def test_page_thorne_radial_lut_and_unity_writer(tmp_path) -> None:
+    params = MetricParams(M=1.0, a=0.9)
+    radii, flux, temperature, peak, inner = page_thorne_radial_lut(
+        params,
+        r_max=30.0,
+        samples=64,
+    )
+
+    assert radii[0] == pytest.approx(isco_radius(params), abs=1.0e-12)
+    assert inner == pytest.approx(radii[0], abs=1.0e-12)
+    assert peak > 0.0
+    assert flux[0] == 0.0
+    assert np.max(flux) == pytest.approx(1.0, abs=1.0e-12)
+    positive = flux > 0.0
+    assert np.allclose(temperature[positive] ** 4, flux[positive], rtol=1.0e-12, atol=1.0e-12)
+
+    raw = tmp_path / "disk_radial_lut_rgba32f.bytes"
+    meta = tmp_path / "disk_radial_lut_metadata.json"
+    summary = write_page_thorne_radial_lut_unity_raw(
+        raw,
+        metadata_out=meta,
+        params=params,
+        r_max=30.0,
+        samples=64,
+        temperature_scale_k=7000.0,
+    )
+    rgba = np.frombuffer(raw.read_bytes(), dtype=np.float32).reshape(64, 4)
+    metadata = json.loads(meta.read_text(encoding="utf8"))
+
+    assert summary["bytes"] == 64 * 4 * 4
+    assert metadata["schema"] == "gr-bh-xr.task6.disk_radial_lut.v1"
+    assert metadata["radiusSpacing"] == "linear"
+    assert metadata["temperatureScaleK"] == 7000.0
+    assert rgba[:, 0].max() == pytest.approx(1.0, abs=1.0e-6)
+    assert rgba[0, 0] == 0.0
+    assert np.all(rgba[:, 3] == 1.0)

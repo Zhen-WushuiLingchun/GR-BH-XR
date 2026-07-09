@@ -70,6 +70,28 @@ $env:PYTHONPATH='src'
 python -m gr_bh_xr.generate_disk_color_lut --temperature-min-k 1000 --temperature-max-k 40000 --samples 256 --out outputs/task6/disk_color_lut_1000_40000_256.npz
 ```
 
+For Unity disk-color audit assets, also export raw one-dimensional RGBA32F
+textures and JSON metadata. Place these four files in the same Unity
+`FullSkyTransfer...` directory as the disk transfer cubemaps:
+
+```text
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.generate_disk_color_lut `
+  --temperature-min-k 1000 --temperature-max-k 40000 --samples 256 `
+  --out outputs/task6/disk_color_lut_1000_40000_256.npz `
+  --raw-rgba32f outputs/task6/disk_color_lut_rgba32f.bytes `
+  --metadata-json outputs/task6/disk_color_lut_metadata.json `
+  --spin 0.9 --r-max 30 --radius-samples 512 --temperature-scale-k 6500 `
+  --radial-raw-rgba32f outputs/task6/disk_radial_lut_rgba32f.bytes `
+  --radial-metadata-json outputs/task6/disk_radial_lut_metadata.json
+```
+
+The color LUT is indexed by `log(T_obs)`. The radial LUT stores normalized
+Page-Thorne `F(r)` and `[F(r)/max(F)]^(1/4)`. Unity combines these with each
+pixel's transfer-map redshift as `T_obs = g T_scale T_shape` and baseline
+bolometric brightness `F_norm g^4`. The LUTs do not set absolute luminosity;
+that still requires an accretion-rate and distance normalization.
+
 This figure is a geometric transfer diagnostic: it shows direct (`m = 0`) and
 secondary (`m = 1`) equal-radius curves plus the direct-image redshift buffer.
 It is not yet a Luminet intensity image because emissivity, optical depth, and
@@ -128,7 +150,10 @@ Attributes record `M`, `a`, `inclination_deg`, `r_obs`, screen bounds,
 - Redshift application helpers enforce `T_obs = g T_emit`, `g^3` specific
   intensity weighting, `g^4` bolometric weighting, and a reproducible
   blackbody LUT file with monotonic temperature samples and finite colors.
+- Unity raw-LUT export writes RGBA32F color and radial tables with JSON
+  metadata; tests require log-temperature indexing, linear-radius indexing,
+  valid byte counts, and `T_shape^4 = F_norm` for positive Page-Thorne samples.
 
-Next validation target: add emissivity and observed-intensity buffers, then
-compare a rendered high-inclination Schwarzschild disk image against the
-qualitative Luminet 1979 direct/secondary morphology.
+Next validation target: generate a Unity package containing the LUT files and
+capture an A/B audit against the older visual proxy. Time-delay-aware hot-spot
+animation still requires exporting `Delta t_m` to Unity disk textures.

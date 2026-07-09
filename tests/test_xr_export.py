@@ -300,6 +300,12 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     assert "_EventCube" in shader
     assert "_DiskOrder0Cube" in shader
     assert "_DiskOrder1Cube" in shader
+    assert "_DiskColorLut" in shader
+    assert "_DiskRadialLut" in shader
+    assert "_UseDiskColorLut" in shader
+    assert "_DiskTemperatureScale" in shader
+    assert "_DiskColorLutLogT" in shader
+    assert "_DiskRadialLutBounds" in shader
     assert "_UseDiskTransfer" in shader
     assert "_DiskAuditMode" in shader
     assert "_DiskVisualMode" in shader
@@ -324,8 +330,12 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     assert "lensDirectionToWorld(dir.xyz)" in shader
     assert "if (_UseFullSkyTransfer > 0.5)" in shader
     assert "diskAuditColor" in shader
+    assert "sampleDiskColorLut" in shader
+    assert "sampleDiskRadialLut" in shader
     assert "diskVisualLayer" in shader
     assert "compositeDiskVisual" in shader
+    assert "T_obs = g T_emit" in shader
+    assert "g^4 weighting" in shader
     assert "texCUBE(_DiskOrder0Cube, localRay)" in shader
     assert "texCUBE(_DiskOrder1Cube, localRay)" in shader
     assert "texCUBE(_EscapeDirCube, localRay)" in shader
@@ -352,13 +362,25 @@ def test_unity_lens_map_loader_keeps_raw_textures_linear():
     assert "LoadFullSkyCubemapIfPresent" in source
     assert "diskOrder0TransferCubeRgba16fBytes" in source
     assert "diskOrder1TransferCubeRgba16fBytes" in source
+    assert "diskColorLutRgba32fBytes" in source
+    assert "diskRadialLutRgba32fBytes" in source
+    assert "DiskColorLutMetadata" in source
+    assert "DiskRadialLutMetadata" in source
+    assert "LoadDiskLutsIfPresent" in source
     assert "TextureFormat.RGBAHalf" in source
+    assert "TextureFormat.RGBAFloat" in source
     assert "SetVector(" in source
     assert '"_UseFullSkyTransfer"' in source
     assert '"_EscapeDirCube"' in source
     assert '"_EventCube"' in source
     assert '"_DiskOrder0Cube"' in source
     assert '"_DiskOrder1Cube"' in source
+    assert '"_DiskColorLut"' in source
+    assert '"_DiskRadialLut"' in source
+    assert '"_UseDiskColorLut"' in source
+    assert '"_DiskColorLutLogT"' in source
+    assert '"_DiskRadialLutBounds"' in source
+    assert '"_DiskTemperatureScale"' in source
     assert '"_UseDiskTransfer"' in source
     assert '"_LensScreenBounds"' in source
     assert '"_LensRObs"' in source
@@ -495,7 +517,14 @@ def test_unity_editor_gate_automation_is_versioned():
     assert "escape_dir_unity_cube_rgba32f.bytes" in source
     assert "disk_order0_transfer_cube_rgba16f.bytes" in source
     assert "disk_order1_transfer_cube_rgba16f.bytes" in source
+    assert "disk_color_lut_metadata.json" in source
+    assert "disk_color_lut_rgba32f.bytes" in source
+    assert "disk_radial_lut_metadata.json" in source
+    assert "disk_radial_lut_rgba32f.bytes" in source
+    assert "diskColorLutMetadataJson" in source
+    assert "diskRadialLutRgba32fBytes" in source
     assert '"_UseFullSkyTransfer"' in source
+    assert '"_UseDiskColorLut"' in source
     assert '"_ProbeMode"' in source
     assert '"_DiskAuditMode"' in source
     assert "unity_gate_square_2048.png" in source

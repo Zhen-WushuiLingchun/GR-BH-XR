@@ -19,6 +19,36 @@ from here.
 
 ## Log
 
+### 2026-07-09 - Unity Page-Thorne disk LUT path
+
+- Goal: Move the Unity disk visual path from a hard-coded color proxy toward
+  the validated Page-Thorne/blackbody asset pipeline.
+- Changed files / components: Extended `src/gr_bh_xr/disk_spectrum.py`,
+  `src/gr_bh_xr/generate_disk_color_lut.py`,
+  `xr/unity_frontend/Runtime/BlackHoleLensStaticPreview.shader`,
+  `xr/unity_frontend/Runtime/BlackHoleLensMap.cs`,
+  `xr/unity_frontend/Editor/GRBHXRGateAutomation.cs`, and related tests/docs.
+- Academic reason: A headset-facing disk image should derive its baseline
+  color and brightness from auditable transfer quantities, not only from a
+  hand-tuned `g` color ramp.
+- Physical correspondence: The new Unity path consumes a blackbody color LUT
+  indexed by `log(T_obs)` and a radial Page-Thorne table storing normalized
+  `F(r)` and `F(r)^(1/4)`.  The shader computes `T_obs = g T_emit` and
+  baseline bolometric weight `F(r) g^4`; absolute luminosity remains a
+  separate display normalization.
+- Assumptions and conventions: The LUTs are one-dimensional RGBA32F textures
+  with JSON metadata.  If either LUT is absent, Unity falls back to the older
+  documented proxy.  The hot spot remains a transfer-map shortcut on the
+  equatorial disk and does not yet consume `Delta t_m`.
+- Validation: Targeted tests check raw LUT byte sizes, metadata, monotonic
+  log-temperature/radius conventions, `T_shape^4 = F_norm`, and Unity source
+  wiring for the shader, loader, and gate automation.
+- References: Existing `page1974diskAccretionStructure` and
+  `wyman2013cieMatchingFits`.
+- Open issues / next steps: Generate a display package with these LUT assets
+  and capture a Unity A/B gate against the previous proxy; add `Delta t_m`
+  disk cubemap channels before claiming time-delay-aware hot-spot animation.
+
 ### 2026-07-09 - Page-Thorne mass scaling and KS shift dedupe
 
 - Goal: Fix the hidden non-`M=1` Page-Thorne closed-form scaling error found in

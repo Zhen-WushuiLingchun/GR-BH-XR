@@ -222,14 +222,21 @@ I_nu_o = g^3 I_nu_e(nu_o / g)
 CPU asset generation approximates the CIE 1931 2-degree color matching curves
 with the analytic Wyman-Sloan-Shirley fits (`wyman2013cieMatchingFits`), then
 maps the integrated XYZ chromaticity to max-normalized linear sRGB. This is a
-color-LUT seed; it is not yet a full calibrated radiometric renderer. The LUT
-stores color/chromaticity, while brightness remains a separate physical channel:
+color-LUT seed; it is not yet a full calibrated radiometric renderer. The Unity
+disk path can consume this table together with a radial Page-Thorne LUT. The
+color LUT stores color/chromaticity, while brightness remains a separate
+physical channel:
 
 ```text
 specific intensity weight: g^3
 bolometric blackbody weight: g^4
-display brightness proxy: F(r) times selected g^p weight
+baseline Unity LUT path: normalized F(r) times g^4
+temperature lookup: T_obs = g T_scale [F(r) / max(F)]^(1/4)
 ```
+
+The absolute disk temperature scale and luminosity normalization are display
+parameters until an accretion rate, mass-to-SI conversion, and distance model
+are selected.
 
 ## Simplified GRRT
 

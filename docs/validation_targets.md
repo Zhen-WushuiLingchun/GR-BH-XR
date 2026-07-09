@@ -345,9 +345,11 @@ Delta t_m is recorded and reported; its tighter threshold is set after display-s
   CPU and GPU currently share this limitation; it must be revisited before
   using such edge cases for claims.
 - The current Unity disk visual emissivity `pow(saturate(6/r), 2.2)` is a
-  documented visual proxy only. A physically stronger disk visual mode must add
-  a Page-Thorne-style relativistic thin-disk flux model with its source indexed
-  in `references/` before replacing the proxy in claims.
+  documented fallback proxy only. When `disk_color_lut_rgba32f.bytes` and
+  `disk_radial_lut_rgba32f.bytes` are bound, the Unity disk visual path must
+  use the Page-Thorne radial LUT and blackbody color LUT: baseline brightness is
+  `F_norm g^4`, and color is sampled by `log(T_obs)` with
+  `T_obs = g T_scale F_norm^(1/4)`.
 - The CPU Page-Thorne/color seed in `src/gr_bh_xr/disk_spectrum.py` validates
   the Schwarzschild circular-orbit anchor `E(r=6M)=sqrt(8/9)`,
   `L_z(r=6M)=sqrt(12)`, enforces zero torque at `r_ISCO`, checks positive flux
@@ -363,9 +365,9 @@ Delta t_m is recorded and reported; its tighter threshold is set after display-s
   intensity weighting, `g^4` bolometric weighting, and a reproducible
   `.npz` blackbody LUT with monotonic temperature samples and finite
   max-normalized linear-sRGB colors.
-  This seed is an asset-generation and validation path; the Unity shader still
-  uses the older visual proxy until a separate disk-color integration gate
-  replaces it.
+  Unity raw-asset tests additionally require RGBA32F color/radial LUT byte
+  counts, JSON metadata, log-temperature indexing, linear-radius indexing, and
+  `T_shape^4 = F_norm` for positive Page-Thorne samples.
 
 ## Phase 5 MR Overlay
 

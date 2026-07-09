@@ -27,6 +27,26 @@ namespace GRBHXR
     }
 
     [Serializable]
+    public sealed class DiskColorLutMetadata
+    {
+        public string schema;
+        public int samples;
+        public float temperatureMinK;
+        public float temperatureMaxK;
+        public string temperatureSpacing;
+    }
+
+    [Serializable]
+    public sealed class DiskRadialLutMetadata
+    {
+        public string schema;
+        public int samples;
+        public float rMin;
+        public float rMax;
+        public float temperatureScaleK;
+    }
+
+    [Serializable]
     public sealed class ResolutionMetadata
     {
         public int sourceWidth;
@@ -84,6 +104,11 @@ namespace GRBHXR
         [SerializeField] private TextAsset escapeDirectionUnityCubeRgba32fBytes;
         [SerializeField] private TextAsset diskOrder0TransferCubeRgba16fBytes;
         [SerializeField] private TextAsset diskOrder1TransferCubeRgba16fBytes;
+        [Header("Optional disk color and emissivity LUTs")]
+        [SerializeField] private TextAsset diskColorLutMetadataJson;
+        [SerializeField] private TextAsset diskColorLutRgba32fBytes;
+        [SerializeField] private TextAsset diskRadialLutMetadataJson;
+        [SerializeField] private TextAsset diskRadialLutRgba32fBytes;
 
         public LensMapMetadata Metadata { get; private set; }
         public FullSkyTransferMetadata FullSkyMetadata { get; private set; }
@@ -93,6 +118,10 @@ namespace GRBHXR
         public Cubemap EscapeDirectionCube { get; private set; }
         public Cubemap DiskOrder0Cube { get; private set; }
         public Cubemap DiskOrder1Cube { get; private set; }
+        public DiskColorLutMetadata DiskColorLutMetadata { get; private set; }
+        public DiskRadialLutMetadata DiskRadialLutMetadata { get; private set; }
+        public Texture2D DiskColorLutTexture { get; private set; }
+        public Texture2D DiskRadialLutTexture { get; private set; }
 
         private void Awake()
         {
@@ -131,6 +160,7 @@ namespace GRBHXR
                 filterMode: FilterMode.Bilinear
             );
             LoadFullSkyCubemapIfPresent();
+            LoadDiskLutsIfPresent();
         }
 
         public void ApplyToMaterial(Material material)
@@ -162,6 +192,27 @@ namespace GRBHXR
             if (DiskOrder1Cube != null)
             {
                 material.SetTexture("_DiskOrder1Cube", DiskOrder1Cube);
+            }
+            bool useDiskColorLut = DiskColorLutTexture != null && DiskRadialLutTexture != null;
+            material.SetFloat("_UseDiskColorLut", useDiskColorLut ? 1.0f : 0.0f);
+            if (useDiskColorLut)
+            {
+                material.SetTexture("_DiskColorLut", DiskColorLutTexture);
+                material.SetTexture("_DiskRadialLut", DiskRadialLutTexture);
+                material.SetVector(
+                    "_DiskColorLutLogT",
+                    new Vector4(
+                        Mathf.Log(DiskColorLutMetadata.temperatureMinK),
+                        Mathf.Log(DiskColorLutMetadata.temperatureMaxK),
+                        0.0f,
+                        0.0f
+                    )
+                );
+                material.SetVector(
+                    "_DiskRadialLutBounds",
+                    new Vector4(DiskRadialLutMetadata.rMin, DiskRadialLutMetadata.rMax, 0.0f, 0.0f)
+                );
+                material.SetFloat("_DiskTemperatureScale", DiskRadialLutMetadata.temperatureScaleK);
             }
             if (Metadata.screen != null)
             {
@@ -350,6 +401,50 @@ namespace GRBHXR
                 return null;
             }
             return LoadRawCubemap(bytes, faceSize, format, expectedBytesPerPixel, name, filterMode);
+        }
+
+        private void LoadDiskLutsIfPresent()
+        {
+            DiskColorLutMetadata = null;
+            DiskRadialLutMetadata = null;
+            DiskColorLutTexture = null;
+            DiskRadialLutTexture = null;
+
+            if (diskColorLutMetadataJson != null && diskColorLutRgba32fBytes != null)
+            {
+                DiskColorLutMetadata = JsonUtility.FromJson<DiskColorLutMetadata>(diskColorLutMetadataJson.text);
+                if (DiskColorLutMetadata == null || DiskColorLutMetadata.samples < 2)
+                {
+                    throw new InvalidOperationException("Disk color LUT metadata is missing samples.");
+                }
+                DiskColorLutTexture = LoadRawTexture(
+                    diskColorLutRgba32fBytes,
+                    DiskColorLutMetadata.samples,
+                    1,
+                    TextureFormat.RGBAFloat,
+                    expectedBytesPerPixel: 16,
+                    name: "GR-BH-XR disk_color_lut_rgba32f",
+                    filterMode: FilterMode.Bilinear
+                );
+            }
+
+            if (diskRadialLutMetadataJson != null && diskRadialLutRgba32fBytes != null)
+            {
+                DiskRadialLutMetadata = JsonUtility.FromJson<DiskRadialLutMetadata>(diskRadialLutMetadataJson.text);
+                if (DiskRadialLutMetadata == null || DiskRadialLutMetadata.samples < 2)
+                {
+                    throw new InvalidOperationException("Disk radial LUT metadata is missing samples.");
+                }
+                DiskRadialLutTexture = LoadRawTexture(
+                    diskRadialLutRgba32fBytes,
+                    DiskRadialLutMetadata.samples,
+                    1,
+                    TextureFormat.RGBAFloat,
+                    expectedBytesPerPixel: 16,
+                    name: "GR-BH-XR disk_radial_lut_rgba32f",
+                    filterMode: FilterMode.Bilinear
+                );
+            }
         }
     }
 }

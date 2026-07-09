@@ -8,6 +8,8 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
         _EscapeDirCube ("Full-Sky Escape Direction Cube", Cube) = "" {}
         _DiskOrder0Cube ("Disk Order 0 Transfer Cube", Cube) = "" {}
         _DiskOrder1Cube ("Disk Order 1 Transfer Cube", Cube) = "" {}
+        _DiskColorLut ("Disk Blackbody Color LUT", 2D) = "white" {}
+        _DiskRadialLut ("Disk Page-Thorne Radial LUT", 2D) = "black" {}
         _SkyboxCubemap ("Skybox Cubemap", Cube) = "" {}
         _LensScreenBounds ("Lens Screen Bounds", Vector) = (-8, 8, -8, 8)
         _LensRObs ("Lens Observer Radius", Float) = 100
@@ -20,6 +22,10 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
         _DiskBrightness ("Disk Brightness", Float) = 1.0
         _DiskGPower ("Disk g Power", Float) = 3.0
         _DiskSecondaryScale ("Disk Secondary Scale", Float) = 0.32
+        _UseDiskColorLut ("Use Disk Color LUT", Float) = 0
+        _DiskTemperatureScale ("Disk Temperature Scale K", Float) = 6500
+        _DiskColorLutLogT ("Disk Color LUT logT", Vector) = (6.907755, 10.596635, 0, 0)
+        _DiskRadialLutBounds ("Disk Radial LUT Bounds", Vector) = (2.320883, 30, 0, 0)
         _DiskHotSpotEnabled ("Disk Hot Spot Enabled", Float) = 0
         _DiskHotSpotAnimate ("Disk Hot Spot Animate", Float) = 0
         _DiskHotSpotRadius ("Disk Hot Spot Radius", Float) = 8
@@ -61,6 +67,8 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
             samplerCUBE _EscapeDirCube;
             samplerCUBE _DiskOrder0Cube;
             samplerCUBE _DiskOrder1Cube;
+            sampler2D _DiskColorLut;
+            sampler2D _DiskRadialLut;
             samplerCUBE _SkyboxCubemap;
             float4 _LensScreenBounds;
             float _LensRObs;
@@ -73,6 +81,10 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
             float _DiskBrightness;
             float _DiskGPower;
             float _DiskSecondaryScale;
+            float _UseDiskColorLut;
+            float _DiskTemperatureScale;
+            float4 _DiskColorLutLogT;
+            float4 _DiskRadialLutBounds;
             float _DiskHotSpotEnabled;
             float _DiskHotSpotAnimate;
             float _DiskHotSpotRadius;
@@ -184,6 +196,19 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 return lerp(warm, hot, smoothstep(0.42, 0.82, t));
             }
 
+            float4 sampleDiskRadialLut(float r)
+            {
+                float u = saturate((r - _DiskRadialLutBounds.x) / max(_DiskRadialLutBounds.y - _DiskRadialLutBounds.x, 1.0e-5));
+                return tex2D(_DiskRadialLut, float2(u, 0.5));
+            }
+
+            float3 sampleDiskColorLut(float observedTemperatureK)
+            {
+                float logT = log(max(observedTemperatureK, 1.0));
+                float u = saturate((logT - _DiskColorLutLogT.x) / max(_DiskColorLutLogT.y - _DiskColorLutLogT.x, 1.0e-5));
+                return tex2D(_DiskColorLut, float2(u, 0.5)).rgb;
+            }
+
             float diskHotSpotWeight(float4 disk)
             {
                 if (_DiskHotSpotEnabled <= 0.5 || !diskSampleValid(disk))
@@ -212,20 +237,32 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
 
                 float r = max(disk.x, 1.0e-3);
                 float g = clamp(disk.w, 0.05, 3.0);
+                float orderScale = order > 0.5 ? _DiskSecondaryScale : 1.0;
+                float usePhysicalColor = _UseDiskColorLut > 0.5 ? 1.0 : 0.0;
+                float4 radialModel = sampleDiskRadialLut(r);
+                float fluxShape = max(radialModel.r, 0.0);
+                float temperatureShape = max(radialModel.g, 0.0);
                 float innerGate = smoothstep(1.8, 2.8, r);
                 float outerGate = 1.0 - smoothstep(27.0, 30.0, r);
-                float emissivity = pow(saturate(6.0 / r), 2.2) * innerGate * outerGate;
-                float orderScale = order > 0.5 ? _DiskSecondaryScale : 1.0;
-                float observedWeight = emissivity * pow(g, max(_DiskGPower, 0.0)) * _DiskBrightness * orderScale;
+                float proxyEmissivity = pow(saturate(6.0 / r), 2.2) * innerGate * outerGate;
+                float emissivity = lerp(proxyEmissivity, fluxShape, usePhysicalColor);
+                float redshiftPower = usePhysicalColor > 0.5 ? 4.0 : max(_DiskGPower, 0.0);
+                float observedWeight = emissivity * pow(g, redshiftPower) * _DiskBrightness * orderScale;
                 float hotSpot = diskHotSpotWeight(disk);
-                observedWeight += hotSpot * pow(g, max(_DiskGPower, 0.0)) * _DiskHotSpotBrightness * orderScale;
+                observedWeight += hotSpot * pow(g, redshiftPower) * _DiskHotSpotBrightness * orderScale;
 
-                // This first visual mode is a documented thin-disk emissivity
-                // proxy over the validated (r_m, phi_m, g_m) transfer map. It is
-                // not yet a Page-Thorne flux model or radiative-transfer result.
+                // Without LUT assets this is the original documented visual
+                // proxy.  With LUT assets enabled, the baseline layer uses
+                // normalized Page-Thorne F(r), T_obs = g T_emit, and bolometric
+                // g^4 weighting.  Absolute luminosity still needs a separate
+                // accretion-rate and mass normalization.
                 // The hot spot uses (r_m, phi_m) from the transfer map; the
                 // current Unity cube does not yet carry Delta t_m.
-                float3 color = lerp(blackbodyRamp(g), float3(1.0, 0.92, 0.62), saturate(hotSpot)) * observedWeight;
+                float observedTemperature = g * max(_DiskTemperatureScale, 1.0) * max(temperatureShape, 1.0e-4);
+                float3 baseDiskColor = usePhysicalColor > 0.5
+                    ? sampleDiskColorLut(observedTemperature)
+                    : blackbodyRamp(g);
+                float3 color = lerp(baseDiskColor, float3(1.0, 0.92, 0.62), saturate(hotSpot)) * observedWeight;
                 float alpha = saturate(observedWeight * _DiskOpacity);
                 return fixed4(color, alpha);
             }

@@ -253,8 +253,10 @@ zero invalid rays. The Unity audit run wrote
 `unity_gate_fullsky_disk_audit_m1_square_1024.png`. The `m = 0` image shows a
 continuous equal-radius field around the Kerr shadow; the `m = 1` image isolates
 the secondary-image band near the shadow edge. These screenshots are still
-audit artifacts: the visual disk shader with `g^p` weighting, blackbody color,
-Keplerian pattern advection, and time-delay use remains a later step.
+audit artifacts. The Unity shader can now use Page-Thorne/blackbody LUT assets
+when they are present in the full-sky transfer directory, with baseline
+`F(r) g^4` weighting and `T_obs = g T_emit` color. Keplerian pattern advection
+and time-delay use still require exporting `Delta t_m` into Unity disk textures.
 
 ## PCVR Sky-Shell First-Run Scene
 

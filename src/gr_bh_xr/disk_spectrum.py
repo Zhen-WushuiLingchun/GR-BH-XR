@@ -9,6 +9,7 @@ shader is upgraded.
 from __future__ import annotations
 
 import math
+import json
 from pathlib import Path
 
 import numpy as np
@@ -295,6 +296,194 @@ def write_blackbody_lut_npz(
         "temperature_max_k": float(temperature_max_k),
         "color_space": "max-normalized linear sRGB chromaticity",
     }
+
+
+def write_blackbody_lut_unity_raw(
+    out: str | Path,
+    *,
+    metadata_out: str | Path | None = None,
+    temperature_min_k: float = 1000.0,
+    temperature_max_k: float = 40000.0,
+    samples: int = 256,
+) -> dict[str, float | int | str]:
+    """Write a Unity-friendly 1D RGBA32F blackbody chromaticity LUT.
+
+    The RGB channels are max-normalized linear sRGB chromaticity.  Alpha is
+    one.  The temperature coordinate is logarithmic to match `blackbody_lut`;
+    Unity samples it with `log(T_obs)`.
+    """
+
+    temperatures, _, rgb = blackbody_lut(
+        temperature_min_k=temperature_min_k,
+        temperature_max_k=temperature_max_k,
+        samples=samples,
+    )
+    rgba = np.ones((samples, 4), dtype=np.float32)
+    rgba[:, :3] = rgb.astype(np.float32)
+    path = Path(out)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(rgba.tobytes(order="C"))
+    summary: dict[str, float | int | str] = {
+        "path": str(path),
+        "schema": "gr-bh-xr.task6.disk_color_lut.v1",
+        "samples": int(samples),
+        "temperature_min_k": float(temperature_min_k),
+        "temperature_max_k": float(temperature_max_k),
+        "temperature_spacing": "log",
+        "texture_format": "rgba32f",
+        "color_space": "max-normalized linear sRGB chromaticity",
+        "bytes": int(rgba.nbytes),
+    }
+    if metadata_out is not None:
+        meta_path = Path(metadata_out)
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        metadata = {
+            "schema": summary["schema"],
+            "samples": int(samples),
+            "temperatureMinK": float(temperatures[0]),
+            "temperatureMaxK": float(temperatures[-1]),
+            "temperatureSpacing": "log",
+            "textureFormat": "rgba32f",
+            "colorSpace": summary["color_space"],
+            "channels": {
+                "r": "max-normalized linear sRGB red chromaticity",
+                "g": "max-normalized linear sRGB green chromaticity",
+                "b": "max-normalized linear sRGB blue chromaticity",
+                "a": "valid sample = 1",
+            },
+        }
+        meta_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf8")
+        summary["metadata_path"] = str(meta_path)
+    return summary
+
+
+def page_thorne_radial_lut(
+    params: MetricParams,
+    *,
+    r_min: float | None = None,
+    r_max: float = 30.0,
+    samples: int = 512,
+    prograde: bool = True,
+) -> tuple[FloatArray, FloatArray, FloatArray, float, float]:
+    """Return a normalized Page-Thorne radial flux/temperature table.
+
+    The returned flux is normalized by its maximum over the sampled disk.  This
+    keeps the Unity texture dimensionless; absolute luminosity still requires
+    an accretion-rate normalization outside this project stage.
+    """
+
+    if samples < 2:
+        raise ValueError("Page-Thorne radial LUT requires at least two samples.")
+    inner = isco_radius(params, prograde=prograde) if r_min is None else float(r_min)
+    if r_max <= inner:
+        raise ValueError("r_max must be larger than the inner disk radius.")
+
+    radii = np.linspace(inner, float(r_max), samples, dtype=np.float64)
+    flux = np.empty_like(radii)
+    for idx, radius in enumerate(radii):
+        if abs(params.a) > 1.0e-12:
+            flux[idx] = page_thorne_flux_shape_closed_form(
+                params,
+                float(radius),
+                prograde=prograde,
+                r_in=inner,
+            )
+        else:
+            flux[idx] = page_thorne_flux_shape(
+                params,
+                float(radius),
+                prograde=prograde,
+                r_in=inner,
+                integration_samples=1024,
+            )
+    flux = np.nan_to_num(flux, nan=0.0, posinf=0.0, neginf=0.0)
+    flux = np.clip(flux, 0.0, None)
+    peak = float(np.max(flux))
+    if peak <= 0.0 or not math.isfinite(peak):
+        raise ValueError("Page-Thorne radial LUT has no positive flux samples.")
+    normalized_flux = flux / peak
+    temperature_shape = np.zeros_like(normalized_flux)
+    np.power(normalized_flux, 0.25, out=temperature_shape, where=normalized_flux > 0.0)
+    return radii, normalized_flux, temperature_shape, peak, inner
+
+
+def write_page_thorne_radial_lut_unity_raw(
+    out: str | Path,
+    *,
+    metadata_out: str | Path | None = None,
+    params: MetricParams = MetricParams(),
+    r_min: float | None = None,
+    r_max: float = 30.0,
+    samples: int = 512,
+    prograde: bool = True,
+    temperature_scale_k: float = 6500.0,
+) -> dict[str, float | int | str | bool]:
+    """Write a Unity RGBA32F radial Page-Thorne flux/temperature LUT.
+
+    Channels are `(F_norm, T_shape, 0, valid)`, where `T_shape = F_norm^(1/4)`.
+    Unity combines this with the disk-transfer redshift as
+    `T_obs = g T_scale T_shape` and bolometric brightness `F_norm g^4`.
+    """
+
+    if temperature_scale_k <= 0.0:
+        raise ValueError("temperature_scale_k must be positive.")
+    radii, flux, temperature_shape, peak, inner = page_thorne_radial_lut(
+        params,
+        r_min=r_min,
+        r_max=r_max,
+        samples=samples,
+        prograde=prograde,
+    )
+    rgba = np.zeros((samples, 4), dtype=np.float32)
+    rgba[:, 0] = flux.astype(np.float32)
+    rgba[:, 1] = temperature_shape.astype(np.float32)
+    rgba[:, 3] = 1.0
+    path = Path(out)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(rgba.tobytes(order="C"))
+    summary: dict[str, float | int | str | bool] = {
+        "path": str(path),
+        "schema": "gr-bh-xr.task6.disk_radial_lut.v1",
+        "samples": int(samples),
+        "r_min": float(radii[0]),
+        "r_max": float(radii[-1]),
+        "radius_spacing": "linear",
+        "M": float(params.M),
+        "a": float(params.a),
+        "prograde": bool(prograde),
+        "r_isco": float(inner),
+        "flux_peak_shape": float(peak),
+        "temperature_scale_k": float(temperature_scale_k),
+        "texture_format": "rgba32f",
+        "bytes": int(rgba.nbytes),
+    }
+    if metadata_out is not None:
+        meta_path = Path(metadata_out)
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        metadata = {
+            "schema": summary["schema"],
+            "samples": int(samples),
+            "rMin": float(radii[0]),
+            "rMax": float(radii[-1]),
+            "radiusSpacing": "linear",
+            "M": float(params.M),
+            "a": float(params.a),
+            "prograde": bool(prograde),
+            "rISCO": float(inner),
+            "fluxPeakShape": float(peak),
+            "temperatureScaleK": float(temperature_scale_k),
+            "textureFormat": "rgba32f",
+            "channels": {
+                "r": "normalized Page-Thorne flux shape F(r) / max(F)",
+                "g": "normalized effective-temperature shape [F(r) / max(F)]^(1/4)",
+                "b": "reserved = 0",
+                "a": "valid sample = 1",
+            },
+            "unityUse": "T_obs = g * temperatureScaleK * channel_g; brightness = channel_r * g^4",
+        }
+        meta_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf8")
+        summary["metadata_path"] = str(meta_path)
+    return summary
 
 
 def _omega_derivative(params: MetricParams, r: float, *, prograde: bool) -> float:
