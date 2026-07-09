@@ -10,12 +10,19 @@ from gr_bh_xr.observers import (
     gram_matrix,
     ks_gram_matrix,
     push_bl_tetrad_to_ks,
+    schwarzschild_radial_freefall_initial_state,
+    schwarzschild_radial_freefall_initial_tetrad,
     static_observer_tetrad,
+    transport_schwarzschild_radial_freefall_tetrad,
+    transported_gram_matrices,
     zamo_angular_velocity,
     zamo_lapse,
     zamo_tetrad,
 )
-from gr_bh_xr.types import MetricParams
+from gr_bh_xr.geodesic_ks import ks_state_to_bl_state
+from gr_bh_xr.metric import inverse_metric
+from gr_bh_xr.metric_ks import ks_inverse_metric, ks_radius
+from gr_bh_xr.types import MetricParams, RayState
 
 
 def test_zamo_angular_velocity_and_lapse_match_analytic_kerr_formulae():
@@ -94,3 +101,49 @@ def test_pushed_zamo_tetrad_is_orthonormal_in_ks_chart():
 
     assert ks_tetrad.kind == "zamo_pushed_to_ks"
     np.testing.assert_allclose(gram, np.diag([-1.0, 1.0, 1.0, 1.0]), atol=2.0e-10)
+
+
+def test_schwarzschild_freefall_initial_tetrad_matches_worldline_velocity():
+    params = MetricParams(M=1.0, a=0.0)
+    r = 12.0
+    theta = math.radians(65.0)
+    state = schwarzschild_radial_freefall_initial_state(params, r=r, theta=theta)
+    tetrad = schwarzschild_radial_freefall_initial_tetrad(params, r=r, theta=theta)
+
+    u_ks = ks_inverse_metric(params, state.x[1:4]) @ state.p
+
+    np.testing.assert_allclose(tetrad.e_time, u_ks, atol=2.0e-12)
+    np.testing.assert_allclose(ks_gram_matrix(params, tetrad), np.diag([-1.0, 1.0, 1.0, 1.0]), atol=2.0e-12)
+
+
+def test_transported_schwarzschild_freefall_tetrad_preserves_gram_and_velocity():
+    params = MetricParams(M=1.0, a=0.0)
+    path = transport_schwarzschild_radial_freefall_tetrad(
+        params,
+        r_start=12.0,
+        theta=math.radians(72.0),
+        r_stop=3.0,
+        tau_max=30.0,
+        max_step=0.08,
+    )
+
+    grams = transported_gram_matrices(params, path)
+    target = np.diag([-1.0, 1.0, 1.0, 1.0])
+    assert float(np.max(np.abs(grams - target))) < 5.0e-7
+
+    velocity_errors = []
+    radial_errors = []
+    for state_values, frame in zip(path.states[:: max(1, path.states.shape[0] // 12)], path.frames[:: max(1, path.states.shape[0] // 12)]):
+        x = state_values[:4]
+        p = state_values[4:8]
+        u_ks = ks_inverse_metric(params, x[1:4]) @ p
+        velocity_errors.append(float(np.max(np.abs(frame[0] - u_ks))))
+
+        bl_state = ks_state_to_bl_state(params, RayState(x=x, p=p))
+        u_bl = inverse_metric(params, float(bl_state.x[1]), float(bl_state.x[2])) @ bl_state.p
+        r_bl = float(bl_state.x[1])
+        radial_errors.append(abs(float(u_bl[1]) + math.sqrt(2.0 * params.M / r_bl)))
+
+    assert max(velocity_errors) < 5.0e-7
+    assert max(radial_errors) < 5.0e-7
+    assert ks_radius(params, path.states[-1, 1:4]) == pytest.approx(3.0, abs=2.0e-6)

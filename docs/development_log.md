@@ -19,6 +19,34 @@ from here.
 
 ## Log
 
+### 2026-07-09 - Stage B-2 transported free-fall tetrad seed
+
+- Goal: Add the first transported observer tetrad for near-horizon keyframe
+  work without using a static-observer frame where it is physically invalid.
+- Changed files / components: Extended `src/gr_bh_xr/observers.py` and
+  `tests/test_observers.py`.
+- Academic reason: Near-horizon playback needs a camera frame attached to an
+  observer worldline. A static or merely pushed exterior tetrad is not enough
+  once the observer moves or approaches domains where static observers fail.
+- Physical correspondence: The seed case is Schwarzschild radial free fall from
+  rest at infinity. The initial frame is a Lorentz boost of the static
+  Schwarzschild tetrad with local velocity `v = -sqrt(2M/r)`, then pushed into
+  ingoing Cartesian Kerr-Schild coordinates. The frame is parallel transported
+  along the timelike geodesic using the Kerr-Schild connection.
+- Assumptions and conventions: This first transported-frame gate is
+  Schwarzschild-only and is not yet a general Kerr/ZAMO/free-fall worldline
+  library. Christoffel symbols are computed by finite differencing the
+  covariant KS metric, which is acceptable for the CPU reference gate.
+- Validation: Tests assert the initial boosted `e_time` equals the geodesic
+  four-velocity, Gram matrices remain orthonormal along the path, transported
+  `e_time` remains equal to the worldline velocity, and the BL radial velocity
+  satisfies `dr/dtau = -sqrt(2M/r)` down to `r = 3M`.
+- References: No new literature; this is the analytic Schwarzschild radial
+  free-fall limit used as a Stage B transport anchor.
+- Open issues / next steps: Extend observer worldlines to Kerr ZAMO, circular,
+  and free-fall frames; replace finite-difference connection with analytic
+  derivatives if the transported-frame gate becomes a performance path.
+
 ### 2026-07-09 - Disk transfer coverage encoding
 
 - Goal: Remove blocky disk-edge artifacts in Unity disk playback without

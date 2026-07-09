@@ -12,11 +12,19 @@ from dataclasses import dataclass
 import math
 
 import numpy as np
+from scipy.integrate import solve_ivp
 
-from .geodesic_ks import bl_to_ks_jacobian, bl_to_ks_phi_shift, bl_to_ks_time_shift
+from .geodesic_ks import (
+    bl_state_to_ks_state,
+    bl_to_ks_jacobian,
+    bl_to_ks_phi_shift,
+    bl_to_ks_time_shift,
+    hamiltonian_rhs_ks,
+    ks_state_to_bl_state,
+)
 from .metric import covariant_metric, delta, horizon_radius, sigma
-from .metric_ks import bl_to_ks_cartesian, ks_metric
-from .types import FloatArray, MetricParams
+from .metric_ks import bl_to_ks_cartesian, ks_inverse_metric, ks_metric, ks_radius
+from .types import FloatArray, MetricParams, RayState
 
 
 @dataclass(frozen=True)
@@ -47,6 +55,27 @@ class KSObserverTetrad:
 
     def vectors(self) -> tuple[FloatArray, FloatArray, FloatArray, FloatArray]:
         return self.e_time, self.e_r, self.e_theta, self.e_phi
+
+
+@dataclass(frozen=True)
+class KSTransportedTetradPath:
+    """A transported KS observer tetrad sampled along a timelike worldline."""
+
+    tau: FloatArray
+    states: FloatArray
+    frames: FloatArray
+    kind: str
+
+    def tetrad_at(self, index: int) -> KSObserverTetrad:
+        frame = self.frames[index]
+        return KSObserverTetrad(
+            x=self.states[index, :4].copy(),
+            e_time=frame[0].copy(),
+            e_r=frame[1].copy(),
+            e_theta=frame[2].copy(),
+            e_phi=frame[3].copy(),
+            kind=self.kind,
+        )
 
 
 def frame_inner_product(params: MetricParams, x: FloatArray, u: FloatArray, v: FloatArray) -> float:
@@ -83,6 +112,15 @@ def ks_gram_matrix(params: MetricParams, tetrad: KSObserverTetrad) -> FloatArray
         [[ks_frame_inner_product(params, tetrad.x, left, right) for right in vectors] for left in vectors],
         dtype=np.float64,
     )
+
+
+def transported_gram_matrices(params: MetricParams, path: KSTransportedTetradPath) -> FloatArray:
+    """Return tetrad Gram matrices for every sampled point in a transported path."""
+
+    matrices = []
+    for idx in range(path.states.shape[0]):
+        matrices.append(ks_gram_matrix(params, path.tetrad_at(idx)))
+    return np.asarray(matrices, dtype=np.float64)
 
 
 def zamo_angular_velocity(params: MetricParams, r: float, theta: float) -> float:
@@ -201,6 +239,144 @@ def push_bl_tetrad_to_ks(params: MetricParams, tetrad: BLObserverTetrad) -> KSOb
         e_phi=jac @ tetrad.e_phi,
         kind=f"{tetrad.kind}_pushed_to_ks",
     )
+
+
+def schwarzschild_radial_freefall_initial_state(
+    params: MetricParams, *, r: float, theta: float, phi: float = 0.0
+) -> RayState:
+    """Return a Schwarzschild radial infall state from rest at infinity.
+
+    The canonical BL covector uses `E = -p_t = 1`, `L_z = 0`, and
+    `u^r = -sqrt(2M/r)`.  It is then transformed to ingoing Cartesian
+    Kerr-Schild coordinates for horizon-regular integration.
+    """
+
+    if abs(params.a) > 1.0e-14:
+        raise ValueError("This analytic free-fall seed is Schwarzschild-only.")
+    if r <= 2.0 * params.M:
+        raise ValueError("Initial BL free-fall seed must start outside the Schwarzschild horizon.")
+    f = 1.0 - 2.0 * params.M / r
+    u_r_contra = -math.sqrt(2.0 * params.M / r)
+    p_bl = np.array([-1.0, u_r_contra / f, 0.0, 0.0], dtype=np.float64)
+    x_bl = np.array([0.0, r, theta, phi], dtype=np.float64)
+    return bl_state_to_ks_state(params, RayState(x=x_bl, p=p_bl))
+
+
+def schwarzschild_radial_freefall_initial_tetrad(
+    params: MetricParams, *, r: float, theta: float, phi: float = 0.0
+) -> KSObserverTetrad:
+    """Return the analytic static-frame boost tetrad for radial infall.
+
+    In Schwarzschild, an observer dropped from rest at infinity has local
+    velocity `v = -sqrt(2M/r)` relative to the static tetrad.  A radial Lorentz
+    boost of the static tetrad gives `e_time = u_ff`, and the pushed KS frame is
+    the starting frame for numerical parallel transport.
+    """
+
+    if abs(params.a) > 1.0e-14:
+        raise ValueError("This analytic free-fall tetrad seed is Schwarzschild-only.")
+    static = static_observer_tetrad(params, r=r, theta=theta, phi=phi)
+    velocity = -math.sqrt(2.0 * params.M / r)
+    gamma = 1.0 / math.sqrt(1.0 - velocity * velocity)
+    e_time = gamma * (static.e_time + velocity * static.e_r)
+    e_r = gamma * (velocity * static.e_time + static.e_r)
+    boosted = BLObserverTetrad(
+        x=static.x,
+        e_time=e_time,
+        e_r=e_r,
+        e_theta=static.e_theta,
+        e_phi=static.e_phi,
+        kind="schwarzschild_radial_freefall",
+    )
+    return push_bl_tetrad_to_ks(params, boosted)
+
+
+def transport_schwarzschild_radial_freefall_tetrad(
+    params: MetricParams,
+    *,
+    r_start: float,
+    theta: float = math.pi / 2.0,
+    phi: float = 0.0,
+    r_stop: float | None = None,
+    tau_max: float = 30.0,
+    max_step: float = 0.05,
+    rtol: float = 1.0e-9,
+    atol: float = 1.0e-11,
+) -> KSTransportedTetradPath:
+    """Integrate a Schwarzschild infall worldline and parallel-transport frame.
+
+    This is the first Stage B-2 worldline-tetrad gate. It deliberately starts
+    with the Schwarzschild radial free-fall case because both the observer
+    velocity and tetrad boost have compact analytic forms.
+    """
+
+    state = schwarzschild_radial_freefall_initial_state(params, r=r_start, theta=theta, phi=phi)
+    tetrad = schwarzschild_radial_freefall_initial_tetrad(params, r=r_start, theta=theta, phi=phi)
+    y0 = np.concatenate([state.x, state.p, np.stack(tetrad.vectors()).reshape(-1)])
+    stop_radius = float(r_stop) if r_stop is not None else horizon_radius(params) + 0.05 * params.M
+
+    def rhs(tau: float, y: np.ndarray) -> np.ndarray:
+        del tau
+        state_rhs = hamiltonian_rhs_ks(params, 0.0, y[:8])
+        x = y[:4]
+        p = y[4:8]
+        u = ks_inverse_metric(params, x[1:4]) @ p
+        gamma = _ks_christoffel_finite_difference(params, x[1:4])
+        frame = y[8:].reshape((4, 4))
+        frame_rhs = np.zeros_like(frame)
+        for vec_index in range(4):
+            vec = frame[vec_index]
+            frame_rhs[vec_index] = -np.einsum("mnr,n,r->m", gamma, u, vec)
+        return np.concatenate([state_rhs, frame_rhs.reshape(-1)])
+
+    def stop_event(_tau: float, y: np.ndarray) -> float:
+        return ks_radius(params, y[1:4]) - stop_radius
+
+    stop_event.terminal = True  # type: ignore[attr-defined]
+    stop_event.direction = -1.0  # type: ignore[attr-defined]
+
+    sol = solve_ivp(
+        rhs,
+        (0.0, tau_max),
+        y0,
+        method="DOP853",
+        rtol=rtol,
+        atol=atol,
+        max_step=max_step,
+        events=[stop_event],
+    )
+    if not sol.success and not sol.t_events[0].size:
+        raise RuntimeError(f"Transported tetrad integration failed: {sol.message}")
+    values = sol.y.T
+    return KSTransportedTetradPath(
+        tau=sol.t.copy(),
+        states=values[:, :8].copy(),
+        frames=values[:, 8:].reshape((-1, 4, 4)).copy(),
+        kind="schwarzschild_radial_freefall_parallel_transport",
+    )
+
+
+def _ks_christoffel_finite_difference(params: MetricParams, xyz: FloatArray) -> FloatArray:
+    """Return KS Christoffel symbols from finite-difference metric derivatives."""
+
+    xyz = np.asarray(xyz, dtype=np.float64)
+    g_inv = ks_inverse_metric(params, xyz)
+    dg = np.zeros((4, 4, 4), dtype=np.float64)
+    for axis in range(3):
+        step = max(1.0e-5, 1.0e-5 * abs(float(xyz[axis])))
+        delta_xyz = np.zeros(3, dtype=np.float64)
+        delta_xyz[axis] = step
+        dg[axis + 1] = (ks_metric(params, xyz + delta_xyz) - ks_metric(params, xyz - delta_xyz)) / (
+            2.0 * step
+        )
+    gamma = np.zeros((4, 4, 4), dtype=np.float64)
+    for mu in range(4):
+        for nu in range(4):
+            for rho in range(4):
+                gamma[mu, nu, rho] = 0.5 * float(
+                    np.sum(g_inv[mu, :] * (dg[nu, :, rho] + dg[rho, :, nu] - dg[:, nu, rho]))
+                )
+    return gamma
 
 
 def analytic_kerr_frame_dragging_omega(params: MetricParams, r: float, theta: float) -> float:

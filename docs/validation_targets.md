@@ -584,6 +584,13 @@ Stage B observer checks:
 - Large-radius/low-speed tetrad launch must reduce to the existing static
   observer mapping plus the special-relativistic aberration limit.
 - Redshift must use the observer four-velocity, not the static-observer value.
+- The first transported-worldline seed is the Schwarzschild radial free-fall
+  observer from rest at infinity. Its gate requires: boosted initial
+  `e_time = u`, parallel-transported Gram matrices remain close to
+  `diag(-1,1,1,1)`, transported `e_time` stays equal to the geodesic
+  four-velocity, and BL radial velocity satisfies
+  `dr/dtau = -sqrt(2M/r)` along the sampled path. This seed is a transport
+  validation anchor, not yet the full Kerr near-horizon camera model.
 
 ## Phase 6 Simplified GRRT
 
