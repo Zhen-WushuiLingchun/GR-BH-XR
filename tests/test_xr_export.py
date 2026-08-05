@@ -675,9 +675,13 @@ def test_unity_lens_anchor_controls_runtime_is_versioned():
     assert "Observer-radius or apparent-size changes require a new transfer map" in source
     assert "Quaternion.Euler(pitchDegrees, yawDegrees, rollDegrees)" in source
     assert "skyShell.SyncNow()" in source
-    assert "Observer-Basis Controls" in source
-    assert "observer yaw/pitch" in source
-    assert "Size/r_obs locked" in source
+    assert "Lens Placement" in source
+    # The status line must not advertise controls that no longer exist or
+    # constraints that no longer hold: bare-A placement was removed, and
+    # r_obs is roamed rather than locked.
+    assert "place lens at current view" not in source
+    assert "Size/r_obs locked" not in source
+    assert "Rigid re-aim of the cached map; r_obs is roamed, not locked" in source
     assert "Input.GetMouseButtonDown" in source
     assert "KeyCode.Q" in source
     assert "KeyCode.E" in source
@@ -726,19 +730,181 @@ def test_unity_runtime_settings_and_vr_panel_are_versioned():
     assert "DragToRay" in panel
     assert "Navigate(Vector2 axis)" in panel
     assert "ActivateSelected" in panel
-    assert "Request closer r_obs map" in panel
+    assert "Move inward" in panel
+    assert "Move outward" in panel
     assert "Tier 0 playback" in panel
     assert "LegacyRuntime.ttf" in panel
     assert "Arial.ttf" not in panel
 
     assert "BlackHoleLensSettingsPanel" in controls
-    assert "settingsPanel.ToggleVisible()" in controls
+    # Right B toggles by explicit Open/Close on the visibility flag.
+    assert "settingsPanel.Open()" in controls
+    assert "settingsPanel.Close()" in controls
+    assert "settingsPanel.IsVisible" in controls
     assert "settingsPanel.Navigate(axis)" in controls
     assert "settingsPanel.ActivateSelected()" in controls
     assert "settingsPanel.DragToRay" in controls
     assert "GetDevicePositionOrCamera" in controls
     assert "GetDeviceForwardOrCamera" in controls
     assert "UnityEngine.UI" in asmdef
+
+
+def test_unity_observer_rig_turns_tracking_space_not_lens_basis():
+    """Comfort yaw rotates the observer's tracking space, never the map.
+
+    Rotating the cached lens basis would silently pass as "looking around"
+    while actually re-aiming a physical solution.
+    """
+
+    rig = (UNITY_RUNTIME_DIR / "BlackHoleObserverRigControls.cs").read_text(encoding="utf8")
+    head = (UNITY_RUNTIME_DIR / "BlackHoleXrHeadPoseDriver.cs").read_text(encoding="utf8")
+
+    assert "trackingOrigin.RotateAround" in rig
+    assert "targetCamera.transform.position" in rig
+    assert "TrackingToWorldPoint" in rig
+    assert "TrackingToWorldDirection" in rig
+    assert "public Transform TrackingOrigin" in head
+    assert "public void SetTrackingOrigin" in head
+    # The comfort yaw must never reach the lens basis.
+    assert "controls.AddYawDegrees" not in rig
+    assert "AddPitchDegrees" not in rig
+
+
+def test_unity_observer_rig_radial_roam_is_keyframe_gated():
+    """Roam locomotion is bounded by what has actually been traced."""
+
+    rig = (UNITY_RUNTIME_DIR / "BlackHoleObserverRigControls.cs").read_text(encoding="utf8")
+    roam = (UNITY_RUNTIME_DIR / "BlackHoleRoamKeyframes.cs").read_text(encoding="utf8")
+
+    # Walking decomposes the pushed direction onto the observer's spherical
+    # axes; radial motion is exponential in radius, polar motion swaps grid
+    # rows, azimuthal motion is exact by axisymmetry, and every component is
+    # clamped so the view cannot outrun keyframe loading.
+    assert "AddWalkInput" in rig
+    assert "AddSphericalInput" in rig
+    assert "KerrObserverBasis.SphericalDirections" in rig
+    assert "RadialLocomotionAvailable" in rig
+    assert "Mathf.Log(virtualRadiusM)" in rig
+    assert "roamKeyframes.ClampRadius" in rig
+    assert "roamKeyframes.ClampThetaDeg" in rig
+    assert "roamKeyframes.SetTarget" in rig
+    assert "KeyCode.W" in rig
+    assert "KeyCode.S" in rig
+
+    assert "roam_keyframes_metadata.json" in roam
+    assert "streamingAssetsPath" in roam
+    assert "gr-bh-xr.task7.roam_keyframes.v2" in roam
+    assert "public float ClampRadius" in roam
+    assert "public float ClampThetaDeg" in roam
+    assert "public void SetTarget" in roam
+    assert "public void ForceBind" in roam
+    assert '"_SkyBlueshift"' in roam
+    # Nearest keyframe is selected in log radius; binding rebinds every cube
+    # slot and disables the single-radius hybrid angular window.
+    assert "Mathf.Log" in roam
+    for slot in (
+        "_EventCube",
+        "_EscapeDirCube",
+        "_DiskOrder0Cube",
+        "_DiskOrder1Cube",
+        "_DiskOrder0RedshiftCube",
+        "_DiskOrder1RedshiftCube",
+    ):
+        assert f'"{slot}"' in roam, slot
+    # Off would select the legacy full-screen 2D mode; the roam bind keeps the
+    # angular window on but collapses it to an empty (inverted) range so all
+    # pixels take the full-sky cubemap path.
+    assert '"_UseAngularWindow", 1.0f' in roam
+    assert "new Vector4(1.0f, -1.0f, 1.0f, -1.0f)" in roam
+    assert '"_LensRObs"' in roam
+    # Pin the descent schema constant, not a docstring adjective: a comment
+    # containing "quasi-static" survives deleting the entire feature.
+    assert 'SupportedDescentSchema = "gr-bh-xr.task8.descent_keyframes.v1"' in roam
+
+
+def test_unity_roam_makes_no_task8_physics_claim():
+    """This worktree must not assert rain-frame / descent physics validity.
+
+    The rain-frame worldline, its descent keyframes, and their gates are owned
+    by the Task 7-8 physics worktree, and the descent producer is not present
+    on this branch at all. Runtime strings that told the operator the falling
+    frame carried "true" or "exact" aberration/Doppler were therefore claims
+    this code cannot support - and they were emitted unconditionally, even in
+    plain grid mode with no descent assets bound.
+    """
+
+    rig = (UNITY_RUNTIME_DIR / "BlackHoleObserverRigControls.cs").read_text(encoding="utf8")
+    roam = (UNITY_RUNTIME_DIR / "BlackHoleRoamKeyframes.cs").read_text(encoding="utf8")
+    shader = (UNITY_RUNTIME_DIR / "BlackHoleLensStaticPreview.shader").read_text(encoding="utf8")
+
+    for banned in (
+        "true aberration/Doppler",
+        "carries true aberration",
+        "aberration and Doppler of\n    /// the falling frame are exact",
+        "aberration/Doppler switch on",
+        "validated rain-frame",
+    ):
+        for name, text in (("rig", rig), ("roam", roam), ("shader", shader)):
+            assert banned not in text, f"{banned!r} still claimed in {name}"
+
+    # The retracted observer-factor figure must never again be presented as a
+    # validation result. It may only appear as an explicit retraction.
+    assert "validated against traced conserved q_t to 2.7e-8" not in shader
+    if "2.7e-8" in shader:
+        assert "retracted" in shader
+        assert "is not used" in shader
+
+    # The honest statement of what playback is must be present.
+    assert "no boost between keyframes" in roam.lower()
+    assert "intermediate radii are not solved" in roam
+
+    # Free fall must be refused, not silently run on Schwarzschild pacing,
+    # when the audited descent keyframes are absent.
+    assert "public bool FreeFallAvailable" in rig
+    assert "roamKeyframes.DescentAvailable" in rig
+    assert "GR-BH-XR free fall refused" in rig
+    assert "SCHWARZSCHILD pacing" in rig
+    # And the pacing error has to be stated where the expression lives.
+    assert "5.91% at 2.5M" in rig
+    assert "33.6% at 2.5M" in rig
+
+
+def test_unity_roam_asset_absence_is_loud():
+    """A missing manifest must not silently disable every control.
+
+    Grid-manifest absence used to `return null` with no Debug call at all, so
+    every locomotion control did nothing and the only evidence was an empty
+    status line. That is also the exact signature of an Android/Quest-native
+    build, where StreamingAssets is inside the APK and System.IO cannot read
+    it.
+    """
+
+    rig = (UNITY_RUNTIME_DIR / "BlackHoleObserverRigControls.cs").read_text(encoding="utf8")
+    roam = (UNITY_RUNTIME_DIR / "BlackHoleRoamKeyframes.cs").read_text(encoding="utf8")
+
+    assert "GR-BH-XR roam disabled:" in roam
+    assert "descent keyframes not bound" in roam.lower()
+    assert "return null;  // descent is optional" not in roam
+    assert "GR-BH-XR observer locomotion ignored" in rig
+    assert "GR-BH-XR free fall unavailable" in rig
+
+
+def test_unity_panel_reports_the_metric_it_lets_you_change():
+    """Spin and mass are the metric; they must be readable and logged."""
+
+    panel = (UNITY_RUNTIME_DIR / "BlackHoleLensSettingsPanel.cs").read_text(encoding="utf8")
+    tracer = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.cs").read_text(encoding="utf8")
+    controls = (UNITY_RUNTIME_DIR / "BlackHoleLensXrControllerControls.cs").read_text(encoding="utf8")
+
+    assert "tracer.MassValue" in panel
+    assert "tracer.SpinValue" in panel
+    assert "GR-BH-XR live metric: a =" in tracer
+    assert "GR-BH-XR live metric: M =" in tracer
+    # The hidden left-grip metric chord must be discoverable from a status
+    # string rather than only from the source.
+    assert "L grip + R stick changes the metric" in controls
+    # The rendered polar row must be shown next to the walked one.
+    assert "BoundThetaDeg" in controls
 
 
 def test_unity_editor_gate_automation_is_versioned():

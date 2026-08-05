@@ -16,6 +16,12 @@ namespace GRBHXR
         public bool PoseValid => poseValid;
         public Vector3 LastHeadLocalPosition => lastHeadLocalPosition;
         public Quaternion LastHeadLocalRotation => lastHeadLocalRotation;
+        public Transform TrackingOrigin => trackingOrigin;
+
+        public void SetTrackingOrigin(Transform value)
+        {
+            trackingOrigin = value;
+        }
 
         private void Awake()
         {

@@ -347,17 +347,29 @@ namespace GRBHXR
         /// dragging together). Kerr bound |a| < M enforced.</summary>
         public void AdjustSpin(float delta)
         {
+            float previous = spin;
             spin = Mathf.Clamp(spin + delta, -0.998f * mass, 0.998f * mass);
             diskLutDirty = true;
+            // Metric changes were previously unlogged and unreadable, so a
+            // capture could not be attributed to a spin value after the fact.
+            if (!Mathf.Approximately(previous, spin))
+            {
+                Debug.Log($"GR-BH-XR live metric: a = {spin:F4} (M = {mass:F3}).");
+            }
         }
 
         /// <summary>Continuous mass control (rescales the hole; all radii in
         /// the tracer carry M explicitly).</summary>
         public void AdjustMass(float delta)
         {
+            float previous = mass;
             mass = Mathf.Clamp(mass + delta, 0.5f, 2.0f);
             spin = Mathf.Clamp(spin, -0.998f * mass, 0.998f * mass);
             diskLutDirty = true;
+            if (!Mathf.Approximately(previous, mass))
+            {
+                Debug.Log($"GR-BH-XR live metric: M = {mass:F3} (a = {spin:F4}).");
+            }
         }
 
         public float MassValue => mass;

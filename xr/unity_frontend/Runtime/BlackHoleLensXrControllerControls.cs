@@ -11,20 +11,18 @@ namespace GRBHXR
         [SerializeField] private BlackHoleLensFloatingPanel floatingPanel;
         [SerializeField] private BlackHoleLensSettingsPanel settingsPanel;
         [SerializeField] private BlackHoleLensRuntimeSettings runtimeSettings;
+        [SerializeField] private BlackHoleObserverRigControls observerRigControls;
         [SerializeField] private bool enableControllerInput = true;
-        // These sticks rotate the observer/view basis of a static transfer map.
-        // They do not change Kerr spin, inclination, r_obs, or the observer worldline.
-        [SerializeField] private bool yawPitchOnRightStick = true;
-        [SerializeField] private bool rollOnLeftStick = true;
-        // Default off: with the hold-to-rotate gate on, users could not tell
-        // whether the sticks worked at all. The stick dead zone already filters
-        // most accidental input; re-enable per scene if drift shows up.
-        [SerializeField] private bool requireGripOrTriggerForStickRotation;
-        [SerializeField] private float yawPitchDegreesPerSecond = 45.0f;
-        [SerializeField] private float rollDegreesPerSecond = 45.0f;
+        [SerializeField] private bool walkObserverOnRightStick = true;
+        [SerializeField] private bool turnObserverOnLeftStick = true;
+        [SerializeField] private bool aimLensOnRightGrip = true;
+        [SerializeField] private float observerYawDegreesPerSecond = 45.0f;
         [SerializeField] private float hotSpotRadiusPerSecond = 3.0f;
         [SerializeField] private float hotSpotPhaseRadiansPerSecond = 1.4f;
+        [SerializeField] private float spinPerSecond = 0.4f;
+        [SerializeField] private float massPerSecond = 0.3f;
         [SerializeField] private float stickDeadZone = 0.15f;
+        [SerializeField] private float panelToggleCooldownSeconds = 0.25f;
 
         private readonly List<InputDevice> devices = new List<InputDevice>();
         private bool previousRightPrimaryButton;
@@ -47,6 +45,7 @@ namespace GRBHXR
         private int loggedLeftDeviceCount = -1;
         private string loggedRightDeviceName = "";
         private string loggedLeftDeviceName = "";
+        private float nextPanelToggleTime;
 
         private void Awake()
         {
@@ -66,11 +65,6 @@ namespace GRBHXR
             }
 
             ResolveReferences();
-            if (controls == null)
-            {
-                return;
-            }
-
             PollRightController();
             PollLeftController();
         }
@@ -81,33 +75,48 @@ namespace GRBHXR
             {
                 previousRightPrimaryButton = false;
                 previousRightSecondaryButton = false;
+                previousRightTriggerButton = false;
                 return;
             }
 
-            bool rotationHeld = !requireGripOrTriggerForStickRotation || IsRotationModifierHeld(right);
             bool panelOpen = settingsPanel != null && settingsPanel.IsVisible;
-            if (TryGetAxis(right, out Vector2 axis) && panelOpen)
+            bool hasAxis = TryGetAxis(right, out Vector2 axis);
+            bool leftGripHeld = TryGetDevice(InputDeviceCharacteristics.Left, out InputDevice leftForChord)
+                && TryGetButton(leftForChord, CommonUsages.gripButton);
+            if (hasAxis && panelOpen)
             {
                 settingsPanel.Navigate(axis);
             }
-            else if (yawPitchOnRightStick && rotationHeld && axis.sqrMagnitude > 0.0f)
+            else if (hasAxis && leftGripHeld)
             {
-                controls.AddYawDegrees(axis.x * yawPitchDegreesPerSecond * Time.deltaTime);
-                controls.AddPitchDegrees(axis.y * yawPitchDegreesPerSecond * Time.deltaTime);
+                // Chord: LEFT grip + RIGHT stick = continuous metric control.
+                // X adjusts spin (can cross zero: the mirror-system
+                // falsification test), Y adjusts mass. The live tracer
+                // re-solves within a pass, so the response is first
+                // principles, not a styling change.
+                var liveTracer = FindAnyObjectByType<BlackHoleLiveTracer>();
+                if (liveTracer != null)
+                {
+                    liveTracer.AdjustSpin(axis.x * spinPerSecond * Time.deltaTime);
+                    liveTracer.AdjustMass(axis.y * massPerSecond * Time.deltaTime);
+                }
+            }
+            else if (hasAxis && walkObserverOnRightStick && observerRigControls != null)
+            {
+                // Walk in the pushed direction relative to where the user
+                // faces; the rig decomposes it onto radial/polar/azimuthal
+                // motion through the keyframe grid.
+                observerRigControls.AddWalkInput(axis, Time.deltaTime);
             }
 
+            // A activates only inside the panel. Bare A no longer re-places the
+            // lens: an accidental press snapped the black hole to the current
+            // gaze, which read as broken rotation. Use the panel button instead.
             bool primary = TryGetButton(right, CommonUsages.primaryButton);
             rightPrimaryButton = primary;
-            if (primary && !previousRightPrimaryButton)
+            if (primary && !previousRightPrimaryButton && panelOpen)
             {
-                if (panelOpen)
-                {
-                    settingsPanel.ActivateSelected();
-                }
-                else
-                {
-                    controls.ResetPose();
-                }
+                settingsPanel.ActivateSelected();
             }
             previousRightPrimaryButton = primary;
 
@@ -122,20 +131,22 @@ namespace GRBHXR
             rightSecondaryButton = secondary;
             if (secondary && !previousRightSecondaryButton)
             {
-                if (settingsPanel != null)
-                {
-                    settingsPanel.ToggleVisible();
-                }
-                else if (floatingPanel != null)
-                {
-                    floatingPanel.ToggleVisible();
-                }
+                TogglePanelFromController();
             }
             previousRightSecondaryButton = secondary;
 
-            if (settingsPanel != null && TryGetButton(right, CommonUsages.gripButton))
+            bool rightGrip = TryGetButton(right, CommonUsages.gripButton);
+            if (rightGrip && panelOpen && settingsPanel != null)
             {
                 settingsPanel.DragToRay(GetDevicePositionOrCamera(right), GetDeviceForwardOrCamera(right));
+            }
+            else if (rightGrip && !panelOpen && aimLensOnRightGrip && controls != null)
+            {
+                // Grab-and-aim: while the right grip is held, the lens anchor
+                // follows the controller ray, dragging the black hole across
+                // the sky. This is scene placement (a rigid re-aim of the
+                // cached lens field), not observer motion or spin change.
+                controls.AimAlongWorldDirection(GetDeviceForwardOrCamera(right));
             }
         }
 
@@ -150,7 +161,6 @@ namespace GRBHXR
             }
 
             bool gripHeld = TryGetButton(left, CommonUsages.gripButton);
-            bool rotationHeld = !requireGripOrTriggerForStickRotation || IsRotationModifierHeld(left);
             bool panelOpen = settingsPanel != null && settingsPanel.IsVisible;
             bool hasAxis = TryGetAxis(left, out Vector2 axis);
             if (hasAxis && runtimeSettings != null && gripHeld && !panelOpen)
@@ -158,14 +168,16 @@ namespace GRBHXR
                 runtimeSettings.AddDiskHotSpotPhase(axis.x * hotSpotPhaseRadiansPerSecond * Time.deltaTime);
                 runtimeSettings.AddDiskHotSpotRadius(axis.y * hotSpotRadiusPerSecond * Time.deltaTime);
             }
-            else if (rollOnLeftStick && rotationHeld && hasAxis)
+            else if (hasAxis && !gripHeld && !panelOpen && turnObserverOnLeftStick && observerRigControls != null)
             {
-                controls.AddRollDegrees(axis.x * rollDegreesPerSecond * Time.deltaTime);
+                observerRigControls.AddYawDegrees(axis.x * observerYawDegreesPerSecond * Time.deltaTime);
             }
 
+            // Disk shortcuts stay quiet while the panel is open so panel
+            // navigation cannot double as scene mutation.
             bool primary = TryGetButton(left, CommonUsages.primaryButton);
             leftPrimaryButton = primary;
-            if (primary && !previousLeftPrimaryButton && runtimeSettings != null)
+            if (primary && !previousLeftPrimaryButton && runtimeSettings != null && !panelOpen)
             {
                 runtimeSettings.ToggleDiskVisualMode();
             }
@@ -173,7 +185,7 @@ namespace GRBHXR
 
             bool secondary = TryGetButton(left, CommonUsages.secondaryButton);
             leftSecondaryButton = secondary;
-            if (secondary && !previousLeftSecondaryButton && runtimeSettings != null)
+            if (secondary && !previousLeftSecondaryButton && runtimeSettings != null && !panelOpen)
             {
                 runtimeSettings.CycleDiskAuditMode();
             }
@@ -198,11 +210,52 @@ namespace GRBHXR
         {
             RefreshDeviceSummary(InputDeviceCharacteristics.Right);
             RefreshDeviceSummary(InputDeviceCharacteristics.Left);
-            string gate = requireGripOrTriggerForStickRotation ? "hold grip/trigger + stick" : "stick rotates directly";
+            // theta reports BOTH the continuously walked value and the row the
+            // renderer is actually bound to. They differ by up to half a row
+            // spacing (7.5 deg on a 15 deg grid), and showing only the walked
+            // value made this readout disagree with the roam status line.
+            var roam = FindAnyObjectByType<BlackHoleRoamKeyframes>();
+            string boundTheta = roam != null ? $"{roam.BoundThetaDeg:F0}" : "?";
+            string observer = observerRigControls != null
+                ? $"yaw={observerRigControls.VirtualYawDegrees:F0} r={observerRigControls.VirtualRadiusM:F2}M " +
+                  $"theta={observerRigControls.VirtualThetaDeg:F0}->{boundTheta} az={observerRigControls.VirtualAzimuthDeg:F0}"
+                : "observer rig missing";
+            var tracer = FindAnyObjectByType<BlackHoleLiveTracer>();
+            string metric = tracer != null
+                ? $"M={tracer.MassValue:F2} a={tracer.SpinValue:F3}"
+                : "M/a: live tracer absent";
             return
                 $"R ctrl n={rightDeviceCount} axis=({rightAxis.x:F2},{rightAxis.y:F2}) A={rightPrimaryButton} B={rightSecondaryButton}\n" +
                 $"L ctrl n={leftDeviceCount} axis=({leftAxis.x:F2},{leftAxis.y:F2}) X={leftPrimaryButton} Y={leftSecondaryButton}\n" +
-                $"{gate}  L grip+stick moves hot spot";
+                $"R stick walks where you face ({observer}); L stick turns; R grip drags the hole\n" +
+                $"L grip + R stick changes the metric ({metric})\n" +
+                "Quasi-static keyframe grid; azimuth exact by axisymmetry; no boost between frames.";
+        }
+
+        public void TogglePanelFromController()
+        {
+            if (Time.unscaledTime < nextPanelToggleTime)
+            {
+                return;
+            }
+            nextPanelToggleTime = Time.unscaledTime + Mathf.Max(panelToggleCooldownSeconds, 0.05f);
+
+            if (settingsPanel != null)
+            {
+                if (settingsPanel.IsVisible)
+                {
+                    settingsPanel.Close();
+                }
+                else
+                {
+                    settingsPanel.Open();
+                }
+                Debug.Log($"GR-BH-XR settings panel visible={settingsPanel.IsVisible} (right B).");
+            }
+            else if (floatingPanel != null)
+            {
+                floatingPanel.ToggleVisible();
+            }
         }
 
         private bool TryGetDevice(InputDeviceCharacteristics handedness, out InputDevice device)
@@ -249,12 +302,6 @@ namespace GRBHXR
             return device.TryGetFeatureValue(usage, out bool pressed) && pressed;
         }
 
-        private static bool IsRotationModifierHeld(InputDevice device)
-        {
-            return TryGetButton(device, CommonUsages.triggerButton) ||
-                   TryGetButton(device, CommonUsages.gripButton);
-        }
-
         private void ResolveReferences()
         {
             if (controls == null)
@@ -277,22 +324,31 @@ namespace GRBHXR
             {
                 runtimeSettings = FindAnyObjectByType<BlackHoleLensRuntimeSettings>();
             }
+            if (observerRigControls == null)
+            {
+                observerRigControls = FindAnyObjectByType<BlackHoleObserverRigControls>();
+            }
         }
 
-        private static Vector3 GetDevicePositionOrCamera(InputDevice device)
+        private Vector3 GetDevicePositionOrCamera(InputDevice device)
         {
             if (device.TryGetFeatureValue(CommonUsages.devicePosition, out Vector3 position))
             {
-                return position;
+                return observerRigControls != null
+                    ? observerRigControls.TrackingToWorldPoint(position)
+                    : position;
             }
             return Camera.main != null ? Camera.main.transform.position : Vector3.zero;
         }
 
-        private static Vector3 GetDeviceForwardOrCamera(InputDevice device)
+        private Vector3 GetDeviceForwardOrCamera(InputDevice device)
         {
             if (device.TryGetFeatureValue(CommonUsages.deviceRotation, out Quaternion rotation))
             {
-                return rotation * Vector3.forward;
+                Vector3 direction = rotation * Vector3.forward;
+                return observerRigControls != null
+                    ? observerRigControls.TrackingToWorldDirection(direction)
+                    : direction;
             }
             return Camera.main != null ? Camera.main.transform.forward : Vector3.forward;
         }

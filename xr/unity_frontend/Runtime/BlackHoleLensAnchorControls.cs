@@ -151,25 +151,38 @@ namespace GRBHXR
             }
 
             Vector3 forward = targetCamera.transform.forward;
-            if (forward.sqrMagnitude < 1.0e-6f)
+            if (!AimAlongWorldDirection(forward))
             {
                 return false;
             }
-            forward = forward.normalized;
+            hasAlignedToCamera = true;
+            Debug.Log(
+                $"GR-BH-XR lens anchor aligned to camera forward: yaw={yawDegrees:F1}, " +
+                $"pitch={pitchDegrees:F1}, cameraForward={forward.normalized}"
+            );
+            return true;
+        }
 
-            yawDegrees = NormalizeAngle(Mathf.Atan2(forward.x, forward.z) * Mathf.Rad2Deg);
+        /// <summary>
+        /// Aim the lens anchor along an arbitrary world direction (controller
+        /// grab-and-aim). Scene placement only: a rigid re-aim of the cached
+        /// lens field, not observer motion or a spin/inclination change.
+        /// </summary>
+        public bool AimAlongWorldDirection(Vector3 worldDirection)
+        {
+            if (worldDirection.sqrMagnitude < 1.0e-6f)
+            {
+                return false;
+            }
+            Vector3 direction = worldDirection.normalized;
+            yawDegrees = NormalizeAngle(Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg);
             pitchDegrees = Mathf.Clamp(
-                -Mathf.Asin(Mathf.Clamp(forward.y, -1.0f, 1.0f)) * Mathf.Rad2Deg,
+                -Mathf.Asin(Mathf.Clamp(direction.y, -1.0f, 1.0f)) * Mathf.Rad2Deg,
                 -89.0f,
                 89.0f
             );
             rollDegrees = 0.0f;
-            hasAlignedToCamera = true;
             ApplyPose();
-            Debug.Log(
-                $"GR-BH-XR lens anchor aligned to camera forward: yaw={yawDegrees:F1}, " +
-                $"pitch={pitchDegrees:F1}, cameraForward={forward}"
-            );
             return true;
         }
 
@@ -190,14 +203,14 @@ namespace GRBHXR
 
         public string StatusText()
         {
-            string stale = transferMapStale ? "STALE" : "fixed";
+            // Placement is a rigid re-aim of the cached radiance field. It is
+            // scene placement, not observer motion and not a metric change.
             return
-                "GR-BH-XR Observer-Basis Controls\n" +
-                $"Yaw {yawDegrees:F1}  Pitch {pitchDegrees:F1}  Roll {rollDegrees:F1}\n" +
-                "R stick: observer yaw/pitch  L stick: observer roll\n" +
-                "A: aim at view  B: panel\n" +
+                "GR-BH-XR Lens Placement\n" +
+                $"Lens yaw {yawDegrees:F1}  pitch {pitchDegrees:F1}  roll {rollDegrees:F1}\n" +
+                "R grip: drag the hole across the sky  B: panel\n" +
                 "Desktop: drag / arrows / Q E / R\n" +
-                $"Size/r_obs locked; transfer map {stale}";
+                "Rigid re-aim of the cached map; r_obs is roamed, not locked";
         }
 
         private void PollMouseKeyboardInput()

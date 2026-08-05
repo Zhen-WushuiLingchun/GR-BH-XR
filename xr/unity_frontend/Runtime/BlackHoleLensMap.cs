@@ -34,6 +34,9 @@ namespace GRBHXR
         public float temperatureMinK;
         public float temperatureMaxK;
         public string temperatureSpacing;
+        // v2: alpha carries the inverse Planck locus (chromaticity -> log-norm
+        // temperature), which enables the sky chromatic-shift path.
+        public string alphaChannel;
     }
 
     [Serializable]
@@ -111,6 +114,9 @@ namespace GRBHXR
         [SerializeField] private TextAsset diskColorLutRgba32fBytes;
         [SerializeField] private TextAsset diskRadialLutMetadataJson;
         [SerializeField] private TextAsset diskRadialLutRgba32fBytes;
+        [Header("Optional roam observer wiring")]
+        [SerializeField] private BlackHoleObserverRigControls observerRig;
+        [SerializeField] private BlackHoleRoamKeyframes roamKeyframes;
 
         public LensMapMetadata Metadata { get; private set; }
         public FullSkyTransferMetadata FullSkyMetadata { get; private set; }
@@ -209,22 +215,40 @@ namespace GRBHXR
             }
             bool useDiskColorLut = DiskColorLutTexture != null && DiskRadialLutTexture != null;
             material.SetFloat("_UseDiskColorLut", useDiskColorLut ? 1.0f : 0.0f);
+            // Sky chromatic shift needs the v2 LUT whose alpha channel is the
+            // inverse Planck locus (chromaticity -> temperature).
+            bool skyChromatic = useDiskColorLut
+                && DiskColorLutMetadata.alphaChannel == "planck-locus-inverse";
+            material.SetFloat("_UseSkyChromaticShift", skyChromatic ? 1.0f : 0.0f);
             if (useDiskColorLut)
             {
                 material.SetTexture("_DiskColorLut", DiskColorLutTexture);
                 material.SetTexture("_DiskRadialLut", DiskRadialLutTexture);
+                // .z carries the LUT row count so the shader can apply the
+                // producer's endpoint-row texel coordinate
+                // u = (s (samples-1) + 0.5)/samples instead of u = s. The
+                // producer publishes this contract as rgbCoordinateExact /
+                // radiusCoordinateExact and explicitly records that the
+                // Unity consumer was violating it; the half-texel offset is
+                // 0.72% in effective temperature at 256 rows and 0.027 M in
+                // radius (0.048 in normalized flux) at 512.
                 material.SetVector(
                     "_DiskColorLutLogT",
                     new Vector4(
                         Mathf.Log(DiskColorLutMetadata.temperatureMinK),
                         Mathf.Log(DiskColorLutMetadata.temperatureMaxK),
-                        0.0f,
+                        DiskColorLutMetadata.samples,
                         0.0f
                     )
                 );
                 material.SetVector(
                     "_DiskRadialLutBounds",
-                    new Vector4(DiskRadialLutMetadata.rMin, DiskRadialLutMetadata.rMax, 0.0f, 0.0f)
+                    new Vector4(
+                        DiskRadialLutMetadata.rMin,
+                        DiskRadialLutMetadata.rMax,
+                        DiskRadialLutMetadata.samples,
+                        0.0f
+                    )
                 );
                 material.SetFloat("_DiskTemperatureScale", DiskRadialLutMetadata.temperatureScaleK);
             }
@@ -241,6 +265,10 @@ namespace GRBHXR
                 );
             }
             material.SetFloat("_LensRObs", ObserverRadiusOrDefault());
+            // Legacy r_obs = 100M package: sky blueshift 1/sqrt(-g_tt) is 1.01,
+            // visually unity. Roam keyframes override these per bind.
+            material.SetFloat("_SkyBlueshift", 1.0f);
+            material.SetVector("_ObsEInf", new Vector4(0.0f, 0.0f, 0.0f, 1.0f));
             ApplyBasisToMaterial(material);
         }
 
@@ -250,9 +278,80 @@ namespace GRBHXR
             {
                 return;
             }
+            ResolveRoamReferences();
+            if (observerRig != null && roamKeyframes != null && roamKeyframes.IsReady)
+            {
+                // Position-dependent basis: theta rows swap the traced map,
+                // azimuth is an exact rigid rotation about the spin axis
+                // (axisymmetry). The anchor rotation is the calibration taken
+                // at the reference theta row with azimuth 0. In descent mode
+                // each blend set carries the worldline azimuth of its own
+                // keyframe (frame-dragging spiral); on the grid the user's
+                // walked azimuth applies to both sets.
+                bool haveState = roamKeyframes.TryGetBlendState(
+                    out float thetaA, out float azimuthA, out Vector4 eInfA,
+                    out float thetaB, out float azimuthB, out Vector4 eInfB,
+                    out float blend, out bool blendActive
+                );
+                bool descent = roamKeyframes.Mode == BlackHoleRoamKeyframes.RoamMode.Descent;
+                float userAzimuth = observerRig.VirtualAzimuthDeg;
+                float totalAzimuthA = descent ? azimuthA : userAzimuth;
+                float totalAzimuthB = descent ? azimuthB : userAzimuth;
+                if (!haveState)
+                {
+                    thetaA = roamKeyframes.BoundThetaDeg;
+                    totalAzimuthA = userAzimuth;
+                }
+                KerrObserverBasis.WorldBasis(
+                    transform.rotation,
+                    observerRig.ReferenceThetaDeg,
+                    thetaA,
+                    totalAzimuthA,
+                    out Vector3 worldRight,
+                    out Vector3 worldUp,
+                    out Vector3 worldForward
+                );
+                material.SetVector("_LensWorldRight", worldRight);
+                material.SetVector("_LensWorldUp", worldUp);
+                material.SetVector("_LensWorldForward", worldForward);
+                material.SetVector("_ObsEInf", eInfA);
+                if (blendActive)
+                {
+                    KerrObserverBasis.WorldBasis(
+                        transform.rotation,
+                        observerRig.ReferenceThetaDeg,
+                        thetaB,
+                        totalAzimuthB,
+                        out Vector3 worldRightB,
+                        out Vector3 worldUpB,
+                        out Vector3 worldForwardB
+                    );
+                    material.SetVector("_LensWorldRightB", worldRightB);
+                    material.SetVector("_LensWorldUpB", worldUpB);
+                    material.SetVector("_LensWorldForwardB", worldForwardB);
+                    material.SetVector("_ObsEInfB", eInfB);
+                }
+                material.SetFloat(
+                    "_DiskObserverAzimuth",
+                    Mathf.Lerp(totalAzimuthA, totalAzimuthB, blendActive ? blend : 0.0f) * Mathf.Deg2Rad
+                );
+                return;
+            }
             material.SetVector("_LensWorldRight", transform.rotation * Vector3.right);
             material.SetVector("_LensWorldUp", transform.rotation * Vector3.up);
             material.SetVector("_LensWorldForward", transform.rotation * Vector3.forward);
+        }
+
+        private void ResolveRoamReferences()
+        {
+            if (observerRig == null)
+            {
+                observerRig = FindAnyObjectByType<BlackHoleObserverRigControls>();
+            }
+            if (roamKeyframes == null)
+            {
+                roamKeyframes = FindAnyObjectByType<BlackHoleRoamKeyframes>();
+            }
         }
 
         private float ObserverRadiusOrDefault()
@@ -384,13 +483,29 @@ namespace GRBHXR
             {
                 throw new InvalidOperationException($"{name} bytes are not assigned.");
             }
+            return LoadRawCubemapBytes(bytes.bytes, faceSize, format, expectedBytesPerPixel, name, filterMode);
+        }
+
+        public static Cubemap LoadRawCubemapBytes(
+            byte[] bytes,
+            int faceSize,
+            TextureFormat format,
+            int expectedBytesPerPixel,
+            string name,
+            FilterMode filterMode
+        )
+        {
+            if (bytes == null)
+            {
+                throw new InvalidOperationException($"{name} bytes are not assigned.");
+            }
 
             int faceBytes = faceSize * faceSize * expectedBytesPerPixel;
             int expected = faceBytes * 6;
-            if (bytes.bytes.Length != expected)
+            if (bytes.Length != expected)
             {
                 throw new InvalidOperationException(
-                    $"{name} has {bytes.bytes.Length} bytes; expected {expected}."
+                    $"{name} has {bytes.Length} bytes; expected {expected}."
                 );
             }
 
@@ -412,7 +527,7 @@ namespace GRBHXR
             for (int face = 0; face < faces.Length; face++)
             {
                 var faceData = new byte[faceBytes];
-                Buffer.BlockCopy(bytes.bytes, face * faceBytes, faceData, 0, faceBytes);
+                Buffer.BlockCopy(bytes, face * faceBytes, faceData, 0, faceBytes);
                 texture.SetPixelData(faceData, 0, faces[face]);
             }
             texture.Apply(updateMipmaps: false, makeNoLongerReadable: true);

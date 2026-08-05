@@ -494,9 +494,11 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
 
                 float r = max(disk.x, 1.0e-3);
                 // Recorded g_m is the emitter-to-infinity factor; the
-                // observer-side factor 1/E_inf completes the physical chain
-                // (exact for static frames, direction dependent for the
-                // falling frame).
+                // observer-side factor 1/E_inf completes the physical chain.
+                // Direction-independent for a static observer; direction
+                // dependent for a falling one. Whether the falling-frame
+                // constants are correct is a property of their producer (the
+                // Task 7-8 physics worktree), not of this shader.
                 float g = clamp(disk.w * obsFactor, 0.05, 3.0);
                 float orderScale = order > 0.5 ? _DiskSecondaryScale : 1.0;
                 float usePhysicalColor = _UseDiskColorLut > 0.5 ? 1.0 : 0.0;
