@@ -257,6 +257,62 @@ Required checks:
 - the angular-window yaw test is interpreted only as head-rotation anchoring
   for a fixed distant observer. It is not accepted as evidence for changing the
   physical Kerr observer inclination or orbiting around the black hole;
+- for the Task 7 baked path, observer translation is accepted only as roam
+  keyframe playback over an `(r_obs, theta)` grid, and only as a *quasi-static*
+  sequence: no kinematic aberration is modeled between keyframes. Details and
+  measured numbers are in `validation/roam_keyframes/README.md`. Required
+  checks:
+  - the roam manifest (`roam_keyframes_metadata.json`, schema
+    `gr-bh-xr.task7.roam_keyframes.v2`) records log-spaced radii and sorted
+    theta rows inside the envelope, with every grid point outside the
+    ergosphere at its polar angle validated *before* any GPU time is spent;
+  - the theta envelope is `[30, 150] deg`, which is exactly the grid the
+    committed tests exercise. It is recorded as a tested range, not a measured
+    failure boundary: a full-sky sweep at `r_obs = 2.5M` and `6M` finds at most
+    1 invalid texel of 3456 anywhere in `theta = 2..178 deg`, with no cliff at
+    either end. The envelope must NOT be justified by the Bardeen
+    `1/sin(theta_obs)` screen-map degeneracy - that argument applies to
+    `gr_bh_xr.gpu.preview`, which evaluates the `alpha`/`beta` screen map,
+    whereas the roam path reaches the tracer through `initial_state_direction`
+    and never evaluates it. A test pins that the rationale is not repeated;
+  - the shadow gate is on `captureSolidAngleFraction` (solid-angle weighted,
+    taken from the raw pre-repair classification), not on a raw texel count,
+    because cube texels do not subtend equal solid angle. It must grow
+    monotonically per theta row as `r_obs` decreases, within a tolerance of
+    `3 / sqrt(total_pixels)`; a strict comparison is quantization-limited at
+    the outer keyframes. Measured at `a/M = 0.9`, face 32:
+    `0.000620` at `100M` to `0.551254` (theta = 30 and 150 deg) and `0.673544`
+    (theta = 90 deg) at `2.5M`;
+  - equatorial mirror symmetry is gated as a real per-ray invariant in
+    `tests/test_roam_mirror_symmetry.py`, not as a prose claim and not as a
+    capture-fraction table comparison (the cubemap texel set is itself
+    invariant under the Unity y-flip, so aggregate counts are largely forced to
+    agree). Escape directions must satisfy `(dx, dy, dz) -> (dx, -dy, dz)`
+    between `theta` and `180 - theta`, and `r_m`, `g_m` are reflection scalars.
+    Measured over 10800 ray pairs: 0 event mismatches, 0 one-sided disk
+    records, escape direction p50 `0.00078 deg` / p99 `0.0183 deg`,
+    `|delta r_m|` p99 `1.54e-4 M`, `|delta g_m|` p99 `1.19e-5`. The p99
+    direction figure is the f32 representation floor of the `arccos(dot)`
+    metric itself (a unit f32 vector dotted with itself already yields up to
+    `0.0428 deg`), so the gate is a percentile plus a bounded-outlier fraction
+    rather than a max, whose tail is chaotic photon-ring rays;
+  - every keyframe uses an escape radius no smaller than `200M` rather than the
+    legacy `2 r_obs` rule, because momentum-direction extraction at `2 r_obs`
+    is not asymptotic for a near-horizon observer: measured `6.695 deg` mean /
+    `22.79 deg` max direction error at `r_obs = 2.5M`, falling below
+    `0.35 deg` by `r_escape = 20` and reaching its floor by `50`. The residual
+    floor (`0.13 deg` at `2.5M`, `0.007 deg` at `100M`) is accumulated f32 RK4
+    error along the longer near-horizon path and is NOT removable by any escape
+    radius;
+  - polar-band texels are REPORTED, NOT REPAIRED (`polarBand.repaired: false`).
+    The chart-regular fix is a Cartesian Kerr-Schild retrace, which requires
+    the KS tracer's equatorial disk-crossing outputs and therefore lands with
+    the Kerr-Schild work;
+  - the manifest separates `eventCounts` (raw, pre-repair) from
+    `shippedEventCounts` (the bytes actually written), because the repair
+    stages rewrite event codes and the two can legitimately disagree. Every
+    post-trace stage carries `stages.*.applied` so a stage that is configured
+    off cannot be advertised by an unconditional note;
 - the validation report states that this Unity path renders a precomputed
   transfer map in real time; it does not perform per-frame geodesic integration;
 - the skybox/background asset resolution is recorded separately from lens-map
@@ -376,6 +432,72 @@ Delta t_m is recorded and reported; its tighter threshold is set after display-s
   Unity raw-asset tests additionally require RGBA32F color/radial LUT byte
   counts, JSON metadata, log-temperature indexing, linear-radius indexing, and
   `T_shape^4 = F_norm` for positive Page-Thorne samples.
+- Disk color LUT schema `gr-bh-xr.task6.disk_color_lut.v2` adds the inverse
+  Planck locus to the previously unused alpha channel. The inversion is a
+  project chromaticity heuristic (a red-to-blue ratio match), not a
+  literature-derived spectral fit; see `docs/equations.md`. Required checks in
+  `tests/test_disk_spectrum.py`:
+  - the forward chromaticity coordinate `u = R / (R + B)` is bounded in
+    `[0, 1]`, equals `1` at the cold end where the clipped sRGB blue channel is
+    zero, and is *not* globally monotone - the sub-plateau is the reason a raw
+    inversion is invalid;
+  - `blackbody_locus_inverse` drops the plateau rows (recorded as
+    `plateauRowsDropped`; `44` of `256` rows for the default `1000-40000 K`
+    range), raises when fewer than two rows survive or when the remainder is
+    not strictly monotone, and returns a non-increasing table in `[0, 1]`. The
+    fail-closed case is reachable from the CLI (`--temperature-max-k 1800`) and
+    is tested;
+  - the chromaticity -> alpha -> temperature round trip, evaluated through an
+    emulated bilinear texture fetch with clamp addressing, recovers the
+    emitting temperature within a `1e-3` regression bound over
+    `2500-25000 K`. Measured worst case on that five-point set is `2.52e-4`
+    (at `25000 K`), so the gate keeps about `4x` headroom. The loose `3%`
+    per-point tolerance is retained as the user-facing bound;
+  - boundary behavior is pinned separately because the mid-range is the
+    easy region: the hot end `40000 K` recovers to `39652.60 K`
+    (rel `8.68e-3`, the dense worst case over `2500-40000 K`; the locus
+    flattens by `17x` in `du/dlnT` toward `40000 K`), and the cold end
+    *saturates by design* - `1000 K` and `1500 K` both return `1933.06 K`,
+    about `1.6` LUT texels above the `1889.88 K` anchor row. The inverse can
+    never return `temperatureMinK`; the reachable floor is published as
+    `alphaAnchorTemperatureK`;
+  - `alpha` is the dimensionless log-normalized temperature
+    `s = log(T / T_min) / log(T_max / T_min)`, so `T = T_min (T_max/T_min)^a`.
+    Because the same LUT is used forward and backward, the ratio form is an
+    identity at `g = 1` in exact arithmetic, so a fit error cannot change an
+    unshifted source color. That identity is subject to the consumer's own
+    division guard, which is Task 9-10 territory and not gated here.
+- Both Unity LUT metadata files must be dimensionally self-describing, and the
+  claims must be numerically true rather than asserted by string. The metadata
+  carries a `units` block naming the unit of every numeric field and a
+  `sampling` block giving the row-to-physical-value map, the exact texture
+  coordinate including the `(samples - 1)` endpoint convention, the addressing
+  and filtering modes, and an explicit note where the current consumer differs.
+  Specifically:
+  - `fluxPeakShape` is **not** dimensionless. It carries geometric dimension
+    `length^-2` and scales as `M^-2` at fixed `r/M`; the omitted
+    `Mdot / (4 pi)` factor is itself dimensionless in `G = c = 1`, so dropping
+    it cannot remove that dimension. Measured `peak * M^2 = 4.260486e-3` for
+    `M = 1, 2, 10` at `a/M = 0.9`, `r_max/M = 30`. This is gated numerically by
+    `test_page_thorne_flux_peak_shape_scales_as_inverse_mass_squared`, which
+    ties the asset metadata to the existing closed-form `M^-2` scaling test.
+    The texture *channels* `F/max(F)` and `[F/max(F)]^(1/4)` are dimensionless;
+    only the normalization constant is not;
+  - `rMin`, `rMax`, `rISCO`, `M` and `a` are geometric code lengths, equal to
+    `r/M` only when `M = 1`. `a` is `J/M`, not the dimensionless spin, even
+    though the CLI flag is named `--spin`; `aOverM` and `rIscoOverM` are
+    published so the dimensionless values are machine-readable;
+  - the producer contract is that the documented exact coordinate
+    `u = (s * (samples - 1) + 0.5) / samples` returns its own row under
+    bilinear/clamp fetch, and this is tested directly. The current Unity
+    consumer instead samples with `u = s`, a half-texel offset worth `0.72%`
+    in effective temperature (`0.0021` per linear sRGB channel) at
+    `samples = 256`, and `0.027 M` in radius (`0.048` in normalized flux on
+    the steep inner rise) at `samples = 512`. This producer does not own the
+    shader; the mismatch is recorded in the emitted metadata so the Unity
+    worktree can reconcile it, and it is deliberately not asserted away here.
+    The alpha channel needs no such correction because it is resampled at
+    texel centers, so the consumer's `u` is already correct.
 
 ## Phase 5 MR Overlay
 
@@ -591,6 +713,164 @@ Stage B observer checks:
   four-velocity, and BL radial velocity satisfies
   `dr/dtau = -sqrt(2M/r)` along the sampled path. This seed is a transport
   validation anchor, not yet the full Kerr near-horizon camera model.
+
+Stage B rain-observer gate (Kerr free-fall camera through the outer horizon):
+
+The rain frame is the Doran (`doran2000newKerrForm`) free-fall congruence -
+`E = 1`, `L = 0`, `Q = 0`, released from rest at infinity - expressed in
+Cartesian ingoing Kerr-Schild coordinates. It is the first observer frame in
+this project that is defined on both sides of `r_+`, which is exactly what the
+horizon-crossing descent path needs, because the static frame already fails at
+the ergosurface and the BL ZAMO helper is exterior-only.
+
+The four defining conditions are **consistent, not overdetermined**: with
+`E = 1` and `L = 0` the Carter polar potential reduces to `Theta = Q`
+identically, independent of `theta`, so `Q = 0` makes `dtheta/dtau = 0` an
+exact solution at every polar angle.
+
+The committed producer is `python -m gr_bh_xr.validate_rain_observer`
+(schema `gr-bh-xr.task8.rain_observer_gate.v1`). It samples a deterministic
+grid - no RNG - over `a/M in {0, 0.5, 0.9, 0.998}`, `theta in {0.4, 1.0,
+pi/2, 2.0, 2.7} rad`, exterior radii `{60, 20, 6, 3}M` and horizon offsets
+`{0.1, 0.01, 1e-3}M` on both sides, and **fails closed**: a zone with zero
+samples raises rather than reporting a vacuous `max()` over an empty set.
+Current run: 100 exterior, 60 at-horizon, 35 interior, 6 exact-horizon and 5
+Schwarzschild-limit samples.
+
+Committed thresholds and the measured worst case behind each:
+
+```text
+check                              threshold   measured    headroom
+|u.u + 1|          outside          1e-13      1.11e-15      90x
+|u.u + 1|          at r_+ +/- 1e-3  1e-13      2.11e-15      47x
+|u.u + 1|          inside r_+       1e-12      9.99e-16    1000x
+|u_t + 1|                           1e-13      1.55e-15      64x
+|L_z|  (r <= 60M)                   1e-13      2.44e-15      41x
+|dtheta/dtau|                       1e-11      4.85e-16       2e4x
+Gram max|G - diag(-1,1,1,1)| out    1e-13      1.11e-15      90x
+Gram, at r_+ +/- 1e-3               1e-13      2.11e-15      47x
+Gram, inside r_+                    1e-12      9.99e-16    1000x
+|u - u_analytic|_inf                1e-13      3.36e-15      30x
+Schwarzschild |u^r + sqrt(2M/r)|    1e-13      6.66e-16     150x
+|u.u + 1| EXACTLY at r = r_+        1e-13      8.88e-16     113x
+```
+
+Required properties of this gate:
+
+- **Compare against an independent closed form, not only residuals.** All four
+  constraint residuals can be satisfied by the wrong root branch, so the gate
+  includes `|u - u_analytic|_inf` against `analytic_kerr_rain_velocity_ks`,
+  whose expressions are rationalized to stay regular at `Delta = 0`.
+- **Exactly `r = r_+` is a dedicated regression.** The outgoing rain branch
+  diverges as `Delta -> 0` in the ingoing chart, which drives the normalization
+  quadratic's leading coefficient to zero on the horizon. A naive
+  `(-b -/+ sqrt(disc)) / (2a)` evaluation cancels catastrophically there and
+  returns an `O(1)`-wrong velocity or finds no root at all; the Vieta-stable
+  form keeps full precision. This is the single highest-value check in the set.
+- **`L_z` is dimensionful and grows like `r`**, so the gate states the
+  `r <= 60M` domain rather than pretending to a scale-free number.
+- **The symmetry axis is excluded by construction, and that exclusion is
+  explicit.** The constraint matrix loses rank on the axis (both the axial
+  Killing row and the polar row vanish identically) and its condition number
+  grows like `6/theta`, so the velocity error scales as `2e-16/theta`.
+  `kerr_rain_velocity_ks` raises below `sin(theta) = 1e-6` rather than
+  returning a degraded frame. This matters because a mis-oriented `e_theta`
+  still orthonormalizes perfectly - an orthonormality gate can never detect it,
+  which is why `sin(theta)` is computed exactly as `rho / r` rather than
+  through a floored `sqrt(max(1 - cos^2, eps))`.
+- **Do not gate the worldline sampler against requested radii.** The
+  Schwarzschild limit must be evaluated at an exact radius, or against
+  `ks_radius(recorded_sample)`. Comparing against the *requested* target
+  measures the step controller, not the physics: the earlier sampler recorded
+  radii up to `8.8e-7 M` off target, which propagated into an apparent
+  `1e-10`-class error floor in `dr/dtau` that has nothing to do with the
+  algebraic solve (that solve is machine-exact, `6.66e-16`). The sampler now
+  bisects onto the requested radius, landing within `4.8e-13`.
+- Interior samples stay above the inner horizon; the mass-inflation region is
+  out of scope.
+
+Not yet claimed: the rain tetrad is built algebraically at each point, not
+parallel transported along the worldline, so consecutive samples differ from a
+transported frame by a rotation this gate does not record. The transported-frame
+requirement above is still open for this frame.
+
+Task 8 rain-frame descent keyframe checks:
+
+Full details and measured numbers are in
+`validation/descent_keyframes/README.md`. The committed producer is
+`python -m gr_bh_xr.gpu.validate_descent_frames` (schema
+`gr-bh-xr.task8.descent_frame_validation.v1`), which is deterministic
+(Fibonacci-sphere directions, deterministic worldline integrator, no RNG) and
+fails closed: it raises rather than reporting a statistic if fewer than 256
+rays survive, if any direction is non-finite, or if more than `35%` of escaping
+rays are excluded by Hamiltonian residual.
+
+- Ray validity is decided by the Hamiltonian residual `h_max_abs`, which is
+  identically zero for a null geodesic. This is observer-radius and spin
+  independent, and it replaces two defective geometric heuristics:
+  - exterior `min_r < r_+ + 0.05` was applied regardless of the observer's own
+    radius, so any exterior keyframe with `r_obs < r_+ + 0.05` had every ray
+    reclassified as dark. The default schedule hits this - index 14 of a
+    20-keyframe `9M -> 0.75M` descent at `a/M = 0.9` lands at `r = 1.4423`,
+    exterior but only `0.0064` above `r_+` - and that keyframe rendered
+    COMPLETELY BLACK with no error and a printed `escape=0`;
+  - interior `lambda_end > 0.6 max_lambda` was about `10x` under-inclusive,
+    admitting 644-799 texels per interior keyframe with `h_max_abs` up to
+    `1.7e10`.
+  On healthy exterior keyframes the two criteria agree set-for-set on all 4096
+  sampled texels. Measured escape fraction across a full descent now runs
+  `0.986` at `9M` to `0.801` at `0.75M` with no discontinuity, and the
+  previously black keyframe keeps `0.847`.
+- The generator fails closed on a blank keyframe (`min_escape_fraction`,
+  default `0.25`) and requires exactly one worldline position per requested
+  radius.
+- Chart-direction agreement between the batched extraction and the exact
+  per-ray conversion is gated at TWO escape radii, because a single far-radius
+  threshold cannot discriminate. At `r_escape = 200M` the analytic azimuth
+  correction is about `1.3e-3 deg`, larger than the measured agreement itself,
+  so a threshold there passes whether the rotation is correct, absent, or
+  sign-flipped - which is how a sign error survived. Measured:
+
+```text
+r_escape = 200M : max 3.251e-4 deg, median 2.180e-4 deg
+   no rotation  : max 1.333e-3 deg, median 1.165e-3 deg
+r_escape =  20M : max 7.543e-2 deg, median 2.709e-2 deg
+   no rotation  : max 1.587e-1 deg, median 1.261e-1 deg
+```
+
+  The gate additionally asserts `rotationIsImprovement` - applying the rotation
+  must beat not applying it - which is dimensionless and self-calibrating. The
+  correction is `+delta` with `delta = atan2(a, r) + shift(r)`: the
+  momentum-direction azimuth offset is `+aM/r^2` while `delta` is `-aM/r^2`, so
+  rotating by `-delta` is worse than doing nothing at every radius tested.
+- The float32 observer-factor threshold is `4 ULP = 4.8e-7`, NOT `1e-7`.
+  `E_inf` spans `[0.095, 1.905]` over this direction set, so the smallest
+  representable nonzero float32 difference near `E ~ 1` is `2^-23 = 1.192e-7`:
+  **a threshold below one ULP is unachievable in principle**, and the measured
+  value `1.196e-7` is exactly that floor. The float64 path measures `6.66e-16`
+  against a `1e-14` gate. An earlier manifest claimed `2.7e-8`; that figure is
+  arithmetically impossible for a float32 max-abs over this range and was never
+  computed by any committed code, and the archived `5.96e-8` is `2^-24`,
+  consistent with a float64-vs-float32 comparison rather than the stated one.
+  Neither is used as a gate.
+- The observer-factor check is a packing identity, not an integrator test:
+  `rk4_step_ks` carries `p_t` through unmodified. Its discriminating power comes
+  from two negative controls that must fail by more than `0.1` - a permuted leg
+  order (`1.575`) and the sign form that appeared in the original prose
+  (`1.812`). The launcher's null residual `g(q, q)` measures `3.00e-15`.
+- Kerr-Schild disk-crossing recording requires `disk_r_in` to clear `r_+` by
+  `0.25 M`, because the Boyer-Lindquist azimuth and time shifts used to report
+  a crossing diverge logarithmically there and would emit a large finite
+  garbage value rather than fail.
+- The WGSL stride constants are substituted from the Python constants and
+  pinned by a test: the readback buffer is sized in Python while the shader
+  writes at the WGSL stride, so a desync would silently offset every field.
+
+Not yet claimed for the descent path: the tetrad is algebraic at each point
+rather than parallel transported, so `azimuthDeg` records a rotation of the
+observer position and not of the frame; disk edges carry no sub-texel coverage;
+and `disk_phi_m` from the KS tracer is wrapped-then-offset rather than the
+unwrapped integrated azimuth the Boyer-Lindquist tracer stores.
 
 ## Phase 6 Simplified GRRT
 

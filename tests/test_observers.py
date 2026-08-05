@@ -5,9 +5,14 @@ import pytest
 
 from gr_bh_xr.metric import horizon_radius
 from gr_bh_xr.observers import (
+    RAIN_MIN_SIN_THETA,
     analytic_kerr_frame_dragging_omega,
+    analytic_kerr_rain_velocity_ks,
     analytic_zamo_lapse,
     gram_matrix,
+    integrate_rain_worldline_ks,
+    kerr_rain_tetrad_ks,
+    kerr_rain_velocity_ks,
     ks_gram_matrix,
     push_bl_tetrad_to_ks,
     schwarzschild_radial_freefall_initial_state,
@@ -21,8 +26,39 @@ from gr_bh_xr.observers import (
 )
 from gr_bh_xr.geodesic_ks import ks_state_to_bl_state
 from gr_bh_xr.metric import inverse_metric
-from gr_bh_xr.metric_ks import ks_inverse_metric, ks_radius
+from gr_bh_xr.metric_ks import (
+    bl_to_ks_cartesian,
+    ks_inverse_metric,
+    ks_metric,
+    ks_radius,
+    ks_radius_gradient,
+)
 from gr_bh_xr.types import MetricParams, RayState
+
+MINKOWSKI = np.diag([-1.0, 1.0, 1.0, 1.0])
+
+
+def _rain_position(params: MetricParams, r: float, theta: float) -> np.ndarray:
+    return np.asarray(bl_to_ks_cartesian(r, theta, 0.0, params.a), dtype=np.float64)
+
+
+def _rain_zone_radii(params: MetricParams) -> dict[str, list[float]]:
+    """Radii outside, essentially at, and inside the outer horizon.
+
+    The interior samples stay above the inner horizon: the Cartesian ingoing
+    Kerr-Schild chart is regular through `r_+`, which is exactly what makes a
+    horizon-crossing observer frame possible, but the mass-inflation region
+    below `r_-` is out of scope.
+    """
+
+    r_plus = horizon_radius(params)
+    r_minus = params.M - math.sqrt(max(params.M**2 - params.a**2, 0.0))
+    inside = [r_plus - 1.0e-3, 0.5 * (r_plus + max(r_minus, 0.3))]
+    return {
+        "outside": [20.0, 6.0, r_plus + 0.1],
+        "at": [r_plus + 1.0e-3, r_plus - 1.0e-3],
+        "inside": [value for value in inside if value > max(r_minus + 0.05, 0.25)],
+    }
 
 
 def test_zamo_angular_velocity_and_lapse_match_analytic_kerr_formulae():
@@ -147,3 +183,229 @@ def test_transported_schwarzschild_freefall_tetrad_preserves_gram_and_velocity()
     assert max(velocity_errors) < 5.0e-7
     assert max(radial_errors) < 5.0e-7
     assert ks_radius(params, path.states[-1, 1:4]) == pytest.approx(3.0, abs=2.0e-6)
+
+
+# --- Kerr-Schild rain (Doran) observer frame -------------------------------
+
+
+@pytest.mark.parametrize("spin", [0.0, 0.5, 0.9, 0.998])
+def test_rain_velocity_satisfies_its_four_defining_constraints(spin):
+    """E = 1, L_z = 0, dtheta/dtau = 0, u.u = -1 on both sides of r_+.
+
+    With E = 1 and L = 0 the Carter polar potential reduces to Theta = Q
+    identically, independent of theta, so Q = 0 makes theta = const an exact
+    solution at every polar angle: the four conditions are consistent, not
+    overdetermined.
+    """
+
+    params = MetricParams(M=1.0, a=spin)
+    checked = 0
+    for radii in _rain_zone_radii(params).values():
+        for radius in radii:
+            for theta in (0.4, 1.0, math.pi / 2.0, 2.3):
+                xyz = _rain_position(params, radius, theta)
+                g = ks_metric(params, xyz)
+                u = kerr_rain_velocity_ks(params, xyz)
+                grad_r = ks_radius_gradient(params, xyz)
+                r_ks = ks_radius(params, xyz)
+
+                assert abs(float(u @ g @ u) + 1.0) < 1.0e-12
+                assert abs(float(g[0] @ u) + 1.0) < 1.0e-13
+                lz = -float(xyz[1]) * float(g[1] @ u) + float(xyz[0]) * float(g[2] @ u)
+                assert abs(lz) < 1.0e-13
+                d_cos_theta = (
+                    r_ks * u[3] - float(xyz[2]) * float(grad_r @ u[1:4])
+                ) / (r_ks * r_ks)
+                assert abs(d_cos_theta) < 1.0e-11
+                # Ingoing and future-pointing. g^tt = -(1 + 2H) < 0 everywhere
+                # in the ingoing chart, so u^t > 0 is a valid causal test even
+                # inside the outer horizon.
+                assert float(grad_r @ u[1:4]) < 0.0
+                assert u[0] > 0.0
+                checked += 1
+    assert checked > 0
+
+
+@pytest.mark.parametrize("spin", [0.0, 0.5, 0.9, 0.998])
+def test_rain_velocity_matches_independent_doran_closed_form(spin):
+    """Residuals alone cannot pin the branch; compare against the closed form."""
+
+    params = MetricParams(M=1.0, a=spin)
+    worst = 0.0
+    for radii in _rain_zone_radii(params).values():
+        for radius in radii:
+            for theta in (0.4, math.pi / 2.0, 2.3):
+                xyz = _rain_position(params, radius, theta)
+                u = kerr_rain_velocity_ks(params, xyz)
+                reference = analytic_kerr_rain_velocity_ks(params, radius, theta)
+                worst = max(worst, float(np.max(np.abs(u - reference))))
+    assert worst < 1.0e-13
+
+
+@pytest.mark.parametrize("spin", [0.0, 0.9, 0.998])
+def test_rain_velocity_is_stable_exactly_on_the_outer_horizon(spin):
+    """Regression: the normalization quadratic degenerates at r = r_+.
+
+    The outgoing rain branch diverges as Delta -> 0 in the ingoing chart, which
+    drives the quadratic's leading coefficient to zero exactly on the horizon.
+    A naive (-b -/+ sqrt(disc)) / (2a) evaluation then cancels catastrophically
+    and either returns an O(1)-wrong velocity or finds no root at all; the
+    Vieta-stable form keeps full precision.
+    """
+
+    params = MetricParams(M=1.0, a=spin)
+    r_plus = horizon_radius(params)
+    for theta in (0.4, math.pi / 2.0, 2.3):
+        xyz = _rain_position(params, r_plus, theta)
+        g = ks_metric(params, xyz)
+        u = kerr_rain_velocity_ks(params, xyz)
+        assert abs(float(u @ g @ u) + 1.0) < 1.0e-13
+        reference = analytic_kerr_rain_velocity_ks(params, r_plus, theta)
+        assert float(np.max(np.abs(u - reference))) < 1.0e-13
+
+
+@pytest.mark.parametrize("spin", [0.0, 0.5, 0.9, 0.998])
+def test_rain_tetrad_is_orthonormal_outside_at_and_inside_the_horizon(spin):
+    params = MetricParams(M=1.0, a=spin)
+    tolerance = {"outside": 1.0e-13, "at": 1.0e-13, "inside": 1.0e-12}
+    for zone, radii in _rain_zone_radii(params).items():
+        for radius in radii:
+            for theta in (0.4, 1.0, math.pi / 2.0, 2.3):
+                tetrad = kerr_rain_tetrad_ks(params, _rain_position(params, radius, theta))
+                gram = ks_gram_matrix(params, tetrad)
+                assert float(np.max(np.abs(gram - MINKOWSKI))) < tolerance[zone]
+
+
+def test_rain_tetrad_spatial_legs_keep_their_documented_orientation():
+    """e_r toward increasing r, e_theta toward increasing polar angle, e_phi prograde."""
+
+    params = MetricParams(M=1.0, a=0.9)
+    r_plus = horizon_radius(params)
+    for radius in (20.0, 6.0, r_plus + 1.0e-3, r_plus - 1.0e-3):
+        for theta in (0.6, math.pi / 2.0, 2.3):
+            xyz = _rain_position(params, radius, theta)
+            tetrad = kerr_rain_tetrad_ks(params, xyz)
+            grad_r = ks_radius_gradient(params, xyz)
+            assert float(grad_r @ tetrad.e_r[1:4]) > 0.0
+            # d(cos theta) along e_theta must be negative: polar angle grows.
+            r_ks = ks_radius(params, xyz)
+            d_cos = r_ks * tetrad.e_theta[3] - float(xyz[2]) * float(grad_r @ tetrad.e_theta[1:4])
+            assert d_cos < 0.0
+            # e_phi is along the axial Killing direction (0, -y, x, 0).
+            axial = np.array([0.0, -xyz[1], xyz[0], 0.0])
+            assert float(tetrad.e_phi @ ks_metric(params, xyz) @ axial) > 0.0
+
+
+def test_rain_frame_refuses_the_symmetry_axis_instead_of_degrading_silently():
+    """On the axis the constraint system loses rank; cond ~ 6 / theta near it.
+
+    This must raise rather than return a frame: a mis-oriented e_theta still
+    orthonormalizes perfectly, so no Gram check could ever detect it.
+    """
+
+    params = MetricParams(M=1.0, a=0.9)
+    for theta in (0.0, 1.0e-9, math.pi - 1.0e-9):
+        with pytest.raises(ValueError, match="symmetry axis"):
+            kerr_rain_velocity_ks(params, _rain_position(params, 6.0, theta))
+        with pytest.raises(ValueError, match="symmetry axis"):
+            kerr_rain_tetrad_ks(params, _rain_position(params, 6.0, theta))
+
+    # Just inside the accepted domain the frame is still accurate.
+    theta_edge = 10.0 * RAIN_MIN_SIN_THETA
+    tetrad = kerr_rain_tetrad_ks(params, _rain_position(params, 6.0, theta_edge))
+    assert float(np.max(np.abs(ks_gram_matrix(params, tetrad) - MINKOWSKI))) < 1.0e-12
+
+
+def test_rain_recovers_schwarzschild_radial_freefall_limit():
+    """a = 0 rain must reproduce dr/dtau = -sqrt(2M/r) exactly."""
+
+    params = MetricParams(M=1.0, a=0.0)
+    worst = 0.0
+    for radius in (20.0, 8.0, 4.1, 3.0, 1.5):
+        for theta in (0.6, math.pi / 2.0, 2.3):
+            xyz = _rain_position(params, radius, theta)
+            u = kerr_rain_velocity_ks(params, xyz)
+            dr_dtau = float(ks_radius_gradient(params, xyz) @ u[1:4])
+            worst = max(worst, abs(dr_dtau + math.sqrt(2.0 * params.M / radius)))
+    # The algebraic solve is machine-exact here: any 1e-10-class floor comes
+    # from a worldline sampler recording off-target radii, not from physics.
+    assert worst < 1.0e-13
+
+
+def test_rain_worldline_sampler_lands_on_the_requested_radii():
+    params = MetricParams(M=1.0, a=0.0)
+    targets = np.array([20.0, 8.0, 4.1, 3.0, 1.5])
+
+    positions = integrate_rain_worldline_ks(
+        params, r_start=25.0, theta=math.pi / 2.0, r_samples=targets
+    )
+
+    assert len(positions) == targets.size
+    for target, position in zip(targets, positions):
+        assert ks_radius(params, position) == pytest.approx(float(target), abs=1.0e-9)
+        u = kerr_rain_velocity_ks(params, position)
+        dr_dtau = float(ks_radius_gradient(params, position) @ u[1:4])
+        assert dr_dtau == pytest.approx(
+            -math.sqrt(2.0 * params.M / float(target)), abs=1.0e-9
+        )
+
+
+def test_rain_worldline_sampler_rejects_bad_sample_lists():
+    params = MetricParams(M=1.0, a=0.9)
+
+    with pytest.raises(ValueError, match="strictly decreasing"):
+        integrate_rain_worldline_ks(
+            params, r_start=10.0, theta=1.0, r_samples=np.array([8.0, 8.0, 6.0])
+        )
+    # Targets marginally above r_start must be refused outright: silently
+    # clamping them would merge distinct targets into duplicates and break the
+    # strict ordering that was just validated.
+    with pytest.raises(ValueError, match="must not exceed r_start"):
+        integrate_rain_worldline_ks(
+            params, r_start=10.0, theta=1.0, r_samples=np.array([10.0 + 5.0e-12, 9.0])
+        )
+    with pytest.raises(ValueError, match="non-empty"):
+        integrate_rain_worldline_ks(
+            params, r_start=10.0, theta=1.0, r_samples=np.array([])
+        )
+
+
+def test_rain_worldline_accumulates_frame_dragging_through_the_horizon():
+    """Kerr rain must pick up azimuth; Schwarzschild rain must not."""
+
+    kerr = MetricParams(M=1.0, a=0.9)
+    r_plus = horizon_radius(kerr)
+    targets = np.array([6.0, 3.0, r_plus + 0.05, r_plus - 0.05])
+
+    positions = integrate_rain_worldline_ks(
+        kerr, r_start=9.0, theta=math.pi / 2.0, r_samples=targets
+    )
+    assert len(positions) == targets.size
+    assert ks_radius(kerr, positions[-1]) < r_plus
+    azimuths = [math.atan2(float(p[1]), float(p[0])) for p in positions]
+    assert abs(azimuths[-1] - azimuths[0]) > 1.0e-3
+
+    schwarzschild = MetricParams(M=1.0, a=0.0)
+    flat = integrate_rain_worldline_ks(
+        schwarzschild, r_start=9.0, theta=math.pi / 2.0, r_samples=np.array([6.0, 3.0, 2.5])
+    )
+    for position in flat:
+        assert math.atan2(float(position[1]), float(position[0])) == pytest.approx(
+            0.0, abs=1.0e-12
+        )
+
+
+def test_rain_observer_stage_b_gate_passes_with_recorded_thresholds():
+    from gr_bh_xr.validate_rain_observer import THRESHOLDS, run_gate
+
+    report = run_gate()
+
+    assert report["passed"], report["failures"]
+    # Fail closed: every zone must actually have been sampled, otherwise a
+    # max() over an empty set would report a vacuous pass.
+    for zone, count in report["sampleCounts"].items():
+        assert count > 0, zone
+    assert report["horizonExactSamples"] > 0
+    assert len(report["schwarzschildLimit"]) == 5
+    for name, threshold in THRESHOLDS.items():
+        assert report["checks"][name] <= threshold, (name, report["checks"][name])

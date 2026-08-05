@@ -19,13 +19,15 @@ from gr_bh_xr.camera import initial_ray_state, initial_ray_state_from_unity_dire
 from gr_bh_xr.geodesic_ks import bl_state_to_ks_state, _inner_capture_radius
 from gr_bh_xr.gpu.backend import backend_info, create_vulkan_device, require_wgpu
 from gr_bh_xr.gpu.codes import SCHEMA_EVENT_CODES, SCHEMA_FAILURE_CODES
+from gr_bh_xr.metric import horizon_radius
 from gr_bh_xr.sky import escape_direction_or_nan
 from gr_bh_xr.types import CameraConfig, MetricParams, RayState, TraceConfig
 
 
 _KS_TRACE_CONTEXT = None
 KS_INPUTS_PER_RAY = 8
-KS_F32_OUTPUTS_PER_RAY = 12
+KS_DISK_MAX_ORDER = 2
+KS_F32_OUTPUTS_PER_RAY = 12 + 4 * KS_DISK_MAX_ORDER
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,18 @@ class KsGpuTraceConfig:
     horizon_eps: float = TraceConfig.horizon_eps
     sphere_center_xyz: tuple[float, float, float] | None = None
     sphere_radius: float = 0.0
+    # Equatorial disk-crossing recording (z = 0 plane, trivial in the
+    # Cartesian chart). Disabled when disk_r_out <= 0 so existing gates are
+    # untouched. Recorded phi/t are converted to Boyer-Lindquist so the
+    # values interoperate with the BL-generated transfer maps.
+    disk_r_in: float = 0.0
+    disk_r_out: float = 0.0
+    # +1 for future-directed rays (exterior emit-forward convention), -1 for
+    # past-directed history tracing (interior views: the future cone points
+    # inward inside the horizon, so images are built from where the light
+    # came from). Only flips the conserved-quantity signs fed to the disk
+    # redshift; the Hamiltonian flow itself is orientation-blind.
+    time_orientation: float = 1.0
 
     def __post_init__(self) -> None:
         if self.step_size <= 0.0:
@@ -62,6 +76,22 @@ class KsGpuTraceConfig:
                 raise ValueError("sphere_center_xyz must contain three values.")
             if self.sphere_radius <= 0.0:
                 raise ValueError("sphere_radius must be positive when a sphere target is configured.")
+        if self.disk_r_out > 0.0:
+            # `ks_phi_shift` / `ks_time_shift` diverge logarithmically at r_+,
+            # and their derivative a/Delta blows up alongside. Recording a
+            # crossing near the horizon would emit a large finite garbage value
+            # rather than fail. Astrophysically the disk never reaches there
+            # anyway (the inner edge is the ISCO), so require the margin
+            # explicitly instead of relying on every caller to supply it.
+            r_plus = horizon_radius(self.params)
+            if self.disk_r_in <= r_plus + 0.25 * self.params.M:
+                raise ValueError(
+                    f"disk_r_in ({self.disk_r_in}) must clear the outer horizon "
+                    f"({r_plus}) by 0.25 M: the Boyer-Lindquist azimuth/time "
+                    "shifts used to report crossings diverge there."
+                )
+            if self.disk_r_out <= self.disk_r_in:
+                raise ValueError("disk_r_out must exceed disk_r_in.")
 
     @property
     def capture_r(self) -> float:
@@ -87,6 +117,8 @@ class KsGpuTraceConfig:
             "capture_r": self.capture_r,
             "sphere_center_xyz": self.sphere_center_xyz,
             "sphere_radius": self.sphere_radius,
+            "disk_r_in": self.disk_r_in,
+            "disk_r_out": self.disk_r_out,
         }
 
 
@@ -145,14 +177,26 @@ def ks_states_from_unity_directions(
     return states
 
 
-def trace_ks_states(config: KsGpuTraceConfig, states: list[RayState] | tuple[RayState, ...]) -> dict[str, Any]:
-    """Trace explicit Kerr-Schild canonical states on the WGPU Vulkan backend."""
+def trace_ks_states(
+    config: KsGpuTraceConfig,
+    states: "list[RayState] | tuple[RayState, ...] | np.ndarray",
+) -> dict[str, Any]:
+    """Trace explicit Kerr-Schild canonical states on the WGPU Vulkan backend.
+
+    Accepts either RayState sequences or an already packed float32 array of
+    shape (N, 8) = [x^0..x^3, p_0..p_3] for batch callers.
+    """
 
     wgpu, _adapter, device, pipeline, info = _get_ks_trace_context()
     n_rays = len(states)
     if n_rays == 0:
         return _empty_result(info)
-    inputs = _pack_states(states)
+    if isinstance(states, np.ndarray):
+        if states.ndim != 2 or states.shape[1] != KS_INPUTS_PER_RAY:
+            raise ValueError("Packed states must have shape (N, 8).")
+        inputs = np.ascontiguousarray(states, dtype=np.float32)
+    else:
+        inputs = _pack_states(states)
     params = _shader_params(config, n_rays)
     params_buffer = device.create_buffer_with_data(
         label="gr-bh-xr ks gpu params",
@@ -207,6 +251,10 @@ def trace_ks_states(config: KsGpuTraceConfig, states: list[RayState] | tuple[Ray
         "lambda_end": out_f32[:, 3],
         "final_x": out_f32[:, 4:8],
         "final_p": out_f32[:, 8:12],
+        "disk_r_m": np.stack([out_f32[:, 12], out_f32[:, 16]], axis=1),
+        "disk_phi_m": np.stack([out_f32[:, 13], out_f32[:, 17]], axis=1),
+        "disk_t_m": np.stack([out_f32[:, 14], out_f32[:, 18]], axis=1),
+        "disk_g_m": np.stack([out_f32[:, 15], out_f32[:, 19]], axis=1),
     }
 
 
@@ -262,6 +310,9 @@ def _shader_params(config: KsGpuTraceConfig, n_rays: int) -> np.ndarray:
             float(config.sphere_center_xyz[1]) if config.sphere_center_xyz is not None else 0.0,
             float(config.sphere_center_xyz[2]) if config.sphere_center_xyz is not None else 0.0,
             float(config.sphere_radius) if config.sphere_center_xyz is not None else -1.0,
+            config.disk_r_in,
+            config.disk_r_out,
+            config.time_orientation,
         ],
         dtype=np.float32,
     )
@@ -279,6 +330,10 @@ def _empty_result(info: dict[str, Any]) -> dict[str, Any]:
         "lambda_end": np.empty(0, dtype=np.float32),
         "final_x": np.empty((0, 4), dtype=np.float32),
         "final_p": np.empty((0, 4), dtype=np.float32),
+        "disk_r_m": np.empty((0, KS_DISK_MAX_ORDER), dtype=np.float32),
+        "disk_phi_m": np.empty((0, KS_DISK_MAX_ORDER), dtype=np.float32),
+        "disk_t_m": np.empty((0, KS_DISK_MAX_ORDER), dtype=np.float32),
+        "disk_g_m": np.empty((0, KS_DISK_MAX_ORDER), dtype=np.float32),
     }
 
 
@@ -306,7 +361,8 @@ const FAILURE_NONE: i32 = 0;
 const FAILURE_UNCLASSIFIED_MAX_LAMBDA: i32 = 2;
 const FAILURE_SOLVER_FAILURE: i32 = 3;
 const KS_INPUTS_PER_RAY: u32 = 8u;
-const KS_F32_OUTPUTS_PER_RAY: u32 = 12u;
+const KS_F32_OUTPUTS_PER_RAY: u32 = __KS_F32_OUTPUTS_PER_RAY__u;
+const KS_DISK_MAX_ORDER: u32 = __KS_DISK_MAX_ORDER__u;
 
 @group(0) @binding(0) var<storage, read> params: array<f32>;
 @group(0) @binding(1) var<storage, read> initial_states: array<f32>;
@@ -385,6 +441,81 @@ fn inv_metric_times_p(k: MetricKS, p: vec4<f32>) -> vec4<f32> {
         p.z + scale * k.ly,
         p.w + scale * k.lz,
     );
+}
+
+fn ks_horizon_r_plus() -> f32 {
+    let m = params[0];
+    let a = params[1];
+    return m + sqrt(max(m * m - a * a, 0.0));
+}
+
+fn ks_horizon_r_minus() -> f32 {
+    let m = params[0];
+    let a = params[1];
+    return m - sqrt(max(m * m - a * a, 0.0));
+}
+
+// Equatorial Keplerian angular velocity; identical formula to the audited
+// BL shader (function of r and the conserved quantities only, so it is
+// chart independent).
+fn disk_omega_ks(r: f32) -> f32 {
+    let m = params[0];
+    let a = params[1];
+    var orbit_sign = 1.0;
+    if (a < 0.0) {
+        orbit_sign = -1.0;
+    }
+    let sqrt_m = sqrt(m);
+    return orbit_sign * sqrt_m / (pow(r, 1.5) + orbit_sign * a * sqrt_m);
+}
+
+fn disk_redshift_ks(r: f32, pt: f32, pph: f32) -> f32 {
+    let m = params[0];
+    let a = params[1];
+    let a2 = a * a;
+    // Equator: sigma = r^2, sin^2(theta) = 1.
+    let sig = r * r;
+    let dlt = r * r - 2.0 * m * r + a2;
+    let rp = r * r + a2;
+    let shell = rp * rp - a2 * dlt;
+    let gtt_inv = -shell / (sig * dlt);
+    let gtphi_inv = -2.0 * m * a * r / (sig * dlt);
+    let gphiphi_inv = (dlt - a2) / (sig * dlt);
+    let det_inv = gtt_inv * gphiphi_inv - gtphi_inv * gtphi_inv;
+    let g_tt = gphiphi_inv / det_inv;
+    let g_tphi = -gtphi_inv / det_inv;
+    let g_phiphi = gtt_inv / det_inv;
+    let omega = disk_omega_ks(r);
+    let norm = -(g_tt + 2.0 * omega * g_tphi + omega * omega * g_phiphi);
+    if (norm <= 0.0 || is_bad(norm)) {
+        return -1.0;
+    }
+    let u_t = 1.0 / sqrt(norm);
+    let energy = -pt;
+    let denom = u_t * (energy - omega * pph);
+    if (denom <= 0.0 || is_bad(denom)) {
+        return -1.0;
+    }
+    return energy / denom;
+}
+
+// Ingoing-KS azimuth/time shifts relative to Boyer-Lindquist at radius r
+// (exterior, r > r_plus): phi_ks = phi_bl + a/(r+ - r-) ln|(r - r+)/(r - r-)|,
+// t_ks = t_bl + 2M/(r+ - r-) (r+ ln|r - r+| - r- ln|r - r-|).
+fn ks_phi_shift(r: f32) -> f32 {
+    let a = params[1];
+    let rp = ks_horizon_r_plus();
+    let rm = ks_horizon_r_minus();
+    let dr = max(rp - rm, 1.0e-6);
+    return a / dr * log(abs((r - rp) / max(abs(r - rm), 1.0e-12)));
+}
+
+fn ks_time_shift(r: f32) -> f32 {
+    let m = params[0];
+    let rp = ks_horizon_r_plus();
+    let rm = ks_horizon_r_minus();
+    let dr = max(rp - rm, 1.0e-6);
+    return 2.0 * m / dr * (rp * log(max(abs(r - rp), 1.0e-12)) - rm * log(max(abs(r - rm), 1.0e-12)));
 }
 
 fn hamiltonian_ks(s: StateKS) -> f32 {
@@ -558,6 +689,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let max_lambda = params[10];
     let sphere_center = vec3<f32>(params[12], params[13], params[14]);
     let sphere_radius = params[15];
+    let disk_r_in = params[16];
+    let disk_r_out = params[17];
     var s = load_state(idx);
     var event = EVENT_INVALID;
     var failure = FAILURE_UNCLASSIFIED_MAX_LAMBDA;
@@ -565,6 +698,15 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var lambda_used = 0.0;
     var min_r = ks_radius_xyz(s.x, s.y, s.z);
     var h_max = abs(hamiltonian_ks(s));
+    var disk_order = 0u;
+    var disk_r0 = -1.0;
+    var disk_phi0 = -1.0;
+    var disk_t0 = -1.0;
+    var disk_g0 = -1.0;
+    var disk_r1 = -1.0;
+    var disk_phi1 = -1.0;
+    var disk_t1 = -1.0;
+    var disk_g1 = -1.0;
     if (state_is_bad(s)) {
         failure = FAILURE_SOLVER_FAILURE;
     } else {
@@ -574,6 +716,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 break;
             }
             let prev_pos = vec3<f32>(s.x, s.y, s.z);
+            let prev_t = s.t;
             s = rk4_step_ks(s, dh);
             let curr_pos = vec3<f32>(s.x, s.y, s.z);
             lambda_used = lambda_used + dh;
@@ -581,6 +724,40 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             if (state_is_bad(s)) {
                 failure = FAILURE_SOLVER_FAILURE;
                 break;
+            }
+            if (disk_r_out > 0.0) {
+                // z = 0 crossing: trivial and singularity-free in the
+                // Cartesian chart. Order counts every true equatorial
+                // crossing, matching the BL image-order semantics.
+                let crosses = (prev_pos.z < -1.0e-9 && curr_pos.z >= 0.0)
+                    || (prev_pos.z > 1.0e-9 && curr_pos.z <= 0.0);
+                if (crosses) {
+                    let frac = clamp(abs(prev_pos.z) / max(abs(prev_pos.z - curr_pos.z), 1.0e-12), 0.0, 1.0);
+                    let xc = prev_pos.x + frac * (curr_pos.x - prev_pos.x);
+                    let yc = prev_pos.y + frac * (curr_pos.y - prev_pos.y);
+                    let rc = ks_radius_xyz(xc, yc, 0.0);
+                    if (disk_order < KS_DISK_MAX_ORDER && rc >= disk_r_in && rc <= disk_r_out) {
+                        let a_spin = params[1];
+                        let orientation = params[18];
+                        let phi_ks = atan2(yc * rc - a_spin * xc, rc * xc + a_spin * yc);
+                        let phc = phi_ks - ks_phi_shift(rc);
+                        let tc = (prev_t + frac * (s.t - prev_t)) - ks_time_shift(rc);
+                        let pph = xc * s.py - yc * s.px;
+                        let gc = disk_redshift_ks(rc, orientation * s.pt, orientation * pph);
+                        if (disk_order == 0u) {
+                            disk_r0 = rc;
+                            disk_phi0 = phc;
+                            disk_t0 = tc;
+                            disk_g0 = gc;
+                        } else {
+                            disk_r1 = rc;
+                            disk_phi1 = phc;
+                            disk_t1 = tc;
+                            disk_g1 = gc;
+                        }
+                    }
+                    disk_order = disk_order + 1u;
+                }
             }
             let r = ks_radius_xyz(s.x, s.y, s.z);
             if (is_bad(r) || r <= 1.0e-6) {
@@ -623,5 +800,21 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     out_f32[fbase + 9u] = s.px;
     out_f32[fbase + 10u] = s.py;
     out_f32[fbase + 11u] = s.pz;
+    out_f32[fbase + 12u] = disk_r0;
+    out_f32[fbase + 13u] = disk_phi0;
+    out_f32[fbase + 14u] = disk_t0;
+    out_f32[fbase + 15u] = disk_g0;
+    out_f32[fbase + 16u] = disk_r1;
+    out_f32[fbase + 17u] = disk_phi1;
+    out_f32[fbase + 18u] = disk_t1;
+    out_f32[fbase + 19u] = disk_g1;
 }
 """
+
+# The WGSL stride is substituted from the Python constants rather than written
+# as a literal: the readback buffer is sized from the Python value and the
+# shader writes at the WGSL value, so a desync would silently offset every
+# field rather than fail.
+KS_WGSL_SHADER = KS_WGSL_SHADER.replace(
+    "__KS_F32_OUTPUTS_PER_RAY__", str(KS_F32_OUTPUTS_PER_RAY)
+).replace("__KS_DISK_MAX_ORDER__", str(KS_DISK_MAX_ORDER))
