@@ -298,6 +298,85 @@ def write_blackbody_lut_npz(
     }
 
 
+def planck_locus_rb_coordinate(rgb: FloatArray) -> FloatArray:
+    """Return the chromaticity coordinate `u = R / (R + B)` of linear sRGB rows.
+
+    `u` is dimensionless and scale invariant, so a source pixel need not be
+    max-normalized.  Along the Planck locus it decreases monotonically with
+    temperature once the sub-plateau region is removed (see
+    `blackbody_locus_inverse`), so it serves as a one-parameter inverse: a
+    pixel's chromaticity maps back to the blackbody temperature with the same
+    red-to-blue ratio.  This is a ratio match, not a fit: the green channel is
+    ignored and no residual is minimized, so for an off-locus pixel the
+    returned temperature has no goodness-of-fit interpretation.  `u` is also
+    not gamma invariant, so the caller must supply linear values.
+    """
+
+    rows = np.asarray(rgb, dtype=np.float64)
+    red = rows[..., 0]
+    blue = rows[..., 2]
+    return red / np.maximum(red + blue, 1.0e-12)
+
+
+def blackbody_locus_inverse(rgb: FloatArray, samples: int) -> tuple[FloatArray, int, int]:
+    """Return the texel-sampled inverse Planck locus for a chromaticity LUT.
+
+    Input is the `(N, 3)` max-normalized linear sRGB table produced by
+    `blackbody_lut`; `samples` is the output texel count.  The result is
+    resampled at texel centers `(i + 0.5) / samples` of the dimensionless
+    chromaticity coordinate `u = R / (R + B)`, and its value is the
+    dimensionless log-normalized temperature
+
+        s = log(T / T_min) / log(T_max / T_min) in [0, 1],
+
+    so a consumer recovers `T = T_min * (T_max / T_min)**s`.
+
+    Below the point where the clipped linear-sRGB blue channel reaches exactly
+    zero (about `1.9e3 K`) `u` sits on a plateau at 1 and chromaticity carries
+    no temperature information.  Only the hottest member of a plateau is kept,
+    so a fully red pixel maps to the hottest temperature consistent with its
+    chromaticity, up to the LUT's own temperature resolution.  Consequently the
+    inverse SATURATES: it can never return a temperature below the kept anchor
+    row, which is far above `T_min`.
+
+    Returns `(inverse, plateau_rows_dropped, first_kept_index)`; the last two
+    are recorded in the asset metadata for audit.
+    """
+
+    rows = np.asarray(rgb, dtype=np.float64)
+    if rows.ndim != 2 or rows.shape[1] != 3:
+        raise ValueError("blackbody_locus_inverse expects an (N, 3) linear sRGB table.")
+    if rows.shape[0] < 2:
+        raise ValueError("blackbody_locus_inverse needs at least two locus rows.")
+    if samples < 2:
+        raise ValueError("blackbody_locus_inverse needs at least two output texels.")
+
+    locus_rb = planck_locus_rb_coordinate(rows)
+    # geomspace temperatures are exactly log-even, so the normalized log
+    # temperature coordinate is a plain linspace on [0, 1].
+    temperature_norm = np.linspace(0.0, 1.0, rows.shape[0], dtype=np.float64)
+    # `locus_rb` decreases with index, so `diff < 0` marks a row that is
+    # strictly hotter-than-its-successor in chromaticity; the final row is
+    # always the hottest sample and is kept unconditionally.  On a leading
+    # plateau this keeps the last (hottest) member.
+    keep = np.concatenate((np.diff(locus_rb) < 0.0, [True]))
+    kept_indices = np.flatnonzero(keep)
+    locus_valid = locus_rb[keep]
+    norm_valid = temperature_norm[keep]
+    if locus_valid.size < 2:
+        # Guard the vacuous case: `np.all` over an empty diff is True, so a
+        # single surviving row would otherwise emit a constant-alpha LUT.
+        raise ValueError(
+            "Planck locus inversion needs at least two rows above the "
+            "chromaticity plateau; widen the temperature range or add samples."
+        )
+    if not np.all(np.diff(locus_valid) < 0.0):
+        raise ValueError("Planck locus R/(R+B) must be strictly monotone after plateau removal.")
+    texel_centers = (np.arange(samples, dtype=np.float64) + 0.5) / samples
+    inverse = np.interp(texel_centers, locus_valid[::-1], norm_valid[::-1])
+    return inverse, int(rows.shape[0] - locus_valid.size), int(kept_indices[0])
+
+
 def write_blackbody_lut_unity_raw(
     out: str | Path,
     *,
@@ -306,11 +385,16 @@ def write_blackbody_lut_unity_raw(
     temperature_max_k: float = 40000.0,
     samples: int = 256,
 ) -> dict[str, float | int | str]:
-    """Write a Unity-friendly 1D RGBA32F blackbody chromaticity LUT.
+    """Write a Unity-friendly 1D RGBA32F blackbody chromaticity LUT (schema v2).
 
-    The RGB channels are max-normalized linear sRGB chromaticity.  Alpha is
-    one.  The temperature coordinate is logarithmic to match `blackbody_lut`;
-    Unity samples it with `log(T_obs)`.
+    The RGB channels are max-normalized linear sRGB chromaticity sampled by the
+    log-temperature coordinate (a consumer samples with `log(T_obs)`).  The
+    alpha channel is the INVERSE Planck locus: sampled by the dimensionless
+    chromaticity coordinate `u = R / (R + B)` of a source pixel, it returns the
+    log-normalized temperature whose locus chromaticity equals `u`.  One
+    texture therefore carries both directions of the blackbody color map.
+    Alpha in the v1 schema was the constant 1 and unused, so the change is the
+    reason for the version bump.
     """
 
     temperatures, _, rgb = blackbody_lut(
@@ -318,20 +402,28 @@ def write_blackbody_lut_unity_raw(
         temperature_max_k=temperature_max_k,
         samples=samples,
     )
-    rgba = np.ones((samples, 4), dtype=np.float32)
+    inverse_locus, plateau_dropped, first_kept = blackbody_locus_inverse(rgb, samples)
+    anchor_temperature_k = float(temperatures[first_kept])
+    # Every channel is written below; unlike v1 there is no "alpha = valid = 1"
+    # fill to preserve.
+    rgba = np.empty((samples, 4), dtype=np.float32)
     rgba[:, :3] = rgb.astype(np.float32)
+    rgba[:, 3] = inverse_locus.astype(np.float32)
     path = Path(out)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(rgba.tobytes(order="C"))
     summary: dict[str, float | int | str] = {
         "path": str(path),
-        "schema": "gr-bh-xr.task6.disk_color_lut.v1",
+        "schema": "gr-bh-xr.task6.disk_color_lut.v2",
         "samples": int(samples),
         "temperature_min_k": float(temperature_min_k),
         "temperature_max_k": float(temperature_max_k),
         "temperature_spacing": "log",
         "texture_format": "rgba32f",
         "color_space": "max-normalized linear sRGB chromaticity",
+        "alpha_channel": "planck-locus-inverse",
+        "plateau_rows_dropped": int(plateau_dropped),
+        "alpha_anchor_temperature_k": anchor_temperature_k,
         "bytes": int(rgba.nbytes),
     }
     if metadata_out is not None:
@@ -345,11 +437,60 @@ def write_blackbody_lut_unity_raw(
             "temperatureSpacing": "log",
             "textureFormat": "rgba32f",
             "colorSpace": summary["color_space"],
+            "alphaChannel": "planck-locus-inverse",
+            "plateauRowsDropped": int(plateau_dropped),
+            "alphaAnchorTemperatureK": anchor_temperature_k,
+            "units": {
+                "samples": "count (dimensionless)",
+                "plateauRowsDropped": "count (dimensionless)",
+                "temperatureMinK": "K",
+                "temperatureMaxK": "K",
+                "alphaAnchorTemperatureK": (
+                    "K; coldest row the inverse is built from. Chromaticity "
+                    "carries no temperature information below roughly 1.9e3 K, "
+                    "where the clipped linear-sRGB blue channel reaches exactly "
+                    "zero, so the inverse saturates here and can never return "
+                    "temperatureMinK"
+                ),
+                "rgbChannels": "dimensionless chromaticity in [0, 1]",
+                "alphaChannel": "dimensionless log-normalized temperature in [0, 1]",
+                "lookupCoordinate": "dimensionless u = R/(R+B) in [0, 1]",
+            },
+            "sampling": {
+                "rowTemperature": (
+                    "row i holds T_i = temperatureMinK * "
+                    "(temperatureMaxK / temperatureMinK)**(i / (samples - 1))"
+                ),
+                "rgbCoordinateExact": (
+                    "s = log(T_obs / temperatureMinK) / "
+                    "log(temperatureMaxK / temperatureMinK); the texture "
+                    "coordinate that lands exactly on row i is "
+                    "u = (s * (samples - 1) + 0.5) / samples"
+                ),
+                "rgbCoordinateConsumerNote": (
+                    "the current Unity consumer samples with u = s, which is a "
+                    "half-texel offset: measured bias at samples = 256 is 0.72 "
+                    "percent in effective temperature and 0.0021 per linear "
+                    "sRGB channel. Reconciling the shader is Task 9-10 work and "
+                    "is not owned by this producer"
+                ),
+                "alphaCoordinate": (
+                    "alpha is resampled at texel centers of u = R / (R + B), so "
+                    "the source pixel's u IS the texture coordinate; no "
+                    "endpoint correction is needed and the consumer is correct "
+                    "as written"
+                ),
+                "alphaInverse": (
+                    "T = temperatureMinK * (temperatureMaxK / temperatureMinK)**alpha"
+                ),
+                "addressing": "clamp",
+                "filtering": "bilinear",
+            },
             "channels": {
                 "r": "max-normalized linear sRGB red chromaticity",
                 "g": "max-normalized linear sRGB green chromaticity",
                 "b": "max-normalized linear sRGB blue chromaticity",
-                "a": "valid sample = 1",
+                "a": "inverse Planck locus: u = R/(R+B) -> log-normalized temperature",
             },
         }
         meta_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf8")
@@ -470,9 +611,60 @@ def write_page_thorne_radial_lut_unity_raw(
             "a": float(params.a),
             "prograde": bool(prograde),
             "rISCO": float(inner),
+            "aOverM": float(params.a / params.M),
+            "rIscoOverM": float(inner / params.M),
             "fluxPeakShape": float(peak),
             "temperatureScaleK": float(temperature_scale_k),
             "textureFormat": "rgba32f",
+            "units": {
+                "system": (
+                    "geometric G = c = 1; r, M and a are code lengths, so "
+                    "divide by M to get r/M and a/M"
+                ),
+                "samples": "count (dimensionless)",
+                "rMin": "geometric length (same unit as M)",
+                "rMax": "geometric length (same unit as M)",
+                "rISCO": "geometric length (same unit as M)",
+                "M": "geometric mass length unit GM/c^2",
+                "a": (
+                    "geometric length J/M, NOT the dimensionless spin; "
+                    "|a| <= M and a/M is published as aOverM"
+                ),
+                "aOverM": "dimensionless spin",
+                "rIscoOverM": "dimensionless",
+                "temperatureScaleK": (
+                    "K; the observed temperature at the flux peak for g = 1, a "
+                    "display parameter rather than a derived disk temperature"
+                ),
+                "fluxPeakShape": (
+                    "max(F) of the Page-Thorne flux shape, in geometric units "
+                    "of length^-2: it scales as M^-2 at fixed r/M and is NOT "
+                    "dimensionless. The omitted Mdot / (4 pi) factor is itself "
+                    "dimensionless in G = c = 1, so dropping it cannot remove "
+                    "the length^-2 dimension. It is not W/m^2"
+                ),
+                "channelR": "dimensionless F(r) / max(F)",
+                "channelG": "dimensionless [F(r) / max(F)]^(1/4)",
+                "channelB": "unused, reserved = 0",
+                "channelA": "dimensionless validity flag",
+            },
+            "sampling": {
+                "rowRadius": "row i holds r_i = rMin + i * (rMax - rMin) / (samples - 1)",
+                "radiusCoordinateExact": (
+                    "s = (r - rMin) / (rMax - rMin); the texture coordinate "
+                    "that lands exactly on row i is "
+                    "u = (s * (samples - 1) + 0.5) / samples"
+                ),
+                "radiusCoordinateConsumerNote": (
+                    "the current Unity consumer samples with u = s, a half-texel "
+                    "offset of 0.027 M at samples = 512 over rMin..rMax = "
+                    "2.32..30 M; on the steep inner rise that reaches 0.048 in "
+                    "normalized flux. Reconciling the shader is Task 9-10 work "
+                    "and is not owned by this producer"
+                ),
+                "addressing": "clamp",
+                "filtering": "bilinear",
+            },
             "channels": {
                 "r": "normalized Page-Thorne flux shape F(r) / max(F)",
                 "g": "normalized effective-temperature shape [F(r) / max(F)]^(1/4)",

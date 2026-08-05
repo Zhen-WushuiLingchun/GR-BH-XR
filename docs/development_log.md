@@ -19,6 +19,80 @@ from here.
 
 ## Log
 
+### 2026-08-05 - Dimensionless disk spectrum LUT v2 (inverse Planck locus)
+
+- Goal: Give the Unity disk/sky color path a physically defined *inverse*
+  blackbody map, and make both LUT metadata files dimensionally self-describing
+  so a consumer cannot silently misread a shape function as a physical flux.
+- Changed files / components: `src/gr_bh_xr/disk_spectrum.py`,
+  `tests/test_disk_spectrum.py`, `docs/validation_targets.md`,
+  `validation/thin_disk_transfer/README.md`.
+- Academic reason: Applying a redshift to a broadband RGB source needs an
+  emitter temperature. Fitting each source pixel's own chromaticity to the
+  Planck locus makes the emitter model explicit and, because the same LUT is
+  used forward and backward, makes the map an exact identity at `g = 1`: the
+  fit cannot distort an unshifted source color. Previously the alpha channel
+  was a constant `1` and unused.
+- Physical correspondence: The forward direction is unchanged - max-normalized
+  linear sRGB chromaticity of a Planck spectrum, integrated against the Wyman,
+  Sloan & Shirley analytic CIE 1931 fits, indexed by log temperature. The new
+  inverse uses the dimensionless chromaticity coordinate `u = R / (R + B)`,
+  which decreases monotonically along the locus once the cold plateau is
+  removed, and returns the log-normalized temperature
+  `s = log(T/T_min) / log(T_max/T_min)`. Page-Thorne flux, `T_obs = g T_emit`,
+  `g^3` specific-intensity and `g^4` bolometric conventions are untouched.
+- Assumptions and conventions: The inversion is a project chromaticity
+  heuristic, not a literature-derived spectral fit, and is labelled as such in
+  `docs/equations.md`; it ignores the green channel and minimizes no residual.
+  Below roughly `1.9e3 K` the clipped sRGB blue channel is exactly zero, so
+  `u = 1` on a plateau and chromaticity carries no temperature information.
+  Only the hottest plateau member is kept (`44` of `256` rows dropped for the
+  default range, emitted as `plateauRowsDropped`), and the writer now fails
+  closed when fewer than two rows survive - previously a range such as
+  `1000-1800 K`, reachable from the CLI, emitted a silently constant alpha.
+  Consequently the inverse SATURATES on the cold side and can never return
+  `temperatureMinK`; the reachable floor is published as
+  `alphaAnchorTemperatureK`. Alpha is resampled at texel centers of `u`; the
+  RGB rows stay endpoint-inclusive in `s`, so the two channels use different
+  texture coordinates and both are now written into the metadata.
+- Validation: `tests/test_disk_spectrum.py` (20 tests, all passing) adds a
+  direct monotonicity/plateau test tied to the blue-clip row, error-path and
+  fail-closed tests for `blackbody_locus_inverse`, a chromaticity -> alpha ->
+  temperature round trip through an emulated bilinear fetch with clamp
+  addressing, explicit hot-end and cold-saturation boundary tests, a producer
+  contract test for the exact texel coordinate, and dimensional metadata
+  assertions for both LUTs. Measured round-trip worst case on the five-point
+  set is `2.52e-4` at `25000 K`, so the deterministic regression bound was set
+  to `1e-3` (about `4x` headroom) rather than the loose `3%` per-point
+  tolerance, which is retained as the user-facing bound. Hot end: `40000 K`
+  recovers as `39652.60 K` (rel `8.68e-3`, the dense worst case). Cold end:
+  `1000 K` and `1500 K` both return `1933.06 K` against a `1889.88 K` anchor.
+- Corrections found by audit and fixed here: (1) `fluxPeakShape` is NOT
+  dimensionless. It carries geometric dimension `length^-2` and scales as
+  `M^-2` at fixed `r/M` - measured `peak * M^2 = 4.260486e-3` for
+  `M = 1, 2, 10`. The omitted `Mdot / (4 pi)` factor is itself dimensionless in
+  `G = c = 1`, so dropping it cannot remove the dimension, and an earlier draft
+  of this metadata claimed otherwise, contradicting the existing closed-form
+  `M^-2` scaling test three functions away. A numeric `M^-2` gate now ties the
+  asset metadata to that test. (2) The metadata must not publish a texel
+  coordinate the consumer violates: the exact endpoint-row coordinate
+  `(s (samples-1) + 0.5) / samples` is tested on the producer side, while the
+  current Unity shader samples with `u = s`. That half-texel offset is worth
+  `0.72%` in effective temperature at `samples = 256` and `0.027 M` in radius
+  (`0.048` in normalized flux) at `samples = 512`; it is recorded in the
+  emitted metadata for the Unity worktree to reconcile rather than silently
+  asserted. The alpha channel needs no correction because it is resampled at
+  texel centers.
+- References: `wyman2013cieMatchingFits`, `cie2019xyz1931Dataset` (already
+  indexed); Page & Thorne / Novikov & Thorne entries for the unchanged flux
+  conventions. No new sources were needed for this change.
+- Open issues / next steps: The color LUT remains broadband RGB chromaticity,
+  not a per-star spectral shift, and absolute luminosity still needs
+  accretion-rate and distance normalization. The `g = 1` identity is exact in
+  the producer but depends on the consumer's division guard, which is Task 9-10
+  work. The Unity-side consumer of the v2 alpha channel, and the `u = s`
+  sampling reconciliation, are both owned by the Unity worktree.
+
 ### 2026-07-09 - Stage B-2 transported free-fall tetrad seed
 
 - Goal: Add the first transported observer tetrad for near-horizon keyframe

@@ -376,6 +376,72 @@ Delta t_m is recorded and reported; its tighter threshold is set after display-s
   Unity raw-asset tests additionally require RGBA32F color/radial LUT byte
   counts, JSON metadata, log-temperature indexing, linear-radius indexing, and
   `T_shape^4 = F_norm` for positive Page-Thorne samples.
+- Disk color LUT schema `gr-bh-xr.task6.disk_color_lut.v2` adds the inverse
+  Planck locus to the previously unused alpha channel. The inversion is a
+  project chromaticity heuristic (a red-to-blue ratio match), not a
+  literature-derived spectral fit; see `docs/equations.md`. Required checks in
+  `tests/test_disk_spectrum.py`:
+  - the forward chromaticity coordinate `u = R / (R + B)` is bounded in
+    `[0, 1]`, equals `1` at the cold end where the clipped sRGB blue channel is
+    zero, and is *not* globally monotone - the sub-plateau is the reason a raw
+    inversion is invalid;
+  - `blackbody_locus_inverse` drops the plateau rows (recorded as
+    `plateauRowsDropped`; `44` of `256` rows for the default `1000-40000 K`
+    range), raises when fewer than two rows survive or when the remainder is
+    not strictly monotone, and returns a non-increasing table in `[0, 1]`. The
+    fail-closed case is reachable from the CLI (`--temperature-max-k 1800`) and
+    is tested;
+  - the chromaticity -> alpha -> temperature round trip, evaluated through an
+    emulated bilinear texture fetch with clamp addressing, recovers the
+    emitting temperature within a `1e-3` regression bound over
+    `2500-25000 K`. Measured worst case on that five-point set is `2.52e-4`
+    (at `25000 K`), so the gate keeps about `4x` headroom. The loose `3%`
+    per-point tolerance is retained as the user-facing bound;
+  - boundary behavior is pinned separately because the mid-range is the
+    easy region: the hot end `40000 K` recovers to `39652.60 K`
+    (rel `8.68e-3`, the dense worst case over `2500-40000 K`; the locus
+    flattens by `17x` in `du/dlnT` toward `40000 K`), and the cold end
+    *saturates by design* - `1000 K` and `1500 K` both return `1933.06 K`,
+    about `1.6` LUT texels above the `1889.88 K` anchor row. The inverse can
+    never return `temperatureMinK`; the reachable floor is published as
+    `alphaAnchorTemperatureK`;
+  - `alpha` is the dimensionless log-normalized temperature
+    `s = log(T / T_min) / log(T_max / T_min)`, so `T = T_min (T_max/T_min)^a`.
+    Because the same LUT is used forward and backward, the ratio form is an
+    identity at `g = 1` in exact arithmetic, so a fit error cannot change an
+    unshifted source color. That identity is subject to the consumer's own
+    division guard, which is Task 9-10 territory and not gated here.
+- Both Unity LUT metadata files must be dimensionally self-describing, and the
+  claims must be numerically true rather than asserted by string. The metadata
+  carries a `units` block naming the unit of every numeric field and a
+  `sampling` block giving the row-to-physical-value map, the exact texture
+  coordinate including the `(samples - 1)` endpoint convention, the addressing
+  and filtering modes, and an explicit note where the current consumer differs.
+  Specifically:
+  - `fluxPeakShape` is **not** dimensionless. It carries geometric dimension
+    `length^-2` and scales as `M^-2` at fixed `r/M`; the omitted
+    `Mdot / (4 pi)` factor is itself dimensionless in `G = c = 1`, so dropping
+    it cannot remove that dimension. Measured `peak * M^2 = 4.260486e-3` for
+    `M = 1, 2, 10` at `a/M = 0.9`, `r_max/M = 30`. This is gated numerically by
+    `test_page_thorne_flux_peak_shape_scales_as_inverse_mass_squared`, which
+    ties the asset metadata to the existing closed-form `M^-2` scaling test.
+    The texture *channels* `F/max(F)` and `[F/max(F)]^(1/4)` are dimensionless;
+    only the normalization constant is not;
+  - `rMin`, `rMax`, `rISCO`, `M` and `a` are geometric code lengths, equal to
+    `r/M` only when `M = 1`. `a` is `J/M`, not the dimensionless spin, even
+    though the CLI flag is named `--spin`; `aOverM` and `rIscoOverM` are
+    published so the dimensionless values are machine-readable;
+  - the producer contract is that the documented exact coordinate
+    `u = (s * (samples - 1) + 0.5) / samples` returns its own row under
+    bilinear/clamp fetch, and this is tested directly. The current Unity
+    consumer instead samples with `u = s`, a half-texel offset worth `0.72%`
+    in effective temperature (`0.0021` per linear sRGB channel) at
+    `samples = 256`, and `0.027 M` in radius (`0.048` in normalized flux on
+    the steep inner rise) at `samples = 512`. This producer does not own the
+    shader; the mismatch is recorded in the emitted metadata so the Unity
+    worktree can reconcile it, and it is deliberately not asserted away here.
+    The alpha channel needs no such correction because it is resampled at
+    texel centers, so the consumer's `u` is already correct.
 
 ## Phase 5 MR Overlay
 

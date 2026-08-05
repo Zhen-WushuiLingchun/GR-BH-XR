@@ -238,6 +238,41 @@ The absolute disk temperature scale and luminosity normalization are display
 parameters until an accretion rate, mass-to-SI conversion, and distance model
 are selected.
 
+Note that `max(F)`, the normalization stored alongside the LUT as
+`fluxPeakShape`, is itself **not** dimensionless: it carries geometric
+dimension `length^-2` and scales as `M^-2` at fixed `r/M`. The omitted
+`Mdot / (4 pi)` factor is dimensionless in `G = c = 1`, so dropping it cannot
+remove that dimension. Only the stored channels `F(r) / max(F)` and
+`[F(r) / max(F)]^(1/4)` are dimensionless.
+
+### Inverse Planck locus (project chromaticity heuristic)
+
+Applying a redshift to a broadband RGB source needs an emitter temperature.
+The project derives one from the source pixel's own chromaticity using the
+dimensionless coordinate
+
+```text
+u = R / (R + B)          (linear sRGB, scale invariant, not gamma invariant)
+s = log(T / T_min) / log(T_max / T_min)      in [0, 1]
+T = T_min (T_max / T_min)^s
+```
+
+`u` decreases monotonically along the Planck locus and is inverted to `s`,
+which is stored in the alpha channel of the disk color LUT (schema
+`gr-bh-xr.task6.disk_color_lut.v2`). The observed color is then
+`rgb * LUT(T g) / LUT(T)`, which is an exact identity at `g = 1` in exact
+arithmetic because the same table is used in both directions.
+
+This is a **project chromaticity heuristic, not a literature-derived spectral
+fit**, and must be labelled as a `physics approximation` per
+`docs/physical_scope.md`. It ignores the green channel and minimizes no
+residual, so for an off-locus pixel the recovered temperature has no
+goodness-of-fit meaning. It is also information-limited on the cold side:
+below roughly `1.9e3 K` the clipped linear-sRGB blue channel is exactly zero,
+`u` saturates at `1`, and no temperature can be recovered. The inversion drops
+that plateau and saturates at its hottest member, so the recovered temperature
+never falls below the published `alphaAnchorTemperatureK`.
+
 ## Simplified GRRT
 
 Invariant intensity:
