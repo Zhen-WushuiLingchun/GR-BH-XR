@@ -1226,6 +1226,59 @@ def test_mr_status_is_visible_in_headset_and_types_are_preserved():
     assert "meta.xr" not in asmdef.lower()
 
 
+def test_meta_xr_feature_opt_in_is_explicit_auditable_and_fails_closed():
+    """The MR device gate needs a deliberate MetaXRFeature opt-in.
+
+    MRUK initialises its native OpenXR layer only when OVRPlugin reports
+    initialised, and under the Unity OpenXR loader only MetaXRFeature does
+    that. With the feature disabled - the formal project's current Standalone
+    state - PassthroughCameraAccess cannot start and the camera extension can
+    remain merely available, and no repository-side change works around it.
+
+    But enabling it adds Meta's full OpenXR extension set and can perturb the
+    working environment-depth path, so it must be a separate, explicit,
+    logged action rather than something the generic setup helper does.
+    """
+
+    setup = (UNITY_EDITOR_DIR / "GRBHXRQuestPcvrSetup.cs").read_text(encoding="utf8")
+
+    # Explicit opt-in exists as both a menu item and a batch entry point.
+    assert 'MenuItem("GR-BH-XR/Quest PCVR/Enable MetaXRFeature (MR device gate opt-in)")' in setup
+    assert "public static void EnableMetaXrFeatureForMrGateBatch()" in setup
+
+    opt_in = _csharp_block(
+        setup, "private static void EnableMetaXrFeatureForMrGate(BuildTargetGroup buildTarget)"
+    )
+    # It actually enables the existing instance...
+    assert "feature.enabled = true;" in opt_in
+    # ...logs before AND after...
+    assert "BEFORE enabled=" in opt_in
+    assert "AFTER enabled=" in opt_in
+    # ...and fails loudly rather than no-opping when anything is missing.
+    assert opt_in.count("throw new InvalidOperationException") >= 4
+    for missing in (
+        "no OpenXR settings",
+        "type not found",
+        "instance exists",
+        "did not report enabled",
+    ):
+        assert missing in opt_in, missing
+
+    # The generic setup path stays report-only.
+    report = _csharp_block(setup, "private static string ReportMetaXrFeature(OpenXRSettings settings)")
+    assert "feature.enabled = true" not in report
+    assert "MetaXRFeature=disabled(reported,notChanged)" in report
+
+    # Correct assembly, and the versionDefine caveat is recorded so a null
+    # result is not misread as a wrong assembly name.
+    assert '"Meta.XR.MetaXRFeature, Oculus.VR"' in setup
+    assert "Meta.XR.SDK.Core" not in setup
+    assert "USING_XR_SDK_OPENXR" in setup
+
+    # Enabling the feature is not evidence of camera delivery.
+    assert "does NOT by" in opt_in or "does NOT" in opt_in
+
+
 def test_setup_reports_meta_xr_feature_state_without_changing_it():
     """MetaXRFeature gates OVRPlugin init, which gates MRUK's OpenXR init.
 

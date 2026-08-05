@@ -65,20 +65,35 @@ namespace GRBHXR
 
         /// <summary>
         /// Distinct MRUK timestamps required before the calibrated-delivery
-        /// acceptance line may be emitted. One transition proves a single
-        /// buffer was populated once; it does not prove a live stream, and the
-        /// previous code latched on the first transition and then accepted the
-        /// same stale texture forever. At the requested 30 fps, three distinct
-        /// timestamps is ~0.1 s of real streaming and still lands well inside
-        /// any plausible bring-up window.
+        /// acceptance line may be emitted.
+        ///
+        /// N = 1 proves one buffer was filled once, which a single-shot or
+        /// frozen feed satisfies forever after. N = 2 gives a single delta,
+        /// and the FIRST delivery is a startup artifact (MRUK flips its
+        /// playing latch on that very frame). N = 3 gives two independent
+        /// inter-frame deltas, which is the smallest count that can show the
+        /// stream is advancing rather than that it advanced once.
+        ///
+        /// MRUK's Timestamp is microseconds since the Unix epoch, so distinct
+        /// comparison is exact with no float rounding. MaxFramerate is a
+        /// CEILING, not a guarantee - MRUK documents that the actual rate
+        /// varies with lighting and workload - so this count is deliberately
+        /// small enough to hold at a degraded rate.
         /// </summary>
         public const int RequiredDistinctTimestamps = 3;
 
         /// <summary>
-        /// Seconds without a new timestamp after acceptance before the stream
-        /// is reported stale. Generous against a 30 fps nominal rate so a
-        /// transient hitch does not trip it, tight enough that a dead feed
-        /// cannot masquerade as a live one for a whole capture.
+        /// Seconds without a NEW distinct timestamp, after acceptance, before
+        /// the stream is reported stale. At the 30 fps we request the nominal
+        /// period is 33 ms, so this is a ~60x margin and will not trip on a
+        /// legitimate dip; even a pathological sustained 5 fps leaves a 10x
+        /// margin. Short enough that a frozen passthrough plate is caught
+        /// within a capture rather than after it.
+        ///
+        /// Measured as time since the timestamp last CHANGED, not as absolute
+        /// age. Over Link the timestamp is the headset's realtime clock and
+        /// its synchronisation with the host clock is unverified, so an
+        /// absolute-age test could report a permanent false stall.
         /// </summary>
         public const float StaleAfterSeconds = 2.0f;
 

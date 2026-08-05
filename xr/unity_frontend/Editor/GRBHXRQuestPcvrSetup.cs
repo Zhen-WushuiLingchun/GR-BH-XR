@@ -211,13 +211,22 @@ namespace GRBHXR.EditorTools
         /// Resolved by reflection so the package keeps no compile-time
         /// dependency on Meta assemblies.
         /// </summary>
-        private static string ReportMetaXrFeature(OpenXRSettings settings)
+        /// <summary>
+        /// Resolve Meta's OpenXR feature type without a compile-time
+        /// dependency. Assembly is Oculus.VR - the Meta Core SDK's
+        /// package-root asmdef, verified against the installed package and
+        /// against Library/ScriptAssemblies. Naming the UPM package
+        /// (com.meta.xr.sdk.core) instead of the assembly would never resolve,
+        /// and the AppDomain fallback would mask that in the editor - where
+        /// every assembly is already loaded - while a built player failed.
+        ///
+        /// A null result does NOT necessarily mean the name is wrong:
+        /// MetaXRFeature.cs is wrapped in `#if USING_XR_SDK_OPENXR`, a
+        /// versionDefine on com.unity.xr.openxr. Without that package the
+        /// assembly exists but contains no such type.
+        /// </summary>
+        private static Type ResolveMetaXrFeatureType()
         {
-            // Assembly is Oculus.VR - the Meta Core SDK's package-root asmdef.
-            // Naming the UPM package here instead of the assembly would never
-            // resolve, and the AppDomain fallback below would mask it in the
-            // editor (where every assembly is already loaded) while failing in
-            // a built player.
             var metaFeatureType = System.Type.GetType(
                 "Meta.XR.MetaXRFeature, Oculus.VR", false
             );
@@ -232,24 +241,127 @@ namespace GRBHXR.EditorTools
                     }
                 }
             }
+            return metaFeatureType;
+        }
+
+        private static OpenXRFeature FindFeatureOfType(OpenXRSettings settings, Type featureType)
+        {
+            foreach (OpenXRFeature candidate in settings.GetFeatures())
+            {
+                if (candidate != null && featureType.IsInstanceOfType(candidate))
+                {
+                    return candidate;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// EXPLICIT, AUDITABLE opt-in for the MR device gate.
+        ///
+        /// MRUK initialises its native OpenXR layer only when OVRPlugin
+        /// reports initialised, and under the Unity OpenXR loader OVRPlugin is
+        /// initialised only by MetaXRFeature. With that feature disabled -
+        /// which is the formal project's current state for Standalone - MRUK
+        /// never calls InitOpenXr, PassthroughCameraAccess cannot start, and
+        /// XR_METAX1_passthrough_camera_data can stay merely available. No
+        /// repository-side change works around that.
+        ///
+        /// This is deliberately NOT wired into the generic setup path, which
+        /// stays report-only. Enabling MetaXRFeature adds roughly 95
+        /// extensions to the OpenXR instance and can perturb the working
+        /// environment-depth path, so it is a decision the operator takes
+        /// knowingly, with a capability probe captured before and after.
+        ///
+        /// Fails loudly - never silently no-ops - when the feature, its type,
+        /// or its instance is missing, because a silent no-op here would look
+        /// exactly like a successful opt-in in the batch log.
+        /// </summary>
+        [MenuItem("GR-BH-XR/Quest PCVR/Enable MetaXRFeature (MR device gate opt-in)")]
+        public static void EnableMetaXrFeatureForMrGate()
+        {
+            EnableMetaXrFeatureForMrGate(BuildTargetGroup.Standalone);
+        }
+
+        /// <summary>Batch entry point: -executeMethod ...EnableMetaXrFeatureForMrGateBatch</summary>
+        public static void EnableMetaXrFeatureForMrGateBatch()
+        {
+            EnableMetaXrFeatureForMrGate(BuildTargetGroup.Standalone);
+        }
+
+        private static void EnableMetaXrFeatureForMrGate(BuildTargetGroup buildTarget)
+        {
+            var settings = OpenXRSettings.GetSettingsForBuildTargetGroup(buildTarget);
+            if (settings == null)
+            {
+                throw new InvalidOperationException(
+                    $"GR-BH-XR MR gate opt-in FAILED: no OpenXR settings for {buildTarget}."
+                );
+            }
+
+            Type metaFeatureType = ResolveMetaXrFeatureType();
+            if (metaFeatureType == null)
+            {
+                throw new InvalidOperationException(
+                    "GR-BH-XR MR gate opt-in FAILED: Meta.XR.MetaXRFeature type not found. " +
+                    "Install the Meta Core SDK (com.meta.xr.sdk.core) AND com.unity.xr.openxr - " +
+                    "the type is compiled under the USING_XR_SDK_OPENXR versionDefine, so the " +
+                    "Oculus.VR assembly can exist without containing it."
+                );
+            }
+
+            OpenXRFeature feature = FindFeatureOfType(settings, metaFeatureType);
+            if (feature == null)
+            {
+                throw new InvalidOperationException(
+                    "GR-BH-XR MR gate opt-in FAILED: MetaXRFeature type resolved but no feature " +
+                    $"instance exists in the {buildTarget} OpenXR settings."
+                );
+            }
+
+            bool before = feature.enabled;
+            Debug.Log(
+                $"GR-BH-XR MR gate opt-in: MetaXRFeature ({metaFeatureType.Assembly.GetName().Name}) " +
+                $"for {buildTarget} BEFORE enabled={before}. Capture xr_capability_probe.json now " +
+                "if you have not already - the device run compares probes before and after."
+            );
+
+            feature.enabled = true;
+            EditorUtility.SetDirty(feature);
+            EditorUtility.SetDirty(settings);
+            AssetDatabase.SaveAssets();
+
+            OpenXRFeature after = FindFeatureOfType(settings, metaFeatureType);
+            bool nowEnabled = after != null && after.enabled;
+            Debug.Log(
+                $"GR-BH-XR MR gate opt-in: MetaXRFeature for {buildTarget} AFTER enabled={nowEnabled}. " +
+                "This adds Meta's full OpenXR extension set to the instance and may perturb the " +
+                "environment-depth path; re-probe and compare. Enabling the feature does NOT by " +
+                "itself demonstrate camera-frame delivery."
+            );
+            if (!nowEnabled)
+            {
+                throw new InvalidOperationException(
+                    "GR-BH-XR MR gate opt-in FAILED: MetaXRFeature did not report enabled after " +
+                    "being set. Do not proceed to the device gate."
+                );
+            }
+        }
+
+        private static string ReportMetaXrFeature(OpenXRSettings settings)
+        {
+            var metaFeatureType = ResolveMetaXrFeatureType();
             if (metaFeatureType == null)
             {
                 Debug.Log(
-                    "GR-BH-XR OpenXR: MetaXRFeature type not present (Meta Core SDK not installed). " +
+                    "GR-BH-XR OpenXR: MetaXRFeature type not present (Meta Core SDK absent, or " +
+                    "com.unity.xr.openxr missing so the USING_XR_SDK_OPENXR versionDefine is off). " +
                     "MRUK PassthroughCameraAccess cannot initialise without it."
                 );
                 return "MetaXRFeature=absent";
             }
 
-            OpenXRFeature feature = null;
-            foreach (OpenXRFeature candidate in settings.GetFeatures())
-            {
-                if (candidate != null && metaFeatureType.IsInstanceOfType(candidate))
-                {
-                    feature = candidate;
-                    break;
-                }
-            }
+            OpenXRFeature feature = FindFeatureOfType(settings, metaFeatureType);
             if (feature == null)
             {
                 Debug.LogWarning("GR-BH-XR OpenXR: MetaXRFeature type exists but no feature instance was found.");
@@ -264,7 +376,9 @@ namespace GRBHXR.EditorTools
                     "reports the state but does not change it: enabling MetaXRFeature adds " +
                     "~95 OpenXR extensions and can perturb the working environment-depth " +
                     "path, so it needs a deliberate decision plus a before/after capability " +
-                    "probe. See docs and the MRUK source note."
+                    "probe. Run GR-BH-XR/Quest PCVR/Enable MetaXRFeature (MR device gate opt-in), " +
+                    "or -executeMethod GRBHXR.EditorTools.GRBHXRQuestPcvrSetup" +
+                    ".EnableMetaXrFeatureForMrGateBatch, to opt in explicitly."
                 );
                 return "MetaXRFeature=disabled(reported,notChanged)";
             }
