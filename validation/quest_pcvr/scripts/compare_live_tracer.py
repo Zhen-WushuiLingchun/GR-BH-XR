@@ -20,7 +20,7 @@ be present unless it is explicitly waived on the command line. Previously each
 stage was guarded by a bare `path.exists()` and a dump containing only the
 three main buffers printed PASS.
 
-Cross-worktree dependency: `_batch_escape_directions` and the Kerr-Schild
+Cross-worktree dependency: `batch_escape_directions` and the Kerr-Schild
 disk-crossing extensions to `trace_ks` are owned by the Task 7-8 physics
 worktree. This script cannot run on a branch that lacks them; the import below
 fails loudly rather than degrading to a partial check.
@@ -35,7 +35,7 @@ from pathlib import Path
 
 import numpy as np
 
-from gr_bh_xr.gpu.generate_descent_keyframes import _batch_escape_directions
+from gr_bh_xr.gpu.generate_descent_keyframes import batch_escape_directions
 from gr_bh_xr.gpu.generate_transfer_cubemap import _face_directions, _face_directions_from_uv
 from gr_bh_xr.gpu.trace_ks import KsGpuTraceConfig, trace_ks_states
 from gr_bh_xr.types import MetricParams
@@ -205,7 +205,7 @@ def main() -> None:
 
     result = trace_ks_states(config, states)
     escaped = apply_hug_criteria(result, result["event_code"] == 1)
-    py_dirs = _batch_escape_directions(params, result["final_x"], result["final_p"], escaped)
+    py_dirs = batch_escape_directions(params, result["final_x"], result["final_p"], escaped)
 
     both = escaped & (unity_dirs[:, 3] > 0.5) & np.all(np.isfinite(py_dirs), axis=1)
     dots = np.clip(
@@ -336,7 +336,7 @@ def main() -> None:
                     sub_states[row * subray_count + sub, 4:8] = g_obs @ q
             sub_result = trace_ks_states(config, sub_states)
             sub_escaped = apply_hug_criteria(sub_result, sub_result["event_code"] == 1)
-            sub_dirs = _batch_escape_directions(
+            sub_dirs = batch_escape_directions(
                 params, sub_result["final_x"], sub_result["final_p"], sub_escaped
             )
             cov_diffs = np.zeros(refine_samples)
@@ -433,7 +433,7 @@ def main() -> None:
             w_unity_gs[row] = win_g[py, px, 0]
         w_result = trace_ks_states(config, wstates)
         w_escaped = apply_hug_criteria(w_result, w_result["event_code"] == 1)
-        w_py_dirs = _batch_escape_directions(
+        w_py_dirs = batch_escape_directions(
             params, w_result["final_x"], w_result["final_p"], w_escaped
         )
         w_both = w_escaped & (w_unity_dirs[:, 3] > 0.5) & np.all(np.isfinite(w_py_dirs), axis=1)

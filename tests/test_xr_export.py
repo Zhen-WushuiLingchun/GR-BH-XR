@@ -591,6 +591,54 @@ def test_unity_live_window_contract():
     assert "windowHalfAlpha" in compare
 
 
+def test_live_tracer_gate_imports_the_accepted_public_physics_api():
+    """The gate must import the names the physics worktree actually exports.
+
+    The snapshot this branch was ported from used the private
+    `_batch_escape_directions`; the accepted merge on `main` exports
+    `batch_escape_directions`. A stale private name makes the whole
+    live-tracer gate fail at import time the moment the two branches are
+    combined - and because the gate's pytest coverage here is source-text
+    pinning, nothing else would have caught it.
+
+    Structural half runs everywhere; the live import runs only where the
+    physics module is actually present (i.e. after the merge), so this test
+    tightens automatically instead of silently passing forever.
+    """
+
+    compare = COMPARE_LIVE_TRACER.read_text(encoding="utf8")
+
+    assert (
+        "from gr_bh_xr.gpu.generate_descent_keyframes import batch_escape_directions"
+        in compare
+    )
+    # The private spelling must not come back anywhere, including call sites.
+    assert "_batch_escape_directions" not in compare
+    assert compare.count("batch_escape_directions(") >= 3
+
+    importlib_util = importlib.util
+    if importlib_util.find_spec("gr_bh_xr.gpu.generate_descent_keyframes") is None:
+        pytest.skip(
+            "gr_bh_xr.gpu.generate_descent_keyframes is owned by the Task 7-8 "
+            "physics worktree and is not present on this branch; the structural "
+            "pin above still applies."
+        )
+
+    from gr_bh_xr.gpu.generate_descent_keyframes import (  # noqa: PLC0415
+        batch_escape_directions,
+    )
+
+    # Signature parity: the gate calls it positionally with four arguments.
+    import inspect  # noqa: PLC0415
+
+    positional = [
+        name
+        for name, p in inspect.signature(batch_escape_directions).parameters.items()
+        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+    ]
+    assert positional[:4] == ["params", "final_x", "final_p", "escaped"], positional
+
+
 def test_live_tracer_dump_and_gate_share_every_physics_constant():
     """A constant hardcoded on both sides is an assumption, not a test.
 
