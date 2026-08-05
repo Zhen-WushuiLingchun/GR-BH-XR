@@ -81,6 +81,39 @@ def ks_inverse_metric(params: MetricParams, xyz: FloatArray) -> FloatArray:
     return MINKOWSKI_INVERSE - 2.0 * h * np.outer(l_contra, l_contra)
 
 
+def ks_radius_gradient(params: MetricParams, xyz: FloatArray) -> FloatArray:
+    """Return the spatial gradient of the Kerr-Schild radius `r(x, y, z)`.
+
+    `r` is defined implicitly by `(x^2 + y^2) / (r^2 + a^2) + z^2 / r^2 = 1`,
+    equivalently `r^4 - (rho^2 - a^2) r^2 - a^2 z^2 = 0`.  Implicit
+    differentiation gives
+
+        grad r = (x r, y r, z (r^2 + a^2) / r) / D,
+        D = 2 r^2 - rho^2 + a^2 = sqrt((rho^2 - a^2)^2 + 4 a^2 z^2),
+
+    so `D` vanishes only on the ring singularity.  On the symmetry axis
+    `r = |z|` and the gradient is exactly `(0, 0, 1)`.
+    """
+
+    x, y, z = _xyz(xyz)
+    a2 = params.a * params.a
+    r = ks_radius(params, xyz)
+    if r <= _R_EPS:
+        raise ValueError("Kerr-Schild radius gradient is undefined at the ring/origin.")
+    rho2 = x * x + y * y + z * z
+    radius_den = 2.0 * r * r - rho2 + a2
+    if abs(radius_den) <= _R_EPS:
+        raise ValueError("Kerr-Schild radius derivative is singular at the ring.")
+    return np.array(
+        [
+            x * r / radius_den,
+            y * r / radius_den,
+            z * (r * r + a2) / (r * radius_den),
+        ],
+        dtype=np.float64,
+    )
+
+
 def ks_inverse_metric_derivatives(params: MetricParams, xyz: FloatArray) -> tuple[FloatArray, FloatArray, FloatArray]:
     """Analytically differentiate `g^mu nu` with respect to Cartesian `(x,y,z)`."""
 
@@ -93,19 +126,7 @@ def ks_inverse_metric_derivatives(params: MetricParams, xyz: FloatArray) -> tupl
 
     r2 = r * r
     r4 = r2 * r2
-    rho2 = x * x + y * y + z * z
-    radius_den = 2.0 * r2 - rho2 + a2
-    if abs(radius_den) <= _R_EPS:
-        raise ValueError("Kerr-Schild radius derivative is singular at the ring.")
-
-    dr = np.array(
-        [
-            x * r / radius_den,
-            y * r / radius_den,
-            z * (r2 + a2) / (r * radius_den),
-        ],
-        dtype=np.float64,
-    )
+    dr = ks_radius_gradient(params, xyz)
 
     h_den = r4 + a2 * z * z
     if h_den <= _R_EPS:

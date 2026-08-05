@@ -23,7 +23,13 @@ from .geodesic_ks import (
     ks_state_to_bl_state,
 )
 from .metric import covariant_metric, delta, horizon_radius, sigma
-from .metric_ks import bl_to_ks_cartesian, ks_inverse_metric, ks_metric, ks_radius
+from .metric_ks import (
+    bl_to_ks_cartesian,
+    ks_inverse_metric,
+    ks_metric,
+    ks_radius,
+    ks_radius_gradient,
+)
 from .types import FloatArray, MetricParams, RayState
 
 
@@ -397,3 +403,284 @@ def analytic_zamo_lapse(params: MetricParams, r: float, theta: float) -> float:
     dlt = delta(params, r)
     a_term = (r * r + a * a) ** 2 - a * a * dlt * s * s
     return math.sqrt(sigma(params, r, theta) * dlt / a_term)
+
+
+# The rain constraint system loses rank on the symmetry axis, where both the
+# axial-Killing row and the polar row vanish identically.  Off axis the
+# condition number grows like `6 / theta`, so the velocity error scales as
+# `2e-16 / theta`.  Refuse below this relative cylindrical radius rather than
+# return a silently degraded frame.
+RAIN_MIN_SIN_THETA = 1.0e-6
+
+
+def kerr_rain_velocity_ks(params: MetricParams, xyz: FloatArray) -> FloatArray:
+    """Rain (E=1, L=0, Q=0) 4-velocity in Cartesian Kerr-Schild coordinates.
+
+    This is the Doran free-fall congruence: observers released from rest at
+    infinity, falling at constant Boyer-Lindquist polar angle.  With `E = 1`
+    and `L = 0` the Carter polar potential reduces to `Theta = Q` identically,
+    independent of `theta`, so `Q = 0` makes `dtheta / dtau = 0` an exact
+    solution at every polar angle: the four conditions below are consistent,
+    not overdetermined.
+
+    Solved algebraically from the constraints, so it is valid on both sides of
+    the outer horizon (the ingoing chart is regular there):
+
+    - ``u_t = -1`` (dropped from rest at infinity), chart independent because
+      ``t_KS`` and ``t_BL`` share the same Killing vector,
+    - ``L = xi_phi . u = -y u_x + x u_y = 0`` (lowered components) with the
+      Cartesian axial Killing vector ``xi = (0, -y, x, 0)``,
+    - ``d theta / d tau = 0``, expressed as ``r u^z = z (grad r . u_spatial)``
+      via the KS radius gradient,
+    - ``u . u = -1``, taking the ingoing, future-pointing root.  ``u^t > 0`` is
+      a valid causal test on both sides of the horizon because
+      ``g^tt = -(1 + 2H) < 0`` everywhere in the ingoing chart, so ``t`` is a
+      global time function.
+    """
+
+    position = np.asarray(xyz, dtype=np.float64)
+    g = ks_metric(params, position)
+    r = ks_radius(params, position)
+    grad_r = ks_radius_gradient(params, position)
+    z = float(position[2])
+    rho = math.hypot(float(position[0]), float(position[1]))
+    if rho <= RAIN_MIN_SIN_THETA * r:
+        raise ValueError(
+            "Rain frame is undefined on the Kerr symmetry axis: the constraint "
+            f"system loses rank there (sin(theta) ~ {rho / r:.3e} <= "
+            f"{RAIN_MIN_SIN_THETA:.1e})."
+        )
+
+    constraint = np.zeros((3, 4), dtype=np.float64)
+    rhs = np.zeros(3, dtype=np.float64)
+    # u_t = g_{t mu} u^mu = -1.
+    constraint[0] = g[0]
+    rhs[0] = -1.0
+    # L = -y u_x + x u_y = 0 with lowered spatial components.
+    constraint[1] = -position[1] * g[1] + position[0] * g[2]
+    rhs[1] = 0.0
+    # theta constant: r u^z - z (grad r . u_spatial) = 0.
+    constraint[2, 1:4] = -z * grad_r
+    constraint[2, 3] += r
+    rhs[2] = 0.0
+
+    # Solve the affine system: u = u0 + s n with n spanning the null space.
+    u0, *_ = np.linalg.lstsq(constraint, rhs, rcond=None)
+    _, _, vt = np.linalg.svd(constraint)
+    direction = vt[-1]
+    quad_a = float(direction @ g @ direction)
+    quad_b = 2.0 * float(u0 @ g @ direction)
+    quad_c = float(u0 @ g @ u0) + 1.0
+    discriminant = quad_b * quad_b - 4.0 * quad_a * quad_c
+    if discriminant < 0.0:
+        raise ValueError("Rain velocity normalization has no real solution here.")
+    # Vieta-stable roots.  The outgoing branch diverges as Delta -> 0 in the
+    # ingoing chart, which drives `quad_a` to zero exactly at r_+; the naive
+    # (-b -/+ sqrt(disc)) / (2 quad_a) form then cancels catastrophically and
+    # loses the solution entirely on the horizon.
+    sqrt_disc = math.sqrt(discriminant)
+    helper = -0.5 * (quad_b + math.copysign(sqrt_disc, quad_b if quad_b != 0.0 else 1.0))
+    candidates: list[float] = []
+    if helper != 0.0:
+        candidates.append(quad_c / helper)
+    if quad_a != 0.0:
+        candidates.append(helper / quad_a)
+    for root in candidates:
+        u = u0 + root * direction
+        dr_dtau = float(grad_r @ u[1:4])
+        if dr_dtau < 0.0 and u[0] > 0.0:
+            return u
+    raise ValueError("No ingoing future-pointing rain solution found.")
+
+
+def kerr_rain_tetrad_ks(params: MetricParams, xyz: FloatArray) -> KSObserverTetrad:
+    """Orthonormal rain-frame tetrad in Cartesian Kerr-Schild coordinates.
+
+    Spatial legs follow the map-launcher convention: ``e_r`` points along
+    increasing KS radius (projected orthogonal to u), ``e_theta`` along
+    increasing polar angle, ``e_phi`` along the axial Killing direction.
+    Valid through the outer horizon.
+    """
+
+    position = np.asarray(xyz, dtype=np.float64)
+    g = ks_metric(params, position)
+    u = kerr_rain_velocity_ks(params, position)
+    x, y, z = float(position[0]), float(position[1]), float(position[2])
+    r = ks_radius(params, position)
+    grad_r = ks_radius_gradient(params, position)
+
+    def project_and_normalize(candidate: FloatArray, against: list) -> FloatArray:
+        vector = np.asarray(candidate, dtype=np.float64)
+        for basis_vector in against:
+            norm_sq = float(basis_vector @ g @ basis_vector)
+            vector = vector - (float(vector @ g @ basis_vector) / norm_sq) * basis_vector
+        length_sq = float(vector @ g @ vector)
+        if length_sq <= 0.0:
+            raise ValueError("Tetrad candidate degenerated during orthonormalization.")
+        return vector / math.sqrt(length_sq)
+
+    radial_candidate = np.array([0.0, grad_r[0], grad_r[1], grad_r[2]], dtype=np.float64)
+    phi_candidate = np.array([0.0, -y, x, 0.0], dtype=np.float64)
+    # sin(theta) = rho / r exactly.  The earlier sqrt(max(1 - cos^2, 1e-16))
+    # form silently floored for theta < 1e-8 and produced a mis-oriented
+    # e_theta that still orthonormalized perfectly, so no Gram check could
+    # detect it; kerr_rain_velocity_ks already refuses that band.
+    rho = math.hypot(x, y)
+    cos_theta = z / r
+    sin_theta = rho / r
+    theta_candidate = np.array(
+        [0.0, x * cos_theta / sin_theta, y * cos_theta / sin_theta, -r * sin_theta],
+        dtype=np.float64,
+    )
+
+    e_time = u
+    e_phi = project_and_normalize(phi_candidate, [e_time])
+    e_theta = project_and_normalize(theta_candidate, [e_time, e_phi])
+    e_r = project_and_normalize(radial_candidate, [e_time, e_phi, e_theta])
+    return KSObserverTetrad(
+        x=np.array([0.0, x, y, z], dtype=np.float64),
+        e_time=e_time,
+        e_r=e_r,
+        e_theta=e_theta,
+        e_phi=e_phi,
+        kind="kerr_rain_ks",
+    )
+
+
+def analytic_kerr_rain_velocity_ks(
+    params: MetricParams, r: float, theta: float
+) -> FloatArray:
+    """Closed-form Doran rain 4-velocity in Cartesian KS, for cross-checking.
+
+    Independent analytic reference for `kerr_rain_velocity_ks`: satisfying all
+    four constraints does not by itself pin the correct branch, so the gate
+    compares against these expressions rather than against residuals alone.
+    Both KS components are rationalized to stay regular at `Delta = 0`, where
+    the naive Boyer-Lindquist forms are `0/0`.
+
+    Returns the contravariant `(u^t, u^x, u^y, u^z)` at the KS position
+    corresponding to Boyer-Lindquist `(r, theta)` with `phi_KS = 0`.
+    """
+
+    m = params.M
+    a = params.a
+    a2 = a * a
+    r2 = r * r
+    sigma_val = r2 + a2 * math.cos(theta) ** 2
+    rp2 = r2 + a2
+    s = math.sqrt(2.0 * m * r * rp2)
+
+    u_r = -s / sigma_val
+    u_phi = -2.0 * m * a * r / (sigma_val * (2.0 * m * r + s))
+    u_t = (
+        rp2 * (rp2 * rp2 + 2.0 * m * r * rp2 + 4.0 * m * m * r2) / (rp2 * rp2 + 2.0 * m * r * s)
+        - a2 * math.sin(theta) ** 2
+    ) / sigma_val
+
+    # Push (u^r, u^theta = 0, u^phi) through
+    # x + i y = (r + i a) sin(theta) e^{i phi}, z = r cos(theta), at phi_KS = 0
+    # where x = r sin(theta), y = a sin(theta), z = r cos(theta):
+    #   dx = sin(theta) dr - a sin(theta) dphi
+    #   dy = r sin(theta) dphi
+    #   dz = cos(theta) dr          (theta is constant along the worldline)
+    sin_t = math.sin(theta)
+    cos_t = math.cos(theta)
+    u_x = sin_t * u_r - a * sin_t * u_phi
+    u_y = r * sin_t * u_phi
+    u_z = cos_t * u_r
+    return np.array([u_t, u_x, u_y, u_z], dtype=np.float64)
+
+
+def integrate_rain_worldline_ks(
+    params: MetricParams,
+    *,
+    r_start: float,
+    theta: float,
+    r_samples: FloatArray,
+    max_step_tau: float = 0.05,
+    refine_tolerance: float = 1.0e-12,
+    max_steps: int = 50_000,
+) -> list:
+    """Integrate the rain worldline dx/dtau = u(x) and sample KS positions.
+
+    Starts at the KS position equivalent to BL ``(r_start, theta, phi_bl=0)``
+    so the descent hands off from the static-map convention, then records the
+    spatial position at each requested (strictly decreasing) KS radius. Frame
+    dragging accumulates in the azimuth of the returned positions; the interior
+    part is reached smoothly because the ingoing chart is regular at the
+    horizon.
+
+    Each recorded sample is refined by bisection onto its requested radius to
+    within ``refine_tolerance``. Without that refinement the crossing step
+    overshoots by up to ``max_step_tau``-scale amounts and the recorded radius
+    drifts further with every already-passed target, which manufactures a
+    spurious error floor in any gate that compares against the requested
+    radius.
+    """
+
+    samples = np.asarray(r_samples, dtype=np.float64)
+    if samples.ndim != 1 or samples.size == 0:
+        raise ValueError("r_samples must be a non-empty 1-D array.")
+    if np.any(np.diff(samples) >= 0.0):
+        raise ValueError("r_samples must be strictly decreasing.")
+    if samples[0] > r_start:
+        raise ValueError("First sample must not exceed r_start.")
+    # No silent clamp here: `np.minimum(samples, r_start)` after the checks
+    # above could merge distinct targets into duplicates and break the strict
+    # ordering that was just validated.
+
+    phi_ks_start = bl_to_ks_phi_shift(params, r_start)
+    position = np.asarray(
+        bl_to_ks_cartesian(r_start, theta, phi_ks_start, params.a), dtype=np.float64
+    )
+    positions: list = []
+    target_index = 0
+    steps = 0
+
+    def spatial_velocity(point: FloatArray) -> FloatArray:
+        return kerr_rain_velocity_ks(params, point)[1:4]
+
+    def rk4(point: FloatArray, dtau: float) -> FloatArray:
+        k1 = spatial_velocity(point)
+        k2 = spatial_velocity(point + 0.5 * dtau * k1)
+        k3 = spatial_velocity(point + 0.5 * dtau * k2)
+        k4 = spatial_velocity(point + dtau * k3)
+        return point + dtau * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0
+
+    while target_index < samples.size:
+        radius = ks_radius(params, position)
+        target = float(samples[target_index])
+        u = kerr_rain_velocity_ks(params, position)
+        dr_dtau = float(ks_radius_gradient(params, position) @ u[1:4])
+        dtau = min(max_step_tau, 0.5 * abs((radius - target) / dr_dtau) + 1.0e-6)
+        stepped = rk4(position, dtau)
+        if ks_radius(params, stepped) <= target:
+            # Bisect the bracketing step so the recorded sample sits ON the
+            # requested radius instead of wherever the controller landed.
+            low, high = 0.0, dtau
+            for _ in range(200):
+                mid = 0.5 * (low + high)
+                candidate = rk4(position, mid)
+                if ks_radius(params, candidate) <= target:
+                    high = mid
+                else:
+                    low = mid
+                if high - low <= refine_tolerance * max(1.0, dtau):
+                    break
+            position = rk4(position, high)
+            positions.append(position.copy())
+            target_index += 1
+        else:
+            position = stepped
+        steps += 1
+        if steps > max_steps:
+            raise RuntimeError(
+                f"Rain worldline integration failed to reach sample "
+                f"{target_index} of {samples.size} within {max_steps} steps."
+            )
+    if len(positions) != samples.size:
+        raise RuntimeError(
+            f"Rain worldline produced {len(positions)} positions for "
+            f"{samples.size} requested radii."
+        )
+    return positions

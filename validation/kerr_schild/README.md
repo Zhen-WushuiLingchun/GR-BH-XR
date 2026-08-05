@@ -50,6 +50,51 @@ a = 0, captured equatorial ray:
   q_skipped_count = 3
 ```
 
+### Rain (Doran) observer frame
+
+Covered by `tests/test_observers.py` and the committed producer
+`python -m gr_bh_xr.validate_rain_observer` (schema
+`gr-bh-xr.task8.rain_observer_gate.v1`):
+
+- the four defining constraints `u_t = -1`, `L_z = 0`, `dtheta/dtau = 0`,
+  `u.u = -1`, checked outside, at (`r_+ +/- 1e-3`), and inside the outer
+  horizon;
+- agreement with an independent closed-form Doran reference, because all four
+  residuals can be satisfied by the wrong root branch;
+- tetrad Gram orthonormality and spatial-leg orientation in all three zones;
+- the Schwarzschild `a = 0` limit `dr/dtau = -sqrt(2M/r)`;
+- a dedicated regression exactly at `r = r_+`, where the normalization
+  quadratic degenerates;
+- refusal on the symmetry axis, where the constraint system loses rank.
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.validate_rain_observer --out outputs/tier2/rain_observer_gate.json
+```
+
+Current reviewed result (sample counts 100 exterior / 60 at / 35 interior /
+6 exact-horizon / 5 Schwarzschild):
+
+```text
+|u.u + 1|          outside / at / inside : 1.11e-15 / 2.11e-15 / 9.99e-16
+|u_t + 1|                                : 1.55e-15
+|L_z|  (r <= 60M)                        : 2.44e-15
+|dtheta/dtau|                            : 4.85e-16
+Gram max|G - diag(-1,1,1,1)|             : 1.11e-15 / 2.11e-15 / 9.99e-16
+|u - u_analytic|_inf                     : 3.36e-15
+Schwarzschild |u^r + sqrt(2M/r)|         : 6.66e-16
+|u.u + 1| EXACTLY at r = r_+             : 8.88e-16
+```
+
+The exact-horizon row is the load-bearing one: with a naive
+`(-b -/+ sqrt(disc)) / (2a)` root the same probe gives `0.048` to `0.15`, or
+raises outright at `a = 0`, `theta = pi/2`.
+
+Note that the Schwarzschild limit is evaluated at an **exact** radius. Checking
+it against a *requested* worldline sample radius measures the step controller
+rather than the physics, and is what produced the historical `~1e-10` apparent
+floor.
+
 ### Exterior fan cross-check
 
 The formal CLI compares a deterministic screen-coordinate fan in BL and KS:

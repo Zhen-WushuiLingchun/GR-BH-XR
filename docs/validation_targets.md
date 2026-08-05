@@ -714,6 +714,86 @@ Stage B observer checks:
   `dr/dtau = -sqrt(2M/r)` along the sampled path. This seed is a transport
   validation anchor, not yet the full Kerr near-horizon camera model.
 
+Stage B rain-observer gate (Kerr free-fall camera through the outer horizon):
+
+The rain frame is the Doran (`doran2000newKerrForm`) free-fall congruence -
+`E = 1`, `L = 0`, `Q = 0`, released from rest at infinity - expressed in
+Cartesian ingoing Kerr-Schild coordinates. It is the first observer frame in
+this project that is defined on both sides of `r_+`, which is exactly what the
+horizon-crossing descent path needs, because the static frame already fails at
+the ergosurface and the BL ZAMO helper is exterior-only.
+
+The four defining conditions are **consistent, not overdetermined**: with
+`E = 1` and `L = 0` the Carter polar potential reduces to `Theta = Q`
+identically, independent of `theta`, so `Q = 0` makes `dtheta/dtau = 0` an
+exact solution at every polar angle.
+
+The committed producer is `python -m gr_bh_xr.validate_rain_observer`
+(schema `gr-bh-xr.task8.rain_observer_gate.v1`). It samples a deterministic
+grid - no RNG - over `a/M in {0, 0.5, 0.9, 0.998}`, `theta in {0.4, 1.0,
+pi/2, 2.0, 2.7} rad`, exterior radii `{60, 20, 6, 3}M` and horizon offsets
+`{0.1, 0.01, 1e-3}M` on both sides, and **fails closed**: a zone with zero
+samples raises rather than reporting a vacuous `max()` over an empty set.
+Current run: 100 exterior, 60 at-horizon, 35 interior, 6 exact-horizon and 5
+Schwarzschild-limit samples.
+
+Committed thresholds and the measured worst case behind each:
+
+```text
+check                              threshold   measured    headroom
+|u.u + 1|          outside          1e-13      1.11e-15      90x
+|u.u + 1|          at r_+ +/- 1e-3  1e-13      2.11e-15      47x
+|u.u + 1|          inside r_+       1e-12      9.99e-16    1000x
+|u_t + 1|                           1e-13      1.55e-15      64x
+|L_z|  (r <= 60M)                   1e-13      2.44e-15      41x
+|dtheta/dtau|                       1e-11      4.85e-16       2e4x
+Gram max|G - diag(-1,1,1,1)| out    1e-13      1.11e-15      90x
+Gram, at r_+ +/- 1e-3               1e-13      2.11e-15      47x
+Gram, inside r_+                    1e-12      9.99e-16    1000x
+|u - u_analytic|_inf                1e-13      3.36e-15      30x
+Schwarzschild |u^r + sqrt(2M/r)|    1e-13      6.66e-16     150x
+|u.u + 1| EXACTLY at r = r_+        1e-13      8.88e-16     113x
+```
+
+Required properties of this gate:
+
+- **Compare against an independent closed form, not only residuals.** All four
+  constraint residuals can be satisfied by the wrong root branch, so the gate
+  includes `|u - u_analytic|_inf` against `analytic_kerr_rain_velocity_ks`,
+  whose expressions are rationalized to stay regular at `Delta = 0`.
+- **Exactly `r = r_+` is a dedicated regression.** The outgoing rain branch
+  diverges as `Delta -> 0` in the ingoing chart, which drives the normalization
+  quadratic's leading coefficient to zero on the horizon. A naive
+  `(-b -/+ sqrt(disc)) / (2a)` evaluation cancels catastrophically there and
+  returns an `O(1)`-wrong velocity or finds no root at all; the Vieta-stable
+  form keeps full precision. This is the single highest-value check in the set.
+- **`L_z` is dimensionful and grows like `r`**, so the gate states the
+  `r <= 60M` domain rather than pretending to a scale-free number.
+- **The symmetry axis is excluded by construction, and that exclusion is
+  explicit.** The constraint matrix loses rank on the axis (both the axial
+  Killing row and the polar row vanish identically) and its condition number
+  grows like `6/theta`, so the velocity error scales as `2e-16/theta`.
+  `kerr_rain_velocity_ks` raises below `sin(theta) = 1e-6` rather than
+  returning a degraded frame. This matters because a mis-oriented `e_theta`
+  still orthonormalizes perfectly - an orthonormality gate can never detect it,
+  which is why `sin(theta)` is computed exactly as `rho / r` rather than
+  through a floored `sqrt(max(1 - cos^2, eps))`.
+- **Do not gate the worldline sampler against requested radii.** The
+  Schwarzschild limit must be evaluated at an exact radius, or against
+  `ks_radius(recorded_sample)`. Comparing against the *requested* target
+  measures the step controller, not the physics: the earlier sampler recorded
+  radii up to `8.8e-7 M` off target, which propagated into an apparent
+  `1e-10`-class error floor in `dr/dtau` that has nothing to do with the
+  algebraic solve (that solve is machine-exact, `6.66e-16`). The sampler now
+  bisects onto the requested radius, landing within `4.8e-13`.
+- Interior samples stay above the inner horizon; the mass-inflation region is
+  out of scope.
+
+Not yet claimed: the rain tetrad is built algebraically at each point, not
+parallel transported along the worldline, so consecutive samples differ from a
+transported frame by a rotation this gate does not record. The transported-frame
+requirement above is still open for this frame.
+
 ## Phase 6 Simplified GRRT
 
 Required checks:

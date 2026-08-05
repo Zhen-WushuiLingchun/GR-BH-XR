@@ -824,3 +824,57 @@ ignored `references/pdfs/local_only/`.
   that will generate disk color lookup tables.
 - Limitations / open questions: The helper returns max-normalized linear sRGB
   chromaticity for visualization assets, not calibrated absolute luminance.
+
+### Doran 2000 - New Form of the Kerr Solution
+
+- Source path: `references/source_notes/2026-08-05-kerr-rain-observer.md`
+- PDF path: Not stored; open arXiv preprint at the locator below.
+- Code review path: Not applicable; paper reference.
+- BibTeX key: `doran2000newKerrForm`
+- Stable locator: arXiv `gr-qc/9910099`; DOI `10.1103/PhysRevD.61.067503`
+- Search date: 2026-08-05
+- Search terms: Doran new form of the Kerr solution free-fall observers;
+  Painleve-Gullstrand Kerr
+- Why added: The horizon-crossing descent camera needs an observer frame that
+  stays regular through the outer horizon. Static and ZAMO frames both fail
+  first, so a free-fall congruence is required, and this is the source for the
+  Kerr generalization of the Painleve-Gullstrand free-fall family.
+- Short summary: Gives a form of the Kerr solution whose time coordinate is the
+  proper time of free-falling observers, generalizing Painleve-Gullstrand to
+  nonzero spin. The chart is well behaved at the horizon and is convenient for
+  tetrad work.
+- Relevant equations / assumptions / methods: The free-fall congruence dropped
+  from rest at infinity falls at constant Boyer-Lindquist polar angle. With
+  `E = 1` and `L = 0` the Carter polar potential reduces to `Theta = Q`
+  independent of `theta`, so `Q = 0` makes `dtheta/dtau = 0` an exact solution
+  at every polar angle.
+- Project use: The physical basis for `kerr_rain_velocity_ks`,
+  `kerr_rain_tetrad_ks` and `analytic_kerr_rain_velocity_ks` in
+  `src/gr_bh_xr/observers.py`, and for the claim that the four defining
+  constraints are consistent rather than overdetermined.
+- Limitations / open questions: The paper defines the congruence, not a camera
+  frame; the tetrad built on it here is algebraic rather than parallel
+  transported, and is undefined on the symmetry axis.
+
+### Hamilton and Lisle 2008 - The River Model of Black Holes
+
+- Source path: `references/source_notes/2026-08-05-kerr-rain-observer.md`
+- PDF path: Not stored; open arXiv preprint at the locator below.
+- Code review path: Not applicable; paper reference.
+- BibTeX key: `hamiltonLisle2008riverModel`
+- Stable locator: arXiv `gr-qc/0411060`; DOI `10.1119/1.2830526`
+- Search date: 2026-08-05
+- Search terms: river model of black holes; Kerr rain frame constant theta
+- Why added: Interpretive source for treating the rain congruence as the
+  natural descent camera and for the expectation that the frame stays regular
+  through `r_+`.
+- Short summary: Presents the Painleve-Gullstrand / Doran family as a river of
+  space flowing inward at the Newtonian escape velocity, reaching the speed of
+  light at the horizon and exceeding it inside; for Kerr the river both falls
+  and twists.
+- Relevant equations / assumptions / methods: No equation is implemented from
+  this source. It supplies the physical picture behind the frame choice.
+- Project use: Documentation and framing for the Stage B rain-observer gate.
+- Limitations / open questions: Pedagogical/interpretive rather than a
+  derivation source; it is classified as such and not used to justify any
+  numerical threshold.

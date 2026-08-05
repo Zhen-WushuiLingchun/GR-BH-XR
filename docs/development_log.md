@@ -19,6 +19,79 @@ from here.
 
 ## Log
 
+### 2026-08-05 - Kerr-Schild rain observer frame and Stage B gate
+
+- Goal: Add the first observer frame in this project that is defined on both
+  sides of the outer horizon, and gate it against an independent closed form
+  rather than against its own residuals.
+- Changed files / components: extended `src/gr_bh_xr/observers.py` and
+  `src/gr_bh_xr/metric_ks.py`; added
+  `src/gr_bh_xr/validate_rain_observer.py`; extended
+  `tests/test_observers.py`; indexed `doran2000newKerrForm` and
+  `hamiltonLisle2008riverModel` with
+  `references/source_notes/2026-08-05-kerr-rain-observer.md`.
+- Academic reason: The horizon-crossing descent camera cannot use a static or
+  ZAMO frame - the static frame already fails at the ergosurface and the BL
+  ZAMO helper is exterior-only. The Doran free-fall congruence is regular
+  through `r_+` in the ingoing Kerr-Schild chart.
+- Physical correspondence: `u_t = -1` (rest at infinity, chart independent
+  because `t_KS` and `t_BL` share the same Killing vector); `L_z = 0` via the
+  Cartesian axial Killing vector `xi = (0, -y, x, 0)`; `dtheta/dtau = 0`
+  expressed as `r u^z = z (grad r . u_spatial)`; and `u.u = -1` taking the
+  ingoing future-pointing root. `u^t > 0` is a valid causal test on both sides
+  of the horizon because `g^tt = -(1 + 2H) < 0` everywhere in the ingoing
+  chart, so `t` is a global time function.
+- Assumptions and conventions: the four conditions are consistent, not
+  overdetermined - with `E = 1` and `L = 0` the Carter polar potential reduces
+  to `Theta = Q` identically, independent of `theta`, so `Q = 0` makes
+  `theta = const` an exact solution at every polar angle. Validity is claimed
+  between the inner and outer horizons; the mass-inflation region is out of
+  scope. The frame is undefined on the symmetry axis and refuses there.
+- Validation: `python -m gr_bh_xr.validate_rain_observer` (schema
+  `gr-bh-xr.task8.rain_observer_gate.v1`) plus 14 new tests in
+  `tests/test_observers.py`. Measured worst cases against thresholds of
+  `1e-13`/`1e-12`/`1e-11`: `|u.u+1|` `1.11e-15` outside, `2.11e-15` at
+  `r_+ +/- 1e-3`, `9.99e-16` inside; `|u_t+1|` `1.55e-15`; `|L_z|`
+  `2.44e-15`; `|dtheta/dtau|` `4.85e-16`; Gram `1.11e-15`/`2.11e-15`/`9.99e-16`;
+  `|u - u_analytic|` `3.36e-15`; Schwarzschild `|u^r + sqrt(2M/r)|` `6.66e-16`;
+  and `8.88e-16` exactly at `r = r_+`.
+- Audit findings acted on:
+  - BLOCKER: the normalization quadratic is cancellation-unstable at the
+    horizon. The outgoing rain branch diverges as `Delta -> 0` in the ingoing
+    chart, driving the quadratic's leading coefficient to zero exactly at
+    `r_+`, so the naive `(-b -/+ sqrt(disc)) / (2a)` form loses the solution:
+    measured `|u - u_ref|` of `0.048` to `0.15` at `r = r_+`, and an outright
+    "no ingoing future-pointing solution" raise at `a = 0`, `theta = pi/2`. The
+    Vieta-stable form restores `<= 2.44e-15` everywhere, and the exact-horizon
+    case is now a committed regression test.
+  - The historical `~1e-10` Schwarzschild "error floor" is not conditioning and
+    not physics: it was the worldline sampler recording radii up to `8.8e-7 M`
+    off target, propagated through `d/dr[-sqrt(2M/r)]`. The algebraic solve is
+    machine-exact at `6.66e-16`. The sampler now bisects onto the requested
+    radius (within `4.8e-13`), so the gate no longer documents a defect as a
+    tolerance.
+  - The sampler previously clamped `samples = np.minimum(samples, r_start)`
+    *after* validating strict monotonicity, which could silently merge distinct
+    targets into duplicates. It now refuses instead. It also accumulated error
+    on every already-passed target (measured up to 20x the target spacing) and
+    its 2,000,000-step guard was ~7 minutes of wall clock; both are fixed.
+  - `sin(theta)` is computed exactly as `rho / r`. The previous
+    `sqrt(max(1 - cos^2, 1e-16))` silently floored for `theta < 1e-8` and
+    produced a mis-oriented `e_theta` that still orthonormalized perfectly, so
+    no Gram check could detect it (measured `1.2e-5 rad` misorientation with a
+    Gram residual of `2.2e-16`). The frame now refuses near the axis, where the
+    constraint matrix loses rank and `cond ~ 6/theta`.
+  - The Kerr-Schild radius gradient was duplicated in `observers.py` and
+    `metric_ks.py`; it is now a single exported `ks_radius_gradient`.
+- References: `doran2000newKerrForm` for the constant-`theta` free-fall
+  congruence and the consistency of the four conditions;
+  `hamiltonLisle2008riverModel` as the interpretive river picture, classified as
+  pedagogical and not used to justify any numerical threshold.
+- Open issues / next steps: the tetrad is algebraic at each point, not parallel
+  transported, so consecutive samples differ from a transported frame by an
+  unrecorded rotation - the Stage B transported-frame requirement remains open
+  for this frame.
+
 ### 2026-08-05 - Audited finite-observer roam keyframes
 
 - Goal: Add the Task 7 `(r_obs, theta)` roam keyframe grid, with the
