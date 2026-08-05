@@ -591,6 +591,66 @@ def test_unity_live_window_contract():
     assert "windowHalfAlpha" in compare
 
 
+def test_live_tracer_horizon_thresholds_scale_with_mass():
+    """Horizon-relative radii are geometric lengths and must carry M.
+
+    `_CaptureR`, `_HugMinR` and the validation dump's `captureR`/`hugMinR`
+    used bare `0.05f` offsets. Those are geometric lengths, so at any mass
+    other than 1 the live tracer terminated integration at a different
+    physical radius than its own Python reference, and the mass slider spans
+    0.5-2.0 M - a factor of 4 in the guard's physical size. Both the runtime
+    pass and the dump path must go through the same M-scaled helper.
+
+    The static and rain capture surfaces stay deliberately different (the
+    exterior branch guards just outside r_+, the past-directed branch must
+    reach inside it); only the missing M factor is corrected.
+    """
+
+    tracer = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.cs").read_text(encoding="utf8")
+
+    # A single helper, used by both paths, so they cannot drift apart again.
+    assert "private const double HorizonGuardOverM = 0.05;" in tracer
+    assert "private float HorizonGuardRadius()" in tracer
+    assert "private float CaptureRadius(bool pastTracing)" in tracer
+
+    guard = _csharp_block(tracer, "private float HorizonGuardRadius()")
+    assert "(float)HorizonGuardOverM * mass" in guard
+
+    capture = _csharp_block(tracer, "private float CaptureRadius(bool pastTracing)")
+    assert "(float)HorizonGuardOverM * mass" in capture
+    # Parity with gr_bh_xr.geodesic_ks._inner_capture_radius, including the
+    # 0.25 * gap clamp that the previous code omitted entirely.
+    assert "0.25f * (rPlus - rMinus)" in capture
+    assert "Mathf.Max(1.0e-4f, rMinus + margin)" in capture
+    # Both branches still exist - the fix must not collapse them into one.
+    assert "if (!pastTracing)" in capture
+
+    # Runtime pass and dump path both route through the helpers...
+    runtime = _csharp_block(tracer, "private void ConfigureObserverUniforms(Snapshot snapshot)")
+    assert 'SetFloat("_CaptureR", CaptureRadius(pastTracing))' in runtime
+    assert 'SetFloat("_HugMinR", pastTracing && !interior ? HorizonGuardRadius() : 0.0f)' in runtime
+    dump = _csharp_block(
+        tracer,
+        "private string ConfigureValidationUniforms(Snapshot snapshot, float radiusM, float thetaDeg, bool rainFrame)",
+    )
+    assert "float captureR = CaptureRadius(rainFrame);" in dump
+    assert "HorizonGuardRadius()" in dump
+
+    # ...and the unscaled literals must be gone from every horizon threshold.
+    for banned in (
+        "rMinus + 0.05f",
+        "rPlus + 0.05f",
+        "Mathf.Max(rMinus + 0.05f, 1.0e-4f)",
+    ):
+        assert banned not in tracer, banned
+
+    # The adjacent dimensionful controls must at least be documented as an
+    # intentionally fixed world scale rather than left ambiguous.
+    assert "UNITS AUDIT" in tracer
+    for control in ("stepSize", "maxStep", "stepRRef", "maxLambda", "rEscape"):
+        assert control in tracer, control
+
+
 def test_live_tracer_gate_imports_the_accepted_public_physics_api():
     """The gate must import the names the physics worktree actually exports.
 

@@ -90,6 +90,25 @@ namespace GRBHXR
         [SerializeField] private float windowDensityPxPerDeg = 20.0f;
         [SerializeField] private float mass = 1.0f;
         [SerializeField] private float spin = 0.9f;
+        // Integration controls. UNITS AUDIT - each of these is a geometric
+        // length or an affine length and is currently an ABSOLUTE value, i.e.
+        // it does NOT scale with the mass slider (0.5-2.0 M). That is a
+        // deliberate, documented choice for the integrator budget rather than
+        // a physical statement, and it is recorded here because the horizon
+        // guard next to it WAS silently absolute and had to be fixed:
+        //   stepSize / maxStep / stepRRef : geometric lengths. Holding them
+        //     fixed makes the effective step finer at M = 2 and coarser at
+        //     M = 0.5 in units of M - conservative at large M, and the
+        //     Hamiltonian residual gate is what actually bounds accuracy.
+        //   maxLambda : affine length, same reasoning.
+        //   rEscape : geometric length. At M = 2 this is 100 M rather than
+        //     200 M, so the asymptotic-direction approximation is evaluated
+        //     closer in; the dump publishes rEscape so the Python gate uses
+        //     the same value and the comparison stays exact.
+        //   maxSteps : dimensionless.
+        // Anything that must agree with the Python reference is published in
+        // the validation dump rather than restated on both sides. Do not
+        // "fix" these by multiplying by mass without re-running the gate.
         [SerializeField] private float stepSize = 0.01f;
         [SerializeField] private float maxStep = 1.0f;
         [SerializeField] private float stepRRef = 5.0f;
@@ -137,6 +156,49 @@ namespace GRBHXR
         // the shader in _DiskRadialLutBounds.z so the endpoint-row texel
         // coordinate matches the Python LUT producer's published contract.
         private const int RadialLutSamples = 512;
+
+        /// <summary>
+        /// Numerical guard band outside the outer horizon, as a FRACTION OF M.
+        /// This is a geometric length: written as a bare 0.05 it silently means
+        /// 0.05 in world units, so every horizon-relative threshold broke scale
+        /// invariance the moment the mass slider left M = 1 (the slider spans
+        /// 0.5-2.0 M, i.e. a factor of 4 in the guard's physical size).
+        /// </summary>
+        private const double HorizonGuardOverM = 0.05;
+
+        /// <summary>Outer horizon plus the M-scaled numerical guard band.</summary>
+        private float HorizonGuardRadius()
+        {
+            float rPlus = mass + Mathf.Sqrt(Mathf.Max(mass * mass - spin * spin, 0.0f));
+            return rPlus + (float)HorizonGuardOverM * mass;
+        }
+
+        /// <summary>
+        /// Termination radius, matching `gr_bh_xr.geodesic_ks._inner_capture_radius`
+        /// exactly: `max(1e-4, r_- + min(0.05 M, 0.25 (r_+ - r_-)))` for the
+        /// past-directed (rain) branch. Two corrections over the previous bare
+        /// inner-horizon offset: the guard now scales with M, and the
+        /// `0.25 * gap` clamp is applied, without which the two
+        /// implementations diverge for |a|/M above 0.994987 - inside the 0.998
+        /// the spin slider allows.
+        ///
+        /// The static and rain branches remain deliberately DIFFERENT surfaces:
+        /// the exterior branch terminates just OUTSIDE r_+ (a numerical guard,
+        /// physically harmless because r_+ + 0.05 M is inside the innermost
+        /// photon orbit) while the past-directed branch must reach inside it.
+        /// Only the missing M factor is fixed here.
+        /// </summary>
+        private float CaptureRadius(bool pastTracing)
+        {
+            float rPlus = mass + Mathf.Sqrt(Mathf.Max(mass * mass - spin * spin, 0.0f));
+            float rMinus = mass - Mathf.Sqrt(Mathf.Max(mass * mass - spin * spin, 0.0f));
+            if (!pastTracing)
+            {
+                return HorizonGuardRadius();
+            }
+            float margin = Mathf.Min((float)HorizonGuardOverM * mass, 0.25f * (rPlus - rMinus));
+            return Mathf.Max(1.0e-4f, rMinus + margin);
+        }
 
         public bool LiveTracingEnabled => liveTracingEnabled;
         public float LastPassDuration => lastPassDuration;
@@ -747,11 +809,8 @@ namespace GRBHXR
             bool interior = radius < rPlus;
             bool pastTracing = useRain;
             tracerCompute.SetFloat("_TimeOrientation", pastTracing ? -1.0f : 1.0f);
-            tracerCompute.SetFloat(
-                "_CaptureR",
-                pastTracing ? Mathf.Max(rMinus + 0.05f, 1.0e-4f) : rPlus + 0.05f
-            );
-            tracerCompute.SetFloat("_HugMinR", pastTracing && !interior ? rPlus + 0.05f : 0.0f);
+            tracerCompute.SetFloat("_CaptureR", CaptureRadius(pastTracing));
+            tracerCompute.SetFloat("_HugMinR", pastTracing && !interior ? HorizonGuardRadius() : 0.0f);
             tracerCompute.SetFloat("_HugLambda", pastTracing && interior ? 0.6f * maxLambda : 0.0f);
             tracerCompute.SetFloat("_DiskRIn", (float)IscoRadius());
             tracerCompute.SetFloat("_DiskROut", 30.0f * mass);
@@ -1454,8 +1513,14 @@ namespace GRBHXR
             float rPlus = mass + Mathf.Sqrt(Mathf.Max(mass * mass - spin * spin, 0.0f));
             float rMinus = mass - Mathf.Sqrt(Mathf.Max(mass * mass - spin * spin, 0.0f));
             float timeOrientation = rainFrame ? -1.0f : 1.0f;
-            float captureR = rainFrame ? rMinus + 0.05f : rPlus + 0.05f;
-            float hugMinR = rainFrame && radiusM > rPlus ? rPlus + 0.05f : 0.0f;
+            // Same M-scaled surfaces as the runtime path. The dump previously
+            // used bare 0.05 offsets, so at any mass other than 1 the gate
+            // compared a Unity termination radius against a Python one that
+            // did scale with M - and the comparator's exactness assertion
+            // would have failed the run rather than silently disagreeing,
+            // which is how this was caught.
+            float captureR = CaptureRadius(rainFrame);
+            float hugMinR = rainFrame && radiusM > rPlus ? HorizonGuardRadius() : 0.0f;
             float hugLambda = rainFrame && radiusM < rPlus ? 0.6f * maxLambda : 0.0f;
             float diskRIn = (float)IscoRadius();
             // Was a bare 30.0f, which disagreed with the runtime path
