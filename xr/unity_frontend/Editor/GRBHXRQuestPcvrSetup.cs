@@ -186,8 +186,9 @@ namespace GRBHXR.EditorTools
             string metaQuestPlus = EnableFeature(settings.GetFeature<MetaQuestTouchPlusControllerProfile>(), "MetaQuestTouchPlus");
             string oculusTouch = EnableFeature(settings.GetFeature<OculusTouchControllerProfile>(), "OculusTouch");
             string simpleController = EnableFeature(settings.GetFeature<KHRSimpleControllerProfile>(), "KHRSimple");
+            string environmentDepth = EnableFeature(settings.GetFeature<GRBHXREnvironmentDepthFeature>(), "GRBHXREnvironmentDepth");
             EditorUtility.SetDirty(settings);
-            return $"{metaQuestPlus}, {oculusTouch}, {simpleController}";
+            return $"{metaQuestPlus}, {oculusTouch}, {simpleController}, {environmentDepth}";
         }
 
         private static string EnableFeature(OpenXRFeature feature, string label)

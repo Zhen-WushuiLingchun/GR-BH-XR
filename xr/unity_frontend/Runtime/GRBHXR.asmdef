@@ -2,7 +2,9 @@
   "name": "GRBHXR",
   "rootNamespace": "GRBHXR",
   "references": [
-    "UnityEngine.UI"
+    "UnityEngine.UI",
+    "Unity.XR.OpenXR",
+    "Unity.XR.Management"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

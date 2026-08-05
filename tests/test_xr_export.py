@@ -749,6 +749,71 @@ def test_unity_runtime_settings_and_vr_panel_are_versioned():
     assert "UnityEngine.UI" in asmdef
 
 
+def test_unity_mr_passthrough_capability_baseline():
+    """Task 10 baseline: capability discovery and late-bound MRUK adapter.
+
+    This commit may claim capability discovery and environment-depth
+    acquisition. It may NOT claim delivered calibrated RGB frames; the
+    strengthened delivery contract is pinned separately.
+    """
+
+    mr = (UNITY_RUNTIME_DIR / "BlackHoleMrPassthrough.cs").read_text(encoding="utf8")
+    bridge = (UNITY_RUNTIME_DIR / "BlackHoleMrukCameraBridge.cs").read_text(encoding="utf8")
+    probe = (UNITY_RUNTIME_DIR / "GRBHXRXrCapabilityProbe.cs").read_text(encoding="utf8")
+    depth = (UNITY_RUNTIME_DIR / "GRBHXREnvironmentDepthFeature.cs").read_text(encoding="utf8")
+    asmdef = (UNITY_RUNTIME_DIR / "GRBHXR.asmdef").read_text(encoding="utf8")
+
+    # Late binding: the core package must load with no Meta package present,
+    # so nothing here may reference MRUK at compile time.
+    assert "Meta.XR.PassthroughCameraAccess" in bridge
+    assert "System.Reflection" in bridge
+    assert "using Meta." not in bridge
+    assert "meta.xr" not in asmdef.lower()
+    assert "ProbeOfficialCameraBackend" in mr
+    assert "ValidateContract" in bridge
+
+    # Capability probe writes what the runtime reports, including the
+    # available-vs-enabled distinction that the device gate turns on.
+    assert "OpenXRRuntime" in probe
+    assert "GetAvailableExtensions" in probe
+    assert "GetEnabledExtensions" in probe
+    assert "xr_capability_probe.json" in probe
+
+    # Environment depth is a separate feature with its own extension list.
+    assert "XR_META_environment_depth" in depth
+    # P1-7: the camera extension must never be appended to the depth feature's
+    # required list - one unavailable string would disable the working depth
+    # path as collateral.
+    assert "XR_METAX1_passthrough_camera_data" not in depth
+
+    # Depth is acquired but not consumed: there is no depth sampler anywhere
+    # in the lens shader, and that boundary must not quietly change.
+    shader = (UNITY_RUNTIME_DIR / "BlackHoleLensStaticPreview.shader").read_text(encoding="utf8")
+    assert "_EnvironmentDepth" not in shader
+
+
+def test_unity_mr_reports_when_passthrough_is_inert_under_roam_blend():
+    """MR must not report ON when the active shader variant discards it.
+
+    GRBHXR_ROAM_BLEND compiles out _MrCameraTex and sampleBackground to stay
+    inside the sampler budget, and roam playback enables that keyword for
+    essentially its whole range. The camera started, _UseMrPassthrough was
+    set, and the log said "ON" while not one pixel changed.
+    """
+
+    mr = (UNITY_RUNTIME_DIR / "BlackHoleMrPassthrough.cs").read_text(encoding="utf8")
+    shader = (UNITY_RUNTIME_DIR / "BlackHoleLensStaticPreview.shader").read_text(encoding="utf8")
+
+    assert 'IsKeywordEnabled("GRBHXR_ROAM_BLEND")' in mr
+    assert "ON but INERT" in mr
+    # The unconditional confident line must be gone.
+    assert 'Debug.Log($"GR-BH-XR MR passthrough {(mrEnabled ? "ON" : "OFF")}.");\n        }' not in mr
+
+    # The precondition for the warning: the sampler really is compiled out.
+    assert "#ifndef GRBHXR_ROAM_BLEND" in shader
+    assert "sampler2D _MrCameraTex;" in shader
+
+
 def test_unity_observer_rig_turns_tracking_space_not_lens_basis():
     """Comfort yaw rotates the observer's tracking space, never the map.
 

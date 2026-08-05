@@ -22,6 +22,23 @@ namespace GRBHXR.EditorTools
         private const string DefaultFullSkyTransferDir = "Assets/GRBHXR/FullSkyTransfer1024";
         private const string DefaultCaptureDir = "F:/学习和研究/GR-BH-XR/outputs/task5/unity_gate";
 
+        /// <summary>
+        /// Editor-domain contract check for the MRUK camera backend. This
+        /// proves the type and its members exist in the EDITOR assembly set;
+        /// it is not evidence about a built player, and it is not evidence
+        /// that any frame was ever delivered.
+        /// </summary>
+        [MenuItem("GR-BH-XR/Gate/Validate Meta Camera Backend")]
+        public static void ValidateMetaCameraBackend()
+        {
+            if (!BlackHoleMrPassthrough.ProbeOfficialCameraBackend(out string reason))
+            {
+                throw new InvalidOperationException($"GR-BH-XR MRUK camera backend unavailable: {reason}");
+            }
+
+            Debug.Log($"GR-BH-XR MRUK camera contract valid: {reason}");
+        }
+
         [MenuItem("GR-BH-XR/Gate/Configure Screen-Space Gate Preview")]
         public static void ConfigureScreenSpaceGatePreview()
         {

@@ -176,6 +176,31 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 - Limitations / open questions: Package-version dependent; re-check against the
   exact Unity/OpenXR package in use.
 
+### Meta Unity Passthrough Camera API and Official Sample
+
+- Source path: `references/source_notes/2026-07-18-meta-passthrough-camera-backend.md`
+- PDF path: Not applicable; official web documentation and code repository.
+- Code review path: Included in the source note.
+- BibTeX key: Not applicable.
+- Stable locators:
+  https://developers.meta.com/horizon/documentation/unity/unity-pca-overview/
+  and https://github.com/oculus-samples/Unity-PassthroughCameraApiSamples
+- Reviewed commit: `ea3ae8367046d16029206aba5fb03e917a177aca`
+- License: Oculus SDK License; no source vendored.
+- Accessed: 2026-07-18
+- Search date: 2026-07-18
+- Search terms: Meta Quest passthrough camera API Unity MRUK Horizon Link
+- Why added: Replaces the non-delivering raw Windows `WebCamTexture` path with
+  Meta's supported timestamped and calibrated camera API.
+- Short summary: MRUK `PassthroughCameraAccess` exposes delivered-frame state,
+  the GPU texture, camera pose at capture time, and calibrated intrinsics.
+- Relevant equations / assumptions / methods: Calibrated pinhole projection
+  using focal length, principal point, sensor crop, and camera pose.
+- Project use: Task 10 production RGB backend for true camera-pixel lensing.
+- Limitations / open questions: A device-delivered frame and registration gate
+  are still required; one forward camera cannot supply missing backward
+  radiance, and acquired depth is not yet consumed by the shader.
+
 ### Meta Depth API
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
