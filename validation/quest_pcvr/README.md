@@ -5,6 +5,47 @@ Phase: Task 5 Unity/OpenXR bridge.
 This validation entry starts with the static texture bridge. It does not yet
 claim a headset-runtime result.
 
+## Editor Version Lock
+
+The formal project is locked to Unity `6000.0.76f1` / URP `17.0.4` in
+`ProjectSettings/ProjectVersion.txt` and `Packages/manifest.json`. Opening it
+with Unity `6000.5` rewrites the render pipeline assets to URP `17.5.0` schema
+versions that `6000.0.76f1` cannot migrate back down, and the failure is silent
+until a player build. This already occurred once; see the URP asset repair entry
+in `docs/development_log.md`.
+
+Use `D:\unity\Hub\Editor\6000.0.76f1\Editor\Unity.exe` for every batch
+invocation against this project. Several command blocks further down this file
+and in `2026-07-06-unity-editor-desktop-gate.md` still quote `6000.5.2f1`,
+because that is the executable those historical runs actually used; they are
+kept verbatim as a record of what was run and must not be copied for new runs.
+`validation/quest_pcvr/scripts/quest_pcvr_preflight.ps1` also still defaults to
+`6000.5.2f1` and needs updating in a separate change.
+
+`GRBHXRUrpAssetRepair.AssertProjectUrpAssetsCompatible` compares
+`Application.unityVersion` against `ProjectSettings/ProjectVersion.txt` and
+refuses to continue on a mismatch, so the lock is enforced in the editor
+regardless of which script launched it. To check or fix the assets:
+
+```powershell
+$unity = 'D:\unity\Hub\Editor\6000.0.76f1\Editor\Unity.exe'
+$proj = 'F:\UnityProjects\GRBHXR_PCVR_Gate\GRBHXR_PCVR_Gate'
+Start-Process -FilePath $unity -Wait -PassThru -ArgumentList @(
+  '-batchmode','-quit','-projectPath',$proj,
+  '-executeMethod','GRBHXR.EditorTools.GRBHXRUrpAssetRepair.BatchPreflightUrpAssets',
+  '-logFile',(Join-Path $proj 'Logs\grbhxr_urp17_preflight.log'))
+```
+
+Exit code `0` means the assets match the installed editor; `1` means they do
+not, and the log names each asset with its serialized and expected version. The
+repair entry point is `...BatchRepairUrpAssets` and is the only one that writes.
+See `xr/unity_frontend/README.md` for the full contract.
+
+A project that opens, compiles, and passes this preflight is version-consistent.
+That is a build-tooling result only. It is not a headset result and it is not an
+MR passthrough RGB result; those remain gated on the protocol below and on the
+camera-access question recorded in the MR device gate notes.
+
 ## Static Texture Bridge Gate
 
 Generate a GPU lens map and export Unity raw textures:

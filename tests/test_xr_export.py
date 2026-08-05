@@ -588,6 +588,148 @@ def test_unity_editor_gate_automation_is_versioned():
     assert '"Editor"' in asmdef
 
 
+def test_unity_editor_urp_asset_repair_never_edits_serialized_version_fields():
+    source = (UNITY_EDITOR_DIR / "GRBHXRUrpAssetRepair.cs").read_text(encoding="utf8")
+    code = _csharp_code_only(source)
+    asmdef = (UNITY_EDITOR_DIR / "GRBHXR.Editor.asmdef").read_text(encoding="utf8")
+
+    assert "namespace GRBHXR.EditorTools" in source
+    assert "public static class GRBHXRUrpAssetRepair" in source
+
+    # The version fields are read for reporting and blocked from being carried
+    # across; they are never assigned. Decrementing them by hand -- through YAML
+    # or through SerializedProperty -- is the failure mode this file exists to
+    # avoid, so pin the absence of any int write.
+    assert '"m_AssetVersion",' in source
+    assert '"k_AssetVersion",' in source
+    assert '"k_AssetPreviousVersion",' in source
+    assert "intValue =" not in code
+    assert "SetInt(" not in code
+    assert "serializedVersion:" not in code
+    assert "WriteAllLines" not in code
+    assert "ProjectVersion.txt" in source
+
+    # The correct version must come from a pristine object built by the public
+    # factory for the installed URP, not from a literal.
+    assert "RenderPipelineGlobalSettingsUtils.Create(" in source
+    assert "UniversalRenderPipelineAsset.Create(" in source
+    assert "EditorUtility.CopySerialized(" in source
+    assert "CopyFromSerializedProperty" in source
+    assert "ProbeExpectedVersion" in source
+    assert "ScriptableObject.CreateInstance(asset.GetType())" in source
+    assert "k_LastVersion" not in code
+    assert "expectedVersion = 8" not in code
+    assert "expectedVersion = 12" not in code
+
+    # URP 17.0.4 keeps UniversalRenderPipelineGlobalSettings and its Ensure()
+    # overload internal, so the type may not be used as a code token and the
+    # internal members may not be reached by reflection.
+    assert "UniversalRenderPipelineGlobalSettings" not in code
+    assert "IsAtLastVersion" not in code
+    assert "BindingFlags" not in code
+    assert "GetMethod(" not in code
+    assert "System.Reflection" not in code
+
+    # Obsolete registration APIs must not be used; the 6000.0 replacements must.
+    assert "RegisterRenderPipelineSettings" not in code
+    assert "UnregisterRenderPipelineSettings" not in code
+    assert "UpdateGraphicsSettings" not in code
+    assert "EditorGraphicsSettings.GetRenderPipelineGlobalSettingsAsset<UniversalRenderPipeline>()" in source
+    assert "EditorGraphicsSettings.SetRenderPipelineGlobalSettingsAsset<UniversalRenderPipeline>(" in source
+
+    # Detection covers both the version mismatch and the stale [SerializeReference]
+    # payloads left behind by the newer editor.
+    assert "SerializationUtility.HasManagedReferencesWithMissingTypes" in source
+    assert "SerializationUtility.GetManagedReferencesWithMissingTypes" in source
+    assert "SerializationUtility.ClearAllManagedReferencesWithMissingTypes" in source
+
+    # The project-wide default Volume is the one settings-container value with a
+    # public setter in URP 17.0.4, so it is preserved through the typed
+    # IDefaultVolumeProfileSettings surface and verified afterwards. Everything
+    # else that cannot be carried across is reported, never guessed at.
+    assert (
+        "TryGetRenderPipelineSettingsForPipeline<URPDefaultVolumeProfileSettings, UniversalRenderPipeline>"
+        in source
+    )
+    assert "settings.volumeProfile = previous;" in source
+    assert "Refusing to report a successful repair with a lost project-wide Volume default." in source
+    assert "ReportProjectAssetReferenceLosses" in source
+
+    # Constructing any URP global settings object makes URP 17.0.4 unconditionally
+    # write Assets/DefaultVolumeProfile.asset, replacing whatever is there. Every
+    # entry point must bracket that and refuse rather than clobber a real asset.
+    assert '"Assets/DefaultVolumeProfile.asset"' in source
+    assert "BeginUrpConstructionScope" in source
+    assert "EndUrpConstructionScope" in source
+    # Audit, preflight and repair each open the scope; each closes it in a finally.
+    assert source.count("= BeginUrpConstructionScope();") == 3
+    assert source.count("EndUrpConstructionScope(volumeProfilePathWasOccupied") == 3
+    assert "refusing to run:" in source
+    assert "removed the transient" in source
+
+    # Repair is explicit; it is never reachable from setup or build.
+    assert '[MenuItem(RepairMenuPath)]' in source
+    assert '[MenuItem(AuditMenuPath)]' in source
+    assert '[MenuItem(PreflightMenuPath)]' in source
+    assert '"GR-BH-XR/URP Asset Repair/Repair URP Assets For Installed Editor"' in source
+    assert '"GR-BH-XR/URP Asset Repair/Audit URP Assets"' in source
+    assert '"GR-BH-XR/URP Asset Repair/Preflight URP Assets (Fail Closed)"' in source
+    assert "public static void BatchRepairUrpAssets()" in source
+    assert "public static void BatchAuditUrpAssets()" in source
+    assert "public static void BatchPreflightUrpAssets()" in source
+    assert "public static void AssertProjectUrpAssetsCompatible()" in source
+
+    # Fail-closed conventions: throw, matching the rest of this assembly, and
+    # refuse rather than guess when renderer data or the editor version is wrong.
+    assert "throw new InvalidOperationException" in source
+    assert "EditorApplication.Exit" not in code
+    assert "Application.unityVersion" in source
+    assert "editor version mismatch" in source
+    assert "it has no renderer data to preserve" in source
+
+    # Machine-readable audit report in the Unity project's non-imported output
+    # area, with the fields the operator needs to compare before and after.
+    assert '"grbhxr.urp_asset_repair/1"' in source
+    assert '"Logs", "GRBHXR", "urp_asset_repair"' in source
+    assert "-grbhxrUrpRepairReportDir" in source
+    assert "public UrpAssetProbe[] before" in source
+    assert "public UrpAssetProbe[] after" in source
+    assert "public string[] preservedValues" in source
+    assert "public string[] deliberateDefaults" in source
+    assert "public bool registrationsChanged" in source
+    assert "public string[] rendererDataPaths" in source
+    assert "public string backupDirectory" in source
+    assert "JsonUtility.ToJson" in source
+
+    assert "Unity.RenderPipelines.Universal.Runtime" in asmdef
+    assert "Unity.RenderPipelines.Core.Runtime" in asmdef
+
+
+def test_unity_player_build_preflights_urp_assets_before_mutating_the_project():
+    source = (UNITY_EDITOR_DIR / "GRBHXRQuestPcvrSetup.cs").read_text(encoding="utf8")
+    gate = (UNITY_EDITOR_DIR / "GRBHXRGateAutomation.cs").read_text(encoding="utf8")
+
+    assert "GRBHXRUrpAssetRepair.AssertProjectUrpAssetsCompatible();" in source
+
+    # The gate must run before ConfigureOpenXrLoader saves XR settings assets,
+    # before ConfigurePcvrSkyShellFirstRun overwrites the saved scene, and before
+    # the PlayerSettings writes -- otherwise a failed build leaves the project
+    # mutated.
+    build_entry = source.index("public static void BuildWindowsOpenXrPlayer()")
+    preflight_call = source.index("GRBHXRUrpAssetRepair.AssertProjectUrpAssetsCompatible();", build_entry)
+    configure_loader = source.index("ConfigureOpenXrLoader();", build_entry)
+    sky_shell = source.index("GRBHXRGateAutomation.ConfigurePcvrSkyShellFirstRun();", build_entry)
+    player_settings = source.index("PlayerSettings.companyName", build_entry)
+    build_player = source.index("BuildPipeline.BuildPlayer(options)", build_entry)
+    assert preflight_call < configure_loader < sky_shell < player_settings < build_player
+
+    # Neither the build entry point nor scene setup may repair silently.
+    assert "RepairUrpAssets" not in source
+    assert "BatchRepairUrpAssets" not in source
+    assert "RepairUrpAssets" not in gate
+    assert "GRBHXRUrpAssetRepair" not in gate
+
+
 def test_quest_pcvr_preflight_is_read_only_and_checks_assets():
     source = PCVR_PREFLIGHT_SCRIPT.read_text(encoding="utf8")
 
@@ -703,6 +845,42 @@ def test_disk_validity_boundary_mask_marks_both_sides_of_edge():
     assert boundary[1, 2]
     assert boundary[0, 1]
     assert boundary[2, 2]
+
+
+def _csharp_code_only(source: str) -> str:
+    """Strip // and /* */ comments so 'must not appear' asserts pin code, not prose.
+
+    The URP repair source documents the internal APIs it deliberately does not
+    call, so a naive substring check against the raw file would confuse an
+    explanatory comment with a real call site.
+    """
+    out = []
+    index = 0
+    length = len(source)
+    while index < length:
+        if source.startswith("//", index):
+            end = source.find("\n", index)
+            index = length if end == -1 else end
+        elif source.startswith("/*", index):
+            end = source.find("*/", index + 2)
+            index = length if end == -1 else end + 2
+        elif source[index] == '"':
+            out.append(source[index])
+            index += 1
+            while index < length and source[index] != '"':
+                if source[index] == "\\":
+                    out.append(source[index])
+                    index += 1
+                if index < length:
+                    out.append(source[index])
+                    index += 1
+            if index < length:
+                out.append(source[index])
+                index += 1
+        else:
+            out.append(source[index])
+            index += 1
+    return "".join(out)
 
 
 def _load_module(path: Path, name: str):

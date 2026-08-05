@@ -19,6 +19,72 @@ from here.
 
 ## Log
 
+### 2026-08-06 - Version-locked URP 17 asset repair
+
+- Goal: Make the formal Unity project openable, compilable and buildable under
+  its locked Unity `6000.0.76f1` / URP `17.0.4` toolchain after some render
+  pipeline assets were serialized by a newer editor, without hand-editing any
+  serialized version field.
+- Changed files / components: added
+  `xr/unity_frontend/Editor/GRBHXRUrpAssetRepair.cs`; added URP/core references
+  to `xr/unity_frontend/Editor/GRBHXR.Editor.asmdef`; added a fail-closed
+  preflight call as the first statement of
+  `GRBHXRQuestPcvrSetup.BuildWindowsOpenXrPlayer`; added two source-contract
+  tests and a `_csharp_code_only` helper to `tests/test_xr_export.py`; updated
+  `xr/unity_frontend/README.md` and `validation/quest_pcvr/README.md`.
+- Academic reason: None directly. This is build-tooling integrity work. Its only
+  physics-facing role is negative: it keeps a corrupted render pipeline from
+  being mistaken for a rendering result, and it keeps the editor version lock
+  enforceable so future gate captures are reproducible.
+- Physical correspondence: None. No equation, constant, coordinate convention,
+  unit, or renderer output is touched by this change.
+- Assumptions and conventions: The contamination was diagnosed as Unity `6000.5`
+  / URP `17.5.0`, not URP 18. Evidence: `Library.6000.5.backup_20260718`
+  contains URP `17.5.0`, whose `k_LastVersion` constants are `10` (global
+  settings), `13` (RP asset) and `3` (renderer data), matching the observed
+  `m_AssetVersion: 10` and `k_AssetVersion: 13`. The two renderer data assets
+  were still at `2`, which is current for 17.0.4, and were reused by reference.
+  `UniversalRenderPipelineGlobalSettings` and its `Ensure()` overload are
+  `internal` in URP 17.0.4, so the public
+  `RenderPipelineGlobalSettingsUtils.Create(Type, path)` overload is used with
+  the concrete type taken from the loaded asset. No version number is
+  hardcoded: the expected version is read from a freshly constructed instance.
+  Repair rewrites the existing asset object in place via
+  `EditorUtility.CopySerialized` from a pristine object, so GUIDs, asset paths,
+  and the `GraphicsSettings` / `QualitySettings` registrations are preserved.
+- Validation: Unity `6000.0.76f1` batch runs against the formal project, full
+  logs and machine-readable reports preserved under
+  `outputs/claude_agents/2026-08-05-mr-device-gate/urp17-repair/`. Audit exit 0
+  with no project mutation; preflight exit **1** on the damaged assets and exit
+  **0** after repair; repair exit 0. Post-repair state:
+  `m_AssetVersion` 10 -> 8, both `k_AssetVersion`/`k_AssetPreviousVersion`
+  13 -> 12, the nine URP 17.5.0-only `[SerializeReference]` types dropped
+  (35 -> 26 settings, none added), the six URP 17.5.0-only RP asset keys dropped,
+  and `m_DebugLevel` restored. A byte diff of both `*_RPAsset.asset` files
+  against their pre-repair copies shows no other change, so renderer references,
+  shadow cascades, splits, biases, soft shadow quality, render scale, cookie
+  formats and volume profile all survived. The project default volume profile
+  `Assets/Settings/DefaultVolumeProfile.asset` is preserved through the public
+  `IDefaultVolumeProfileSettings.volumeProfile` setter and verified after
+  writing. Python suite: 169 passed before, 171 passed after.
+- References: URP 17.0.4 and SRP core 17.0.4 package sources in the formal
+  project's `Library/PackageCache`, read directly rather than from documentation.
+  Key sites: `Runtime/UniversalRenderPipelineGlobalSettings.cs:22,31,239`,
+  `Runtime/Data/UniversalRenderPipelineAsset.cs:449,678`,
+  `core Runtime/RenderPipeline/RenderPipelineGlobalSettingsUtils.cs:35`,
+  `core Runtime/RenderPipeline/RenderPipelineGraphicsSettingsContainer.cs:38-45`,
+  `Editor/BuildProcessors/URPBuildDataValidator.cs`.
+- Open issues / next steps: `validation/quest_pcvr/scripts/quest_pcvr_preflight.ps1`
+  still defaults to Unity `6000.5.2f1`, which is how this corruption arose;
+  changing it also changes a pinned assertion in `tests/test_xr_export.py` and
+  was left out of this focused commit. The preflight does not expand the
+  `IncludeAdditionalRPAssets` label/scene inclusion set (currently disabled).
+  `Assets/Settings/DefaultVolumeProfile.asset` still carries nine orphaned
+  `VolumeComponent` sub-objects leaked from `Unity.RenderPipelines.Core.Editor.Tests`;
+  unrelated to versioning, harmless at runtime, not addressed here. A repaired,
+  compiling project is explicitly not a device-validated one: no headset run and
+  no MR passthrough RGB claim follows from this change.
+
 ### 2026-08-05 - Audited horizon-crossing descent keyframes
 
 - Goal: Add the Task 8 rain-frame descent keyframe path with a committed,
