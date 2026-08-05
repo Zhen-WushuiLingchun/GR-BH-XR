@@ -134,7 +134,10 @@ namespace GRBHXR
         private float[] descentLogRadii;
         private RoamMode mode = RoamMode.Grid;
         private int descentThetaIndex;
-        private float descentHandoffAzimuthDeg;
+        // INGOING KERR-SCHILD, not BL. The static grid hands off a BL label;
+        // EnterDescent converts it once so this can be added to the manifest's
+        // per-keyframe azimuthDeg (also KS) without mixing charts.
+        private float descentHandoffAzimuthKsDeg;
         private float targetRadius = -1.0f;
         private float targetThetaDeg = -1.0f;
         private int boundIndexA = -1;
@@ -153,6 +156,24 @@ namespace GRBHXR
         public float DescentStartRadiusM => DescentAvailable ? descentManifest.radiiM[0] : -1.0f;
         public float StartThetaDeg => IsReady ? manifest.thetaDegrees[NearestIndex(manifest.thetaDegrees, startThetaDeg)] : startThetaDeg;
         public float SpinA => IsReady && manifest.metric != null ? manifest.metric.a : 0.9f;
+        /// <summary>
+        /// Metric the BOUND asset set was generated under, geometric units.
+        /// Descent playback reads the descent manifest, grid roam the grid
+        /// manifest; a scene that binds both with different metrics is
+        /// rejected at load (<see cref="MetricsAgree"/>).
+        /// </summary>
+        public float MetricMassM => mode == RoamMode.Descent && DescentAvailable && descentManifest.metric != null
+            ? descentManifest.metric.M
+            : (IsReady && manifest.metric != null ? manifest.metric.M : 1.0f);
+        public float MetricSpinA => mode == RoamMode.Descent && DescentAvailable && descentManifest.metric != null
+            ? descentManifest.metric.a
+            : SpinA;
+        public bool HasGridMetric => IsReady && manifest.metric != null;
+        public bool HasDescentMetric => DescentAvailable && descentManifest.metric != null;
+        public float DescentMetricMassM => HasDescentMetric ? descentManifest.metric.M : float.NaN;
+        public float DescentMetricSpinA => HasDescentMetric ? descentManifest.metric.a : float.NaN;
+        public float GridMetricMassM => HasGridMetric ? manifest.metric.M : float.NaN;
+        public float GridMetricSpinA => HasGridMetric ? manifest.metric.a : float.NaN;
         public float BoundThetaDeg => CurrentThetaDeg();
         public RoamKeyframesManifest Manifest => manifest;
 
@@ -240,19 +261,34 @@ namespace GRBHXR
             targetThetaDeg = ClampThetaDeg(thetaDeg);
         }
 
-        public bool EnterDescent(float thetaDeg, float handoffAzimuthDeg)
+        /// <summary>
+        /// Hand off from the BL-labelled static grid into the descent set.
+        /// `handoffAzimuthBlDeg` is a Boyer-Lindquist label (the grid's chart);
+        /// the descent manifest's per-keyframe `azimuthDeg` is ingoing
+        /// Kerr-Schild and is measured relative to the FIRST descent keyframe,
+        /// whose worldline starts at BL `phi = 0`. So the KS azimuth along the
+        /// descent is
+        ///
+        ///     phi_ks(r_i) = handoffBL + shift(r_start) + azimuthDeg[i]
+        ///
+        /// and the `shift(r_start)` term is converted exactly once, here.
+        /// </summary>
+        public bool EnterDescent(float thetaDeg, float handoffAzimuthBlDeg)
         {
             if (!DescentAvailable)
             {
                 return false;
             }
             descentThetaIndex = NearestIndex(descentManifest.thetaDegrees, thetaDeg);
-            descentHandoffAzimuthDeg = handoffAzimuthDeg;
             mode = RoamMode.Descent;
+            descentHandoffAzimuthKsDeg = handoffAzimuthBlDeg
+                + KerrObserverBasis.BlToKsPhiShiftDeg(MetricMassM, MetricSpinA, DescentStartRadiusM);
             targetRadius = Mathf.Min(targetRadius > 0.0f ? targetRadius : DescentStartRadiusM, DescentStartRadiusM);
             Debug.Log(
                 $"GR-BH-XR descent entered: theta row {descentManifest.thetaDegrees[descentThetaIndex]:F0} deg, " +
-                $"handoff azimuth {handoffAzimuthDeg:F1} deg."
+                $"handoff azimuth {handoffAzimuthBlDeg:F1} deg [BL] = " +
+                $"{descentHandoffAzimuthKsDeg:F1} deg [KS] at r_start={DescentStartRadiusM:F3}M " +
+                $"(M={MetricMassM:F3}, a={MetricSpinA:F4})."
             );
             return true;
         }
@@ -268,8 +304,13 @@ namespace GRBHXR
             Debug.Log("GR-BH-XR descent exited to the static grid.");
         }
 
-        /// <summary>Descent worldline azimuth (frame dragging) at the given radius.</summary>
-        public float DescentAzimuthDeg(float radius)
+        /// <summary>
+        /// Descent worldline azimuth at the given radius, in the INGOING
+        /// KERR-SCHILD chart (deg) - the chart the accepted Task 8 manifest
+        /// publishes. Consumers that need a Kerr-Schild Cartesian position
+        /// must NOT apply `bl_to_ks_phi_shift` to this value.
+        /// </summary>
+        public float DescentAzimuthKsDeg(float radius)
         {
             if (!DescentAvailable)
             {
@@ -282,10 +323,22 @@ namespace GRBHXR
             float azOuter = descentManifest.keyframes[row * radii.Length + outer].azimuthDeg;
             float azInner = descentManifest.keyframes[row * radii.Length + inner].azimuthDeg;
             float weight = LogWeight(radii[outer], radii[inner], radius);
-            return descentHandoffAzimuthDeg + Mathf.Lerp(azOuter, azInner, weight);
+            return descentHandoffAzimuthKsDeg + Mathf.Lerp(azOuter, azInner, weight);
         }
 
-        /// <summary>Blend state consumed by the basis writer (LensMap).</summary>
+        /// <summary>
+        /// Blend state consumed by the basis writer (LensMap).
+        ///
+        /// CHART: `azimuthDegA/B` are BOYER-LINDQUIST LABELS in both modes.
+        /// The display basis and `_DiskObserverAzimuth` both live in the BH
+        /// Cartesian frame, whose azimuth is `phi_bl` (BH Cartesian is the KS
+        /// Cartesian frame rotated by `-(atan2(a, r) + shift)`), and the
+        /// traced `phi_m` recorded in the disk channels is likewise BL. The
+        /// descent manifest stores KS, so it is converted per keyframe here,
+        /// at that keyframe's own radius. Inside the outer horizon the BL
+        /// label is a formal continuation and is used only as a continuous
+        /// display label, never as a BL coordinate.
+        /// </summary>
         public bool TryGetBlendState(
             out float thetaDegA, out float azimuthDegA, out Vector4 eInfA,
             out float thetaDegB, out float azimuthDegB, out Vector4 eInfB,
@@ -306,12 +359,12 @@ namespace GRBHXR
             if (boundSetIsDescent)
             {
                 var entryA = descentManifest.keyframes[boundIndexA];
-                azimuthDegA = descentHandoffAzimuthDeg + entryA.azimuthDeg;
+                azimuthDegA = DescentEntryAzimuthBlDeg(entryA);
                 eInfA = EInfVector(entryA);
                 if (blendActive)
                 {
                     var entryB = descentManifest.keyframes[boundIndexB];
-                    azimuthDegB = descentHandoffAzimuthDeg + entryB.azimuthDeg;
+                    azimuthDegB = DescentEntryAzimuthBlDeg(entryB);
                     eInfB = EInfVector(entryB);
                 }
             }
@@ -330,6 +383,18 @@ namespace GRBHXR
                 }
             }
             return true;
+        }
+
+        /// <summary>
+        /// BL label of a descent keyframe: `phi_bl = phi_ks - shift(r_i)`,
+        /// evaluated at that keyframe's OWN radius (the shift is strongly
+        /// r-dependent near the horizon, so a single shift for the whole
+        /// sequence would be wrong by up to hundreds of degrees).
+        /// </summary>
+        private float DescentEntryAzimuthBlDeg(DescentKeyframeEntry entry)
+        {
+            return descentHandoffAzimuthKsDeg + entry.azimuthDeg
+                - KerrObserverBasis.BlToKsPhiShiftDeg(MetricMassM, MetricSpinA, entry.r_obs);
         }
 
         public string StatusText()

@@ -42,6 +42,45 @@ namespace GRBHXR
             return new BhBasis { Right = right, Up = up, Forward = forward };
         }
 
+        /// <summary>
+        /// Boyer-Lindquist to ingoing-Kerr-Schild azimuth offset,
+        /// `phi_ks = phi_bl + BlToKsPhiShiftRad(M, a, r)`.
+        ///
+        /// Port of `gr_bh_xr.geodesic_ks.bl_to_ks_phi_shift`:
+        /// `a / (r_+ - r_-) * log|(r - r_+) / (r - r_-)|`. This is the ONE
+        /// definition of the chart offset in the package; every consumer must
+        /// call it rather than re-deriving the formula, because the two roles
+        /// it serves carry OPPOSITE signs and a local copy is how they drift
+        /// apart:
+        ///
+        ///   position space: `phi_ks = phi_bl + shift` (this function, `+`);
+        ///   momentum direction of an outgoing ray: rotate by
+        ///     `+delta = +(atan2(a, r) + shift)`, per the accepted
+        ///     `batch_escape_directions`, whose docstring records that
+        ///     `delta ~ -aM/r^2` while the momentum offset is `+aM/r^2`.
+        ///
+        /// `r` is a geometric length in the same unit as `mass`, not `r/M`.
+        /// The `abs()` continues the expression through `r_+` so an interior
+        /// observer gets a finite, continuous chart label; the Boyer-Lindquist
+        /// chart itself does not extend inside the horizon, so that label is
+        /// formal there and must not be read as a BL coordinate.
+        /// </summary>
+        public static double BlToKsPhiShiftRad(double mass, double spin, double r)
+        {
+            double root = System.Math.Sqrt(System.Math.Max(mass * mass - spin * spin, 0.0));
+            double rPlus = mass + root;
+            double rMinus = mass - root;
+            double gap = System.Math.Max(rPlus - rMinus, 1.0e-6);
+            double ratio = System.Math.Abs((r - rPlus) / System.Math.Max(System.Math.Abs(r - rMinus), 1.0e-9));
+            return spin / gap * System.Math.Log(System.Math.Max(ratio, 1.0e-12));
+        }
+
+        /// <summary>Degrees form of <see cref="BlToKsPhiShiftRad"/>.</summary>
+        public static float BlToKsPhiShiftDeg(float mass, float spin, float r)
+        {
+            return (float)(BlToKsPhiShiftRad(mass, spin, r) * (180.0 / System.Math.PI));
+        }
+
         /// <summary>Rotate a BH-frame vector by azimuth about the spin axis (+phi prograde).</summary>
         public static Vector3 RotateAboutSpin(Vector3 bhVector, float azimuthDeg)
         {

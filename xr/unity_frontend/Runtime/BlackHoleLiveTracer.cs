@@ -837,9 +837,27 @@ namespace GRBHXR
             float azimuthDeg = observerRig.VirtualAzimuthDeg;
             double theta = thetaDeg * Math.PI / 180.0;
             double azimuth = azimuthDeg * Math.PI / 180.0;
-            // KS position at the BL-equivalent azimuth (exterior); inside the
-            // horizon the azimuth label is the KS one (regular).
-            double phiKs = azimuth + PhiShiftSafe(radius);
+            // CHART DISCIPLINE. The rig tags which chart its azimuth is in and
+            // the shift is applied at most once.
+            //
+            // Grid roam is BL-labelled (every Task 7 keyframe is traced with
+            // the observer at BL phi = 0), so the KS Cartesian position needs
+            // phi_ks = phi_bl + bl_to_ks_phi_shift(r).
+            //
+            // Descent playback is ALREADY ingoing Kerr-Schild: the accepted
+            // Task 8 manifest documents azimuthDeg as "deg, ingoing
+            // Kerr-Schild chart azimuth relative to the first keyframe" and
+            // computes it from _phi_tilde = atan2(y r - a x, r x + a y), which
+            // is identically phi_ks. Shifting it again put the solver at the
+            // wrong worldline point by shift(r) - shift(r_start): -23.2 deg at
+            // r = 2.774 M, -91.0 deg at r = 1.644 M and -284.6 deg at the
+            // accepted r = 1.4423 M keyframe (M = 1, a = 0.9, r_start = 9 M),
+            // i.e. the error diverges exactly where the descent is
+            // interesting.
+            bool azimuthIsKerrSchild = observerRig.VirtualAzimuthChart
+                == BlackHoleObserverRigControls.AzimuthChart.IngoingKerrSchild;
+            double phiShift = PhiShiftSafe(radius);
+            double phiKs = azimuthIsKerrSchild ? azimuth : azimuth + phiShift;
             double sinT = Math.Sin(theta);
             double[] pos =
             {

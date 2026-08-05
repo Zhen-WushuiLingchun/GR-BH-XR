@@ -5,6 +5,33 @@ namespace GRBHXR
 {
     public sealed class BlackHoleObserverRigControls : MonoBehaviour
     {
+        /// <summary>
+        /// Which chart the observer azimuth is labelled in. The two roam
+        /// sources do NOT agree and must never be added together or shifted
+        /// twice:
+        ///
+        /// - <see cref="BoyerLindquistLabelled"/>: the static roam grid. Every
+        ///   Task 7 keyframe is traced with the observer at Boyer-Lindquist
+        ///   `phi = 0` (`gpu.trace.initial_state_direction` takes only
+        ///   `r_obs, theta`), so azimuth is a free BL label that axisymmetry
+        ///   turns into a rigid rotation. Converting it to the Kerr-Schild
+        ///   Cartesian position needs `+bl_to_ks_phi_shift(r)`.
+        /// - <see cref="IngoingKerrSchild"/>: the Task 8 descent worldline.
+        ///   The accepted manifest publishes `azimuthDeg` as
+        ///   "deg, ingoing Kerr-Schild chart azimuth relative to the first
+        ///   keyframe" - it is computed from
+        ///   `_phi_tilde(a, x) = atan2(y r - a x, r x + a y)`, which is
+        ///   identically `phi_ks`. It is ALREADY shifted; shifting again is a
+        ///   double shift of `shift(r) - shift(r_start)`, i.e. -23 deg at
+        ///   r = 2.77 M, -91 deg at r = 1.64 M and -285 deg at the accepted
+        ///   r = 1.4423 M keyframe for M = 1, a = 0.9, r_start = 9 M.
+        /// </summary>
+        public enum AzimuthChart
+        {
+            BoyerLindquistLabelled,
+            IngoingKerrSchild,
+        }
+
         [SerializeField] private Transform trackingOrigin;
         [SerializeField] private Camera targetCamera;
         [SerializeField] private BlackHoleXrHeadPoseDriver headPoseDriver;
@@ -19,6 +46,9 @@ namespace GRBHXR
         [SerializeField] private float virtualRadiusM = -1.0f;
         [SerializeField] private float virtualThetaDeg = -1.0f;
         [SerializeField] private float virtualAzimuthDeg;
+        // Chart of virtualAzimuthDeg. Grid roam writes a BL label; descent
+        // playback writes the manifest's ingoing-Kerr-Schild azimuth.
+        [SerializeField] private AzimuthChart virtualAzimuthChart = AzimuthChart.BoyerLindquistLabelled;
         [SerializeField] private float referenceThetaDeg = -1.0f;
         // Free-fall playback: the virtual observer follows the rain-frame
         // radial infall r(tau) with the frame-dragging azimuth drift. This is
@@ -41,6 +71,8 @@ namespace GRBHXR
             ? virtualThetaDeg
             : (roamKeyframes != null ? roamKeyframes.StartThetaDeg : 60.0f);
         public float VirtualAzimuthDeg => virtualAzimuthDeg;
+        /// <summary>Chart <see cref="VirtualAzimuthDeg"/> is labelled in.</summary>
+        public AzimuthChart VirtualAzimuthChart => virtualAzimuthChart;
         public float ReferenceThetaDeg => referenceThetaDeg > 0.0f ? referenceThetaDeg : VirtualThetaDeg;
         public Transform TrackingOrigin => trackingOrigin;
         public bool RadialLocomotionAvailable => roamKeyframes != null && roamKeyframes.IsReady;
@@ -195,6 +227,7 @@ namespace GRBHXR
                 virtualAzimuthDeg = NormalizeAngle(
                     virtualAzimuthDeg + Mathf.Clamp(prograde, -1.0f, 1.0f) * angularSpeedDegreesPerSecond * deltaTime
                 );
+                virtualAzimuthChart = AzimuthChart.BoyerLindquistLabelled;
             }
             if (
                 roamKeyframes.Mode == BlackHoleRoamKeyframes.RoamMode.Descent
@@ -202,6 +235,16 @@ namespace GRBHXR
             )
             {
                 // Climbed back out of the descent sequence: return to the grid.
+                // The cursor carried an ingoing-Kerr-Schild azimuth while it
+                // was in the descent set; relabel it BL once, here, instead of
+                // letting the grid writers keep incrementing a KS value.
+                virtualAzimuthDeg = NormalizeAngle(
+                    virtualAzimuthDeg
+                    - KerrObserverBasis.BlToKsPhiShiftDeg(
+                        roamKeyframes.MetricMassM, roamKeyframes.MetricSpinA, virtualRadiusM
+                    )
+                );
+                virtualAzimuthChart = AzimuthChart.BoyerLindquistLabelled;
                 roamKeyframes.ExitDescent();
                 virtualThetaDeg = roamKeyframes.BoundThetaDeg;
             }
@@ -332,11 +375,15 @@ namespace GRBHXR
                     virtualAzimuthDeg = NormalizeAngle(
                         virtualAzimuthDeg + omega * dtDtau * dtau * Mathf.Rad2Deg
                     );
+                    virtualAzimuthChart = AzimuthChart.BoyerLindquistLabelled;
                 }
             }
             if (roamKeyframes.Mode == BlackHoleRoamKeyframes.RoamMode.Descent)
             {
-                virtualAzimuthDeg = NormalizeAngle(roamKeyframes.DescentAzimuthDeg(newRadius));
+                // Ingoing Kerr-Schild, straight from the accepted manifest.
+                // Tagged so ConfigureObserverUniforms does not shift it again.
+                virtualAzimuthDeg = NormalizeAngle(roamKeyframes.DescentAzimuthKsDeg(newRadius));
+                virtualAzimuthChart = AzimuthChart.IngoingKerrSchild;
             }
             virtualRadiusM = roamKeyframes.ClampRadius(newRadius);
             roamKeyframes.SetTarget(virtualRadiusM, virtualThetaDeg);
@@ -346,10 +393,22 @@ namespace GRBHXR
             }
         }
 
-        public void SetAzimuthDegrees(float azimuthDeg)
+        /// <summary>
+        /// Set the observer azimuth. The chart is explicit and has no default
+        /// on the physics path: a caller that does not know which chart its
+        /// number is in cannot use this.
+        /// </summary>
+        public void SetAzimuthDegrees(float azimuthDeg, AzimuthChart chart)
         {
             EnsurePositionInitialized();
             virtualAzimuthDeg = NormalizeAngle(azimuthDeg);
+            virtualAzimuthChart = chart;
+        }
+
+        /// <summary>Backwards-compatible overload: BL-labelled, as the grid roam uses.</summary>
+        public void SetAzimuthDegrees(float azimuthDeg)
+        {
+            SetAzimuthDegrees(azimuthDeg, AzimuthChart.BoyerLindquistLabelled);
         }
 
         public Vector3 TrackingToWorldPoint(Vector3 trackingPoint)
@@ -380,8 +439,9 @@ namespace GRBHXR
                     ? "  FREE FALL (descent keyframe playback)"
                     : "  FREE FALL (quasi-static segment, no boost)";
             }
+            string chart = virtualAzimuthChart == AzimuthChart.IngoingKerrSchild ? "KS" : "BL";
             return
-                $"Observer yaw {virtualYawDegrees:F1} deg  azimuth {virtualAzimuthDeg:F1} deg{mode}\n" +
+                $"Observer yaw {virtualYawDegrees:F1} deg  azimuth {virtualAzimuthDeg:F1} deg [{chart}]{mode}\n" +
                 roam;
         }
 

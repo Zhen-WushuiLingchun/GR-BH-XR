@@ -1806,6 +1806,128 @@ def test_unity_roam_asset_absence_is_loud():
     assert "GR-BH-XR free fall unavailable" in rig
 
 
+def test_descent_manifest_azimuth_is_the_ingoing_kerr_schild_chart():
+    """`_phi_tilde` is identically `phi_ks`, so Unity must not shift it again.
+
+    `generate_descent_keyframes` records `azimuthDeg` from
+    `_phi_tilde(a, x) = atan2(y r - a x, r x + a y)`. Substituting the KS
+    Cartesian embedding `x + i y = (r + i a) sin(theta) e^{i phi_ks}` gives
+    `(r^2 + a^2) sin(theta) (cos phi_ks, sin phi_ks)`, so the recorded value IS
+    the ingoing Kerr-Schild azimuth and already carries `bl_to_ks_phi_shift`.
+
+    This test is the numeric statement of that identity plus the size of the
+    error a second shift would introduce, so the Unity-side pin below is
+    anchored to a measured quantity rather than to a convention someone
+    asserted in a comment.
+    """
+
+    from gr_bh_xr.geodesic_ks import bl_to_ks_phi_shift
+    from gr_bh_xr.gpu.generate_descent_keyframes import _phi_tilde, descent_radius_schedule
+    from gr_bh_xr.metric_ks import bl_to_ks_cartesian
+
+    params = MetricParams(M=1.0, a=0.9)
+
+    # 1. `_phi_tilde` recovers phi_ks exactly, over a spread of (r, theta, phi).
+    for radius in (9.0, 3.0, 1.6, 1.45, 1.2, 0.8):
+        for theta_deg in (30.0, 60.0, 90.0, 150.0):
+            for phi_bl_deg in (0.0, 37.0, -122.0):
+                theta = math.radians(theta_deg)
+                phi_bl = math.radians(phi_bl_deg)
+                phi_ks = phi_bl + bl_to_ks_phi_shift(params, radius)
+                position = bl_to_ks_cartesian(radius, theta, phi_ks, params.a)
+                recovered = _phi_tilde(params.a, position)
+                wrapped = (recovered - phi_ks + math.pi) % (2.0 * math.pi) - math.pi
+                assert abs(wrapped) < 1.0e-12, (
+                    f"_phi_tilde is not phi_ks at r={radius}, theta={theta_deg}, "
+                    f"phi_bl={phi_bl_deg}: residual {wrapped:.3e} rad"
+                )
+
+    # 2. Size of the double shift on the accepted descent schedule. The
+    #    manifest's azimuthDeg is phi_ks(r) - phi_ks(r_start), so adding
+    #    bl_to_ks_phi_shift(r) again over-rotates by shift(r) - shift(r_start).
+    radii = descent_radius_schedule(params, 9.0, 0.75, 20)
+    shift_start = bl_to_ks_phi_shift(params, radii[0])
+    excess_deg = [
+        math.degrees(bl_to_ks_phi_shift(params, radius) - shift_start) for radius in radii
+    ]
+    assert abs(excess_deg[0]) < 1.0e-9
+    # The error is not a small correction: it diverges logarithmically at the
+    # horizon, and the worst exterior keyframe is the accepted low-rain row.
+    assert max(abs(value) for value in excess_deg) > 250.0
+    low_rain = min(range(len(radii)), key=lambda i: abs(radii[i] - 1.4423))
+    assert abs(radii[low_rain] - 1.4423) < 1.0e-3
+    assert abs(excess_deg[low_rain]) > 200.0
+
+
+def test_live_tracer_shifts_the_observer_azimuth_at_most_once():
+    """The KS observer position must apply `bl_to_ks_phi_shift` exactly once.
+
+    Grid roam hands over a Boyer-Lindquist label and needs `+shift`; descent
+    playback hands over an already-Kerr-Schild azimuth and needs none. A
+    single unconditional `azimuth + PhiShiftSafe(radius)` is correct for the
+    first and a double shift for the second (see
+    `test_descent_manifest_azimuth_is_the_ingoing_kerr_schild_chart` for the
+    measured magnitude), so the branch itself is the contract.
+    """
+
+    tracer = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.cs").read_text(encoding="utf8")
+    code = _shader_code_only(tracer)
+    block = _csharp_block(code, "private void ConfigureObserverUniforms(Snapshot snapshot)")
+
+    # The chart must be read from the rig, not assumed.
+    assert "observerRig.VirtualAzimuthChart" in block
+    assert "AzimuthChart.IngoingKerrSchild" in block
+    assert "azimuthIsKerrSchild ? azimuth : azimuth + phiShift" in block
+    # The unconditional form is what created the double shift.
+    assert "double phiKs = azimuth + PhiShiftSafe(radius);" not in block
+    # The position reads one named shift, so a second call cannot silently be
+    # folded into it. (The observer-BASIS site is a separate role with the
+    # opposite sign; it is gated by
+    # `test_live_tracer_observer_basis_follows_the_accepted_keyframe_mapping`.)
+    assert block.count("double phiShift = PhiShiftSafe(radius);") == 1
+    assert "phiShift" in block.split("double[] pos")[0]
+
+
+def test_unity_roam_keeps_the_two_azimuth_charts_distinct():
+    """Static-grid BL labels and descent KS azimuths never mix in one addition.
+
+    The failure this pins is a silent one: `descentHandoff (BL) + azimuthDeg
+    (KS)` type-checks, renders, and is wrong by `shift(r)` everywhere.
+    """
+
+    rig = (UNITY_RUNTIME_DIR / "BlackHoleObserverRigControls.cs").read_text(encoding="utf8")
+    roam = (UNITY_RUNTIME_DIR / "BlackHoleRoamKeyframes.cs").read_text(encoding="utf8")
+    basis = (UNITY_RUNTIME_DIR / "KerrObserverBasis.cs").read_text(encoding="utf8")
+
+    # One shared definition of the chart offset, with its sign stated.
+    assert "public static double BlToKsPhiShiftRad(double mass, double spin, double r)" in basis
+    assert "phi_ks = phi_bl + BlToKsPhiShiftRad" in basis
+
+    # The rig tags the chart and both writers set it.
+    assert "public enum AzimuthChart" in rig
+    assert "BoyerLindquistLabelled," in rig
+    assert "IngoingKerrSchild," in rig
+    assert "public AzimuthChart VirtualAzimuthChart => virtualAzimuthChart;" in rig
+    assert "virtualAzimuthChart = AzimuthChart.IngoingKerrSchild;" in rig
+    assert rig.count("virtualAzimuthChart = AzimuthChart.BoyerLindquistLabelled;") >= 2
+    # A caller with an unknown chart cannot set the azimuth on the physics path.
+    assert "public void SetAzimuthDegrees(float azimuthDeg, AzimuthChart chart)" in rig
+
+    # The handoff is converted once, into KS, and named for its chart.
+    assert "private float descentHandoffAzimuthKsDeg;" in roam
+    assert "descentHandoffAzimuthDeg" not in roam
+    assert "public float DescentAzimuthKsDeg(float radius)" in roam
+    assert "public bool EnterDescent(float thetaDeg, float handoffAzimuthBlDeg)" in roam
+    assert "KerrObserverBasis.BlToKsPhiShiftDeg(MetricMassM, MetricSpinA, DescentStartRadiusM)" in roam
+
+    # The display basis wants BL, so the descent entries are converted back at
+    # their own radius - not with one shift for the whole sequence.
+    assert "private float DescentEntryAzimuthBlDeg(DescentKeyframeEntry entry)" in roam
+    assert "MetricSpinA, entry.r_obs)" in roam
+    assert "azimuthDegA = DescentEntryAzimuthBlDeg(entryA);" in roam
+    assert "azimuthDegB = DescentEntryAzimuthBlDeg(entryB);" in roam
+
+
 def test_unity_panel_reports_the_metric_it_lets_you_change():
     """Spin and mass are the metric; they must be readable and logged."""
 
