@@ -19,6 +19,104 @@ from here.
 
 ## Log
 
+### 2026-08-05 - Audited horizon-crossing descent keyframes
+
+- Goal: Add the Task 8 rain-frame descent keyframe path with a committed,
+  deterministic validation producer, and replace its geometry-based ray
+  validity heuristics with a first-principles criterion.
+- Changed files / components: added
+  `src/gr_bh_xr/gpu/generate_descent_keyframes.py`,
+  `src/gr_bh_xr/gpu/validate_descent_frames.py`,
+  `tests/test_descent_keyframes.py`,
+  `validation/descent_keyframes/README.md`; extended
+  `src/gr_bh_xr/gpu/trace_ks.py` with equatorial disk-crossing recording, a
+  packed-array input path, and `time_orientation`.
+- Academic reason: This is the first path in the project that renders from
+  inside the horizon. Its claims about aberration, chart conversion and ray
+  validity are exactly the ones that cannot be checked by eye, so each needs a
+  producer that runs.
+- Physical correspondence: full-sky maps for the Doran rain observer sampled
+  along the actual infall worldline, in the Cartesian ingoing Kerr-Schild
+  chart. Rays are traced PAST-directed because inside the horizon the future
+  cone points inward, so the image is the history of the light that fell in.
+  The per-texel observer factor is analytic, `E_inf(d) = w + dot(d, xyz)` with
+  `eInf = [-et_phi, -et_theta, -et_r, -u_t]`, verified to `6.66e-16` in float64.
+- Assumptions and conventions: `time_orientation = -1` flips the conserved
+  quantities fed to the disk redshift, which is required because `g` is
+  invariant under flipping `E` and `L` together and without it every
+  past-traced disk sample fails the `denom <= 0` guard and is silently
+  discarded. Validity is claimed between the inner and outer horizons.
+- Validation: `python -m gr_bh_xr.gpu.validate_descent_frames`, deterministic
+  (Fibonacci-sphere directions, no RNG) and fail-closed on small samples,
+  non-finite directions, or excessive Hamiltonian exclusion. At `a/M = 0.9`,
+  `theta = 60 deg`, `r_obs = 2.35M`, 4096 directions, 3658 compared:
+  chart direction `3.251e-4 deg` max / `2.180e-4` median at `r_escape = 200M`
+  and `7.543e-2` / `2.709e-2` at `20M`; observer factor `6.66e-16` (f64) and
+  `1.196e-7` (f32); negative controls `1.575` and `1.812`; launcher null
+  residual `3.00e-15`. A face-24 descent of 20 keyframes runs `0.986` to
+  `0.801` escape fraction with no discontinuity, and azimuth drifts monotonically
+  to `-23.7 deg`.
+- Audit findings acted on:
+  - BLOCKER: the exterior horizon-hug rule `min_r < r_+ + 0.05` was applied
+    regardless of the observer's own radius, so any exterior keyframe with
+    `r_obs < r_+ + 0.05` had every ray - including ones launched straight
+    outward - reclassified as dark. The DEFAULT schedule hits this: index 14 of
+    a 20-keyframe `9M -> 0.75M` descent lands at `r = 1.4423`, exterior but
+    only `0.0064` above `r_+`, and rendered COMPLETELY BLACK with no error and
+    a printed `escape=0`. It now keeps `0.847` of the sky.
+  - BLOCKER: the interior rule `lambda_end > 0.6 max_lambda` was about `10x`
+    under-inclusive, admitting 644-799 texels per interior keyframe with
+    `h_max_abs` up to `1.7e10`. Both rules are replaced by the Hamiltonian
+    residual, which is zero for a null geodesic and is already computed by the
+    tracer but was never read. On healthy exterior keyframes the two criteria
+    agree set-for-set on all 4096 sampled texels.
+  - The escape-direction chart rotation had the WRONG SIGN. The
+    momentum-direction azimuth offset is `+aM/r^2` while
+    `delta = atan2(a, r) + shift(r)` is `-aM/r^2`, so rotating by `-delta` was
+    measurably worse than applying no rotation at all, at every radius tested.
+    Fixed to `+delta`: `3.251e-4 deg` against `1.333e-3` unrotated at
+    `r_escape = 200M`.
+  - The "validated to 0.0026 deg" claim could not have caught that: at
+    `r_escape = 200M` the correction is `1.3e-3 deg`, larger than the agreement
+    being measured, so the gate passes whether the rotation is right, absent,
+    or sign-flipped. The gate now runs at two escape radii and asserts
+    `rotationIsImprovement`, which is dimensionless and self-calibrating.
+  - The `2.7e-8` energy-consistency figure in the manifest and docstring was
+    never produced by any committed code, and is arithmetically impossible: a
+    float32 max-abs over `E_inf` in `[0.095, 1.905]` cannot be below one ULP at
+    `E ~ 1`, which is `2^-23 = 1.192e-7`. The measured value is `1.196e-7`,
+    exactly that floor. The gate therefore uses `4 ULP = 4.8e-7`, deliberately
+    LOOSER than the `1e-7` in the task brief, because any threshold below one
+    ULP is unachievable in principle. The archived `5.96e-8` is `2^-24`,
+    consistent with a float64-vs-float32 comparison rather than the stated one.
+  - Dead expression `np.sum(l_cov * eta_p, axis=1) * 0.0` removed; it was also
+    mathematically identical to the surviving term.
+  - `descent_radius_schedule` margins now scale with `M` (an absolute margin
+    was a ~10x weaker buffer in geometric units at `M = 10`), endpoints are
+    pinned exactly against `exp(log(r))` overshoot, and a nudge that collapses
+    two adjacent radii raises instead of silently requesting duplicate targets.
+  - The azimuth unwrap was one-sided and built for increasing azimuth, but the
+    ingoing-KS chart azimuth of a prograde rain worldline drifts NEGATIVE
+    (`|dr/dtau| > 2M/r`, so the chart twist beats the frame dragging). Now
+    unwraps in both directions.
+  - `counts` categories are now disjoint: `physicalCapture` is separated from
+    `darkPastHorizon`, `hamiltonianRejected` and `otherFailure`, so a reviewer
+    can decompose the shadow and detect a blank keyframe.
+  - `KsGpuTraceConfig` now requires `disk_r_in` to clear `r_+` by `0.25 M`,
+    because the BL azimuth/time shifts used to report a crossing diverge
+    logarithmically there and would emit a large finite garbage value.
+  - WGSL stride constants are substituted from the Python constants and pinned
+    by a test; previously the readback buffer was sized in Python while the
+    shader wrote at a hardcoded literal, so a desync would silently offset
+    every field rather than fail.
+- References: `doran2000newKerrForm` for the rain congruence (indexed with the
+  previous commit). No new sources.
+- Open issues / next steps: the tetrad is algebraic rather than parallel
+  transported, so `azimuthDeg` records a rotation of the observer position, not
+  of the frame; disk edges carry no sub-texel coverage in this path; and
+  `disk_phi_m` from the KS tracer is wrapped-then-offset rather than the
+  unwrapped integrated azimuth the BL tracer stores.
+
 ### 2026-08-05 - Kerr-Schild rain observer frame and Stage B gate
 
 - Goal: Add the first observer frame in this project that is defined on both

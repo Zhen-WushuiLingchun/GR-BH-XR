@@ -794,6 +794,84 @@ parallel transported along the worldline, so consecutive samples differ from a
 transported frame by a rotation this gate does not record. The transported-frame
 requirement above is still open for this frame.
 
+Task 8 rain-frame descent keyframe checks:
+
+Full details and measured numbers are in
+`validation/descent_keyframes/README.md`. The committed producer is
+`python -m gr_bh_xr.gpu.validate_descent_frames` (schema
+`gr-bh-xr.task8.descent_frame_validation.v1`), which is deterministic
+(Fibonacci-sphere directions, deterministic worldline integrator, no RNG) and
+fails closed: it raises rather than reporting a statistic if fewer than 256
+rays survive, if any direction is non-finite, or if more than `35%` of escaping
+rays are excluded by Hamiltonian residual.
+
+- Ray validity is decided by the Hamiltonian residual `h_max_abs`, which is
+  identically zero for a null geodesic. This is observer-radius and spin
+  independent, and it replaces two defective geometric heuristics:
+  - exterior `min_r < r_+ + 0.05` was applied regardless of the observer's own
+    radius, so any exterior keyframe with `r_obs < r_+ + 0.05` had every ray
+    reclassified as dark. The default schedule hits this - index 14 of a
+    20-keyframe `9M -> 0.75M` descent at `a/M = 0.9` lands at `r = 1.4423`,
+    exterior but only `0.0064` above `r_+` - and that keyframe rendered
+    COMPLETELY BLACK with no error and a printed `escape=0`;
+  - interior `lambda_end > 0.6 max_lambda` was about `10x` under-inclusive,
+    admitting 644-799 texels per interior keyframe with `h_max_abs` up to
+    `1.7e10`.
+  On healthy exterior keyframes the two criteria agree set-for-set on all 4096
+  sampled texels. Measured escape fraction across a full descent now runs
+  `0.986` at `9M` to `0.801` at `0.75M` with no discontinuity, and the
+  previously black keyframe keeps `0.847`.
+- The generator fails closed on a blank keyframe (`min_escape_fraction`,
+  default `0.25`) and requires exactly one worldline position per requested
+  radius.
+- Chart-direction agreement between the batched extraction and the exact
+  per-ray conversion is gated at TWO escape radii, because a single far-radius
+  threshold cannot discriminate. At `r_escape = 200M` the analytic azimuth
+  correction is about `1.3e-3 deg`, larger than the measured agreement itself,
+  so a threshold there passes whether the rotation is correct, absent, or
+  sign-flipped - which is how a sign error survived. Measured:
+
+```text
+r_escape = 200M : max 3.251e-4 deg, median 2.180e-4 deg
+   no rotation  : max 1.333e-3 deg, median 1.165e-3 deg
+r_escape =  20M : max 7.543e-2 deg, median 2.709e-2 deg
+   no rotation  : max 1.587e-1 deg, median 1.261e-1 deg
+```
+
+  The gate additionally asserts `rotationIsImprovement` - applying the rotation
+  must beat not applying it - which is dimensionless and self-calibrating. The
+  correction is `+delta` with `delta = atan2(a, r) + shift(r)`: the
+  momentum-direction azimuth offset is `+aM/r^2` while `delta` is `-aM/r^2`, so
+  rotating by `-delta` is worse than doing nothing at every radius tested.
+- The float32 observer-factor threshold is `4 ULP = 4.8e-7`, NOT `1e-7`.
+  `E_inf` spans `[0.095, 1.905]` over this direction set, so the smallest
+  representable nonzero float32 difference near `E ~ 1` is `2^-23 = 1.192e-7`:
+  **a threshold below one ULP is unachievable in principle**, and the measured
+  value `1.196e-7` is exactly that floor. The float64 path measures `6.66e-16`
+  against a `1e-14` gate. An earlier manifest claimed `2.7e-8`; that figure is
+  arithmetically impossible for a float32 max-abs over this range and was never
+  computed by any committed code, and the archived `5.96e-8` is `2^-24`,
+  consistent with a float64-vs-float32 comparison rather than the stated one.
+  Neither is used as a gate.
+- The observer-factor check is a packing identity, not an integrator test:
+  `rk4_step_ks` carries `p_t` through unmodified. Its discriminating power comes
+  from two negative controls that must fail by more than `0.1` - a permuted leg
+  order (`1.575`) and the sign form that appeared in the original prose
+  (`1.812`). The launcher's null residual `g(q, q)` measures `3.00e-15`.
+- Kerr-Schild disk-crossing recording requires `disk_r_in` to clear `r_+` by
+  `0.25 M`, because the Boyer-Lindquist azimuth and time shifts used to report
+  a crossing diverge logarithmically there and would emit a large finite
+  garbage value rather than fail.
+- The WGSL stride constants are substituted from the Python constants and
+  pinned by a test: the readback buffer is sized in Python while the shader
+  writes at the WGSL stride, so a desync would silently offset every field.
+
+Not yet claimed for the descent path: the tetrad is algebraic at each point
+rather than parallel transported, so `azimuthDeg` records a rotation of the
+observer position and not of the frame; disk edges carry no sub-texel coverage;
+and `disk_phi_m` from the KS tracer is wrapped-then-offset rather than the
+unwrapped integrated azimuth the Boyer-Lindquist tracer stores.
+
 ## Phase 6 Simplified GRRT
 
 Required checks:

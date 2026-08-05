@@ -51,6 +51,9 @@ Tracked Phase 1 validation entry points:
 - `roam_keyframes/README.md`: Task 7 finite-observer quasi-static roam
   keyframe grid, escape-radius floor, shadow solid-angle growth gate, and the
   equatorial mirror-symmetry invariant.
+- `descent_keyframes/README.md`: Task 8 rain-frame horizon-crossing descent
+  keyframes, the Hamiltonian-residual ray-validity criterion, and the
+  two-radius chart-direction and observer-factor gates.
 
 ## Phase 3 Quest PCVR Gate
 
