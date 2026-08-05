@@ -1,0 +1,33 @@
+<!--
+  Managed-code preservation for the late-bound Meta MRUK camera backend.
+
+  BlackHoleMrukCameraBridge resolves Meta.XR.PassthroughCameraAccess purely by
+  name (Type.GetType with an assembly-qualified name, then an AppDomain scan).
+  Nothing in this package references MRUK at compile time - that is deliberate,
+  so the core Kerr renderer still loads when Meta packages are absent - but it
+  also means the managed linker sees no reference and may strip the type or its
+  members under IL2CPP with managed stripping enabled.
+
+  Scope of what this actually changes:
+
+  - Windows standalone as currently configured uses Mono2x with managed
+    stripping disabled, so this file is a no-op there.
+  - The Android/Quest-native player IS configured for IL2CPP, where stripping
+    applies. This file is what keeps reflection working in that build.
+
+  `fullname` on <assembly> is the ASSEMBLY name, not the package name; MRUK
+  85.0.0 compiles Core/Scripts/PassthroughCameraAccess.cs into
+  meta.xr.mrutilitykit. `/` is the nested-type separator, so CameraIntrinsics
+  is named as PassthroughCameraAccess/CameraIntrinsics.
+
+  If MRUK is not installed the assembly simply does not resolve; Unity reports
+  an unresolved-assembly warning and continues, so this does not reintroduce a
+  hard dependency on Meta packages.
+-->
+<linker>
+  <assembly fullname="meta.xr.mrutilitykit">
+    <type fullname="Meta.XR.PassthroughCameraAccess" preserve="all" />
+    <type fullname="Meta.XR.PassthroughCameraAccess/CameraIntrinsics" preserve="all" />
+    <type fullname="Meta.XR.PassthroughCameraAccess/CameraPositionType" preserve="all" />
+  </assembly>
+</linker>

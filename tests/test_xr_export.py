@@ -1,5 +1,6 @@
 import json
 import math
+import re
 import importlib.util
 import sys
 from pathlib import Path
@@ -747,6 +748,378 @@ def test_unity_runtime_settings_and_vr_panel_are_versioned():
     assert "GetDevicePositionOrCamera" in controls
     assert "GetDeviceForwardOrCamera" in controls
     assert "UnityEngine.UI" in asmdef
+
+
+def _csharp_block(source: str, header: str) -> str:
+    """Return the brace-balanced body that follows `header`."""
+
+    start = source.index(header)
+    open_brace = source.index("{", start)
+    depth = 0
+    for index in range(open_brace, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[open_brace : index + 1]
+    raise AssertionError(f"unbalanced braces after {header!r}")
+
+
+def _enclosing_if_conditions(block: str, needle: str) -> list[str]:
+    """Conditions of every `if (...)` whose braced body contains `needle`."""
+
+    target = block.index(needle)
+    conditions: list[str] = []
+    for match in re.finditer(r"\bif\s*\(", block[:target]):
+        depth = 0
+        for close in range(match.end() - 1, len(block)):
+            if block[close] == "(":
+                depth += 1
+            elif block[close] == ")":
+                depth -= 1
+                if depth == 0:
+                    condition = block[match.end() : close]
+                    body_open = block.index("{", close)
+                    body_depth = 0
+                    for scan in range(body_open, len(block)):
+                        if block[scan] == "{":
+                            body_depth += 1
+                        elif block[scan] == "}":
+                            body_depth -= 1
+                            if body_depth == 0:
+                                if body_open < target < scan:
+                                    conditions.append(" ".join(condition.split()))
+                                break
+                    break
+    return conditions
+
+
+def test_mr_acceptance_log_requires_a_genuinely_updated_frame():
+    """The gate string may only be printed on a real delivered frame.
+
+    `IsPlaying` plus an allocated texture above 16 px proves an allocation,
+    not a photon - the same failure class as the WebCamTexture placeholder.
+    This string is treated as *the* Task 10 acceptance criterion in several
+    documents, so it must sit inside a branch whose condition names the
+    delivery latch. Checked structurally (brace-balanced method body plus its
+    enclosing `if` conditions), not by bare substring, so the pin cannot be
+    satisfied by a comment.
+    """
+
+    mr = (UNITY_RUNTIME_DIR / "BlackHoleMrPassthrough.cs").read_text(encoding="utf8")
+    bridge = (UNITY_RUNTIME_DIR / "BlackHoleMrukCameraBridge.cs").read_text(encoding="utf8")
+
+    # The latch counts distinct MRUK timestamps rather than trusting
+    # IsUpdatedThisFrame, whose readability depends on script execution order.
+    assert "public bool HasEverUpdated" in bridge
+    assert "public long DeliveredFrames" in bridge
+    assert "timestampProperty" in bridge
+    assert "deliveredFrames += 1;" in bridge
+    assert "hasEverUpdated = true;" in bridge
+    # Timestamp must be in the editor-domain contract check too, so an MRUK
+    # version bump that drops it fails loudly instead of reverting acceptance.
+    assert '"Timestamp",' in bridge
+
+    body = _csharp_block(mr, "private void UpdateCameraBringUp()")
+    acceptance = "Meta MRUK delivering calibrated"
+    assert acceptance in body, "acceptance log moved out of UpdateCameraBringUp"
+
+    conditions = _enclosing_if_conditions(body, acceptance)
+    assert conditions, "acceptance log is unconditional"
+    # HasDeliveredStream is the strengthened form of the latch (N distinct
+    # timestamps rather than one); either name satisfies "gated on delivery",
+    # but one of them must be present in an enclosing condition.
+    assert any(
+        "HasEverUpdated" in c or "HasDeliveredStream" in c for c in conditions
+    ), f"acceptance log is not gated on the delivery latch; guards were {conditions}"
+
+    # A distinguishable weaker line must exist for playing-but-not-updated, so
+    # the two states are separable in Player.log.
+    assert "awaiting a delivered stream" in body
+
+    # The acceptance line must carry calibration, not just a resolution echo.
+    accept_start = body.index(acceptance)
+    assert "DescribeCalibration()" in body[accept_start : accept_start + 500]
+
+
+def test_mr_delivery_evidence_cannot_survive_a_bridge_restart():
+    """Frame evidence is per session and must not cross a start/stop edge.
+
+    `Start()` begins with `Stop()`, but if `Stop()` leaves the latch set then
+    after one genuine frame in an earlier attempt a later
+    allocated-but-stalled camera satisfies the delivery latch immediately and
+    emits the calibrated-delivery acceptance line without a single new
+    timestamp.
+    """
+
+    bridge = (UNITY_RUNTIME_DIR / "BlackHoleMrukCameraBridge.cs").read_text(encoding="utf8")
+
+    reset = _csharp_block(bridge, "private void ResetDeliveryEvidence()")
+    for field in ("hasEverUpdated", "deliveredFrames", "distinctTimestamps", "lastTimestamp"):
+        assert field in reset, f"{field} not cleared on the session boundary"
+
+    start = _csharp_block(bridge, "public bool Start(Transform parent, int width, int height, int fps)")
+    assert "ResetDeliveryEvidence();" in start
+    stop = _csharp_block(bridge, "public void Stop()")
+    assert "ResetDeliveryEvidence();" in stop
+
+    # The acceptance rule itself must not be weakened to compensate.
+    assert "timestamp != lastTimestamp" in bridge
+
+
+def test_mr_acceptance_requires_a_stream_not_one_timestamp():
+    """One timestamp transition proves one buffer fill, not a live stream.
+
+    The bridge previously latched on the first distinct timestamp and then
+    accepted the same stale texture forever; a frozen feed is invisible in a
+    screenshot.
+    """
+
+    bridge = (UNITY_RUNTIME_DIR / "BlackHoleMrukCameraBridge.cs").read_text(encoding="utf8")
+    mr = (UNITY_RUNTIME_DIR / "BlackHoleMrPassthrough.cs").read_text(encoding="utf8")
+
+    assert "public const int RequiredDistinctTimestamps = 3;" in bridge
+    assert "public bool HasDeliveredStream =>" in bridge
+    assert "distinctTimestamps >= RequiredDistinctTimestamps" in bridge
+    assert "public const float StaleAfterSeconds" in bridge
+    assert "public bool IsStreamStale =>" in bridge
+    assert "public float DeliveryAgeSeconds" in bridge
+
+    # Acceptance must be gated on the STREAM predicate, not the first-frame
+    # latch. Checked structurally so a comment cannot satisfy it.
+    body = _csharp_block(mr, "private void UpdateCameraBringUp()")
+    conditions = _enclosing_if_conditions(body, "Meta MRUK delivering calibrated")
+    assert any("HasDeliveredStream" in c for c in conditions), conditions
+
+    # A post-acceptance stall must be reported.
+    assert "IsStreamStale" in body
+    assert "STALE MRUK stream" in body
+
+    # Freshness and sample count must reach the in-headset status too.
+    status = _csharp_block(mr, "public string StatusText()")
+    assert "DistinctTimestamps" in status
+    assert "DeliveryAgeSeconds" in status or "age" in status
+
+
+def test_mr_bridge_replacement_never_leaves_two_active_camera_hosts():
+    """`Destroy` is deferred to end-of-frame, so the old host must be shut
+    down synchronously or two PassthroughCameraAccess components run at once.
+    """
+
+    bridge = (UNITY_RUNTIME_DIR / "BlackHoleMrukCameraBridge.cs").read_text(encoding="utf8")
+
+    stop = _csharp_block(bridge, "public void Stop()")
+    assert "host.SetActive(false);" in stop
+    assert "behaviour.enabled = false;" in stop
+    # Ordering: deactivate BEFORE scheduling destruction.
+    assert stop.index("host.SetActive(false);") < stop.index("UnityEngine.Object.Destroy(host);")
+    assert stop.index("behaviour.enabled = false;") < stop.index("UnityEngine.Object.Destroy(host);")
+
+
+def test_mr_acceptance_records_corroborating_device_evidence():
+    """A ticking timestamp can still be MRUK's mock camera.
+
+    MrukConfig.disablePcaMockFallback is left false and the package exposes no
+    supported way to turn it off, so the acceptance string alone must never
+    upgrade Task 10 to device-verified RGB.
+    """
+
+    mr = (UNITY_RUNTIME_DIR / "BlackHoleMrPassthrough.cs").read_text(encoding="utf8")
+
+    assert "public static string DeviceEvidenceText()" in mr
+    evidence = _csharp_block(mr, "public static string DeviceEvidenceText()")
+    assert "GetSystemHeadsetType" in evidence
+    assert "OpenXRRuntime" in evidence
+    assert "CameraExtensionStateText()" in evidence
+    assert "mockFallback=NOT-DISABLEABLE" in evidence
+    assert "deviceVerified=NO" in evidence
+    # No compile-time Meta dependency may be introduced for this.
+    assert "using OVRPlugin" not in mr
+    assert 'GetType("OVRPlugin", false)' in evidence
+
+    # The evidence must be attached to the acceptance line itself.
+    body = _csharp_block(mr, "private void UpdateCameraBringUp()")
+    accept_at = body.index("Meta MRUK delivering calibrated")
+    assert "DeviceEvidenceText()" in body[accept_at : accept_at + 600]
+
+
+def test_mr_bridge_logs_full_calibration_and_resolves_type_robustly():
+    """validation_targets.md demands intrinsics, pose and backend in the gate
+    record; all of it was computed and discarded into a Vector4.
+    """
+
+    bridge = (UNITY_RUNTIME_DIR / "BlackHoleMrukCameraBridge.cs").read_text(encoding="utf8")
+
+    describe = _csharp_block(bridge, "public string DescribeCalibration()")
+    for field in ("FocalLength", "PrincipalPoint", "SensorResolution", "LensOffset"):
+        assert field in describe, f"{field} missing from DescribeCalibration"
+    assert "CurrentResolution" in describe or "current=" in describe
+    assert "pose.position" in describe
+    assert "pose.rotation" in describe
+    assert "poseSource=" in describe
+    assert "backend=" in describe
+    assert "proj=" in describe
+
+    # Assembly-qualified lookup FIRST, then the AppDomain scan, and the route
+    # that won must be recorded.
+    find = _csharp_block(bridge, "private static Type FindAccessType()")
+    assert "Type.GetType(" in find
+    assert "AppDomain.CurrentDomain.GetAssemblies()" in find
+    assert find.index("Type.GetType(") < find.index("AppDomain.CurrentDomain.GetAssemblies()")
+    assert 'AccessTypeQualifiedName =\n            "Meta.XR.PassthroughCameraAccess, meta.xr.mrutilitykit"' in bridge
+    assert "resolvedVia" in find
+
+
+def test_mr_gate_mode_can_forbid_the_legacy_webcam_fallback():
+    """A gate build must be able to run MRUK-only.
+
+    The 10 s ladder destroyed the supported path mid-gate with no way to
+    disable it, so an ambiguous run was the default outcome. Both fall-through
+    sites have to honour the flag.
+    """
+
+    mr = (UNITY_RUNTIME_DIR / "BlackHoleMrPassthrough.cs").read_text(encoding="utf8")
+
+    # Default false = MRUK-only. An implicit default is the safe one here.
+    assert "[SerializeField] private bool allowLegacyFallback;" in mr
+    assert "officialBackendTimeoutSeconds = 30.0f" in mr
+
+    preferred = _csharp_block(mr, "private bool TryStartPreferredCamera()")
+    assert "allowLegacyFallback" in preferred
+    guards = _enclosing_if_conditions(preferred, "return TryStartLegacyCamera();")
+    assert any("allowLegacyFallback" in g for g in guards) or "!allowLegacyFallback" in preferred, (
+        f"legacy fallback reachable without the flag; guards were {guards}"
+    )
+
+    bringup = _csharp_block(mr, "private void UpdateCameraBringUp()")
+    assert "allowLegacyFallback" in bringup
+    # The timeout branch may guard either by nesting the fallback inside
+    # `if (allowLegacyFallback)` or by an early return on its negation.
+    # Accept both, but require one of them: a bare mention of the field
+    # anywhere in the method would not prove the fallback is unreachable.
+    legacy_at = bringup.index("trying legacy WebCamTexture")
+    timeout_guards = _enclosing_if_conditions(bringup, "trying legacy WebCamTexture")
+    nested = any("allowLegacyFallback" in g for g in timeout_guards)
+    early_return = False
+    guard_at = bringup.find("if (!allowLegacyFallback)")
+    if 0 <= guard_at < legacy_at:
+        early_return = "return;" in bringup[guard_at:legacy_at]
+    assert nested or early_return, (
+        f"legacy fallback reachable at timeout without the flag; "
+        f"guards were {timeout_guards}"
+    )
+
+    # A stalled session must leave continuous evidence, not one line at timeout.
+    assert "ThrottledWaitingLine" in bringup
+    assert "mrukCamera.LastError" in mr
+
+
+def test_mr_records_camera_extension_enabled_vs_available():
+    """The extension was last observed AVAILABLE but not ENABLED.
+
+    That distinction is the single most decisive fact about a session and it
+    must reach Player.log without retrieving a JSON file off the device. The
+    pre-port pin matched only a doc comment.
+    """
+
+    mr = (UNITY_RUNTIME_DIR / "BlackHoleMrPassthrough.cs").read_text(encoding="utf8")
+    probe = (UNITY_RUNTIME_DIR / "GRBHXRXrCapabilityProbe.cs").read_text(encoding="utf8")
+    depth = (UNITY_RUNTIME_DIR / "GRBHXREnvironmentDepthFeature.cs").read_text(encoding="utf8")
+
+    extension = "XR_METAX1_passthrough_camera_data"
+
+    # Fail-closed against a comment-only match.
+    code_only = "\n".join(
+        line for line in mr.splitlines()
+        if not line.lstrip().startswith(("//", "/*", "*", "///"))
+    )
+    assert "IsExtensionEnabled(CameraExtensionName)" in code_only
+    assert f'CameraExtensionName = "{extension}"' in code_only
+    assert "GetAvailableExtensions()" in code_only
+
+    set_mr = _csharp_block(mr, "public void SetMr(bool enabledValue)")
+    assert "CameraExtensionStateText()" in set_mr
+    assert "EnsurePassthroughStarted()" in set_mr
+
+    for key in ("cameraExtensionEnabled", "cameraExtensionAvailable", "mrukTypePresent"):
+        assert rf'\"{key}\"' in probe, key
+    assert "BlackHoleMrPassthrough.ProbeOfficialCameraBackend" in probe
+    assert "cameraExt=" in probe
+
+    # P1-7 again: never append the camera extension to the depth feature.
+    assert extension not in depth
+
+
+def test_capability_probe_json_is_escaped():
+    """Camera friendly names are vendor-controlled and routinely contain
+    quotes and backslashes; one corrupted the artifact the gate depends on.
+    """
+
+    probe = (UNITY_RUNTIME_DIR / "GRBHXRXrCapabilityProbe.cs").read_text(encoding="utf8")
+
+    assert "private static string Esc(string value)" in probe
+    esc = _csharp_block(probe, "private static string Esc(string value)")
+    for pair in ('case \'\\\\\':', 'case \'"\':', "case '\\n':", "case '\\r':", "case '\\t':"):
+        assert pair in esc, pair
+    assert '\\\\u' in esc  # control chars below 0x20
+
+    # Every externally-sourced value must go through it.
+    assert "Esc(cam.name)" in probe
+    assert "Esc(loaderName)" in probe
+    assert "Esc(OpenXRRuntime.name)" in probe
+    assert "Esc(ext)" in probe
+    # ...and the raw interpolations must be gone.
+    assert '\\"{cam.name}\\"' not in probe
+    assert '\\"{loaderName}\\"' not in probe
+
+
+def test_mr_status_is_visible_in_headset_and_types_are_preserved():
+    """Diagnosing MR must not require quitting to read Player.log."""
+
+    panel = (UNITY_RUNTIME_DIR / "BlackHoleLensSettingsPanel.cs").read_text(encoding="utf8")
+    mr = (UNITY_RUNTIME_DIR / "BlackHoleMrPassthrough.cs").read_text(encoding="utf8")
+
+    assert "BlackHoleMrPassthrough.Ensure().StatusText()" in panel
+    status = _csharp_block(mr, "public string StatusText()")
+    assert "n=" in status
+    assert "ext=" in status
+
+    # Runtime preservation without a compile-time MRUK dependency.
+    link = (UNITY_RUNTIME_DIR / "link.xml").read_text(encoding="utf8")
+    assert '<assembly fullname="meta.xr.mrutilitykit">' in link
+    assert '<type fullname="Meta.XR.PassthroughCameraAccess" preserve="all" />' in link
+    assert "PassthroughCameraAccess/CameraIntrinsics" in link
+    asmdef = (UNITY_RUNTIME_DIR / "GRBHXR.asmdef").read_text(encoding="utf8")
+    assert "meta.xr" not in asmdef.lower()
+
+
+def test_setup_reports_meta_xr_feature_state_without_changing_it():
+    """MetaXRFeature gates OVRPlugin init, which gates MRUK's OpenXR init.
+
+    It is disabled for Standalone in the formal project, which no
+    repository-side change can work around - but enabling it adds ~95
+    extensions and can perturb the working depth path, so the setup helper
+    makes the state explicit and auditable rather than flipping it silently.
+    """
+
+    setup = (UNITY_EDITOR_DIR / "GRBHXRQuestPcvrSetup.cs").read_text(encoding="utf8")
+
+    assert "ReportMetaXrFeature" in setup
+    assert "MetaXRFeature=disabled(reported,notChanged)" in setup
+    assert "MetaXRFeature=absent" in setup
+    assert "MetaXRFeature=enabled" in setup
+    # Reflection only: no compile-time Meta dependency may be introduced.
+    # The assembly is Oculus.VR (the package-root asmdef). Meta.XR.SDK.Core is
+    # the PACKAGE name and would never resolve; the editor's AppDomain
+    # fallback masks that mistake, so pin the correct string explicitly.
+    assert '"Meta.XR.MetaXRFeature, Oculus.VR"' in setup
+    assert "Meta.XR.SDK.Core" not in setup
+    assert "using Meta." not in setup
+    # It must not enable the feature.
+    report = _csharp_block(setup, "private static string ReportMetaXrFeature(OpenXRSettings settings)")
+    assert "feature.enabled = true" not in report
+    assert "EnableFeature(" not in report
 
 
 def test_unity_mr_passthrough_capability_baseline():

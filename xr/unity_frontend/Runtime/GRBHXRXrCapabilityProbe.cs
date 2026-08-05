@@ -75,28 +75,41 @@ namespace GRBHXR
                 .ToArray();
             WebCamDevice[] cameras = WebCamTexture.devices;
 
+            // Available vs enabled is the decisive discriminator for Task 10
+            // and was previously written to the file but never evaluated, so
+            // reading it meant retrieving the artifact off the device.
+            string cameraExtensionState = BlackHoleMrPassthrough.CameraExtensionStateText();
+            bool mrukTypePresent = BlackHoleMrPassthrough.ProbeOfficialCameraBackend(out string mrukReason);
+
             var json = new StringBuilder();
             json.Append("{\n");
-            json.Append($"  \"probeTimeUtc\": \"{DateTime.UtcNow:O}\",\n");
-            json.Append($"  \"xrLoader\": \"{loaderName}\",\n");
-            json.Append($"  \"openXrRuntime\": \"{OpenXRRuntime.name}\",\n");
-            json.Append($"  \"openXrRuntimeVersion\": \"{OpenXRRuntime.version}\",\n");
-            json.Append($"  \"openXrApiVersion\": \"{OpenXRRuntime.apiVersion}\",\n");
-            json.Append($"  \"openXrPluginVersion\": \"{OpenXRRuntime.pluginVersion}\",\n");
+            json.Append($"  \"probeTimeUtc\": \"{Esc(DateTime.UtcNow.ToString("O"))}\",\n");
+            json.Append($"  \"xrLoader\": \"{Esc(loaderName)}\",\n");
+            json.Append($"  \"openXrRuntime\": \"{Esc(OpenXRRuntime.name)}\",\n");
+            json.Append($"  \"openXrRuntimeVersion\": \"{Esc(OpenXRRuntime.version)}\",\n");
+            json.Append($"  \"openXrApiVersion\": \"{Esc(OpenXRRuntime.apiVersion)}\",\n");
+            json.Append($"  \"openXrPluginVersion\": \"{Esc(OpenXRRuntime.pluginVersion)}\",\n");
+            json.Append($"  \"cameraExtension\": \"{Esc(BlackHoleMrPassthrough.CameraExtensionName)}\",\n");
+            json.Append($"  \"cameraExtensionState\": \"{Esc(cameraExtensionState)}\",\n");
+            json.Append($"  \"cameraExtensionEnabled\": {(cameraExtensionState == "enabled" ? "true" : "false")},\n");
+            json.Append($"  \"cameraExtensionAvailable\": {(cameraExtensionState == "enabled" || cameraExtensionState == "available" ? "true" : "false")},\n");
+            json.Append($"  \"mrukTypePresent\": {(mrukTypePresent ? "true" : "false")},\n");
+            json.Append($"  \"mrukTypeReason\": \"{Esc(mrukReason)}\",\n");
+            json.Append($"  \"mrukTypeResolvedVia\": \"{Esc(BlackHoleMrukCameraBridge.ResolvedVia)}\",\n");
             json.Append("  \"mrRelevantExtensions\": [\n    ");
-            json.Append(string.Join(",\n    ", mrRelevant.Select(ext => $"\"{ext}\"")));
+            json.Append(string.Join(",\n    ", mrRelevant.Select(ext => $"\"{Esc(ext)}\"")));
             json.Append("\n  ],\n");
             json.Append("  \"enabledExtensions\": [\n    ");
-            json.Append(string.Join(",\n    ", enabled.Select(ext => $"\"{ext}\"")));
+            json.Append(string.Join(",\n    ", enabled.Select(ext => $"\"{Esc(ext)}\"")));
             json.Append("\n  ],\n");
             json.Append("  \"cameraDevices\": [\n    ");
             json.Append(string.Join(
                 ",\n    ",
-                cameras.Select(cam => $"{{\"name\": \"{cam.name}\", \"frontFacing\": {(cam.isFrontFacing ? "true" : "false")}}}")
+                cameras.Select(cam => $"{{\"name\": \"{Esc(cam.name)}\", \"frontFacing\": {(cam.isFrontFacing ? "true" : "false")}}}")
             ));
             json.Append("\n  ],\n");
             json.Append("  \"availableExtensions\": [\n    ");
-            json.Append(string.Join(",\n    ", available.Select(ext => $"\"{ext}\"")));
+            json.Append(string.Join(",\n    ", available.Select(ext => $"\"{Esc(ext)}\"")));
             json.Append("\n  ]\n");
             json.Append("}\n");
 
@@ -104,8 +117,50 @@ namespace GRBHXR
             System.IO.File.WriteAllText(path, json.ToString());
             Debug.Log(
                 $"GR-BH-XR capability probe: loader={loaderName}, runtime={OpenXRRuntime.name} {OpenXRRuntime.version}, " +
-                $"extensions={available.Length} (MR-relevant {mrRelevant.Length}), cameras={cameras.Length} -> {path}"
+                $"extensions={available.Length} (MR-relevant {mrRelevant.Length}), cameras={cameras.Length}, " +
+                $"cameraExt={cameraExtensionState}, mruk={(mrukTypePresent ? "present" : "absent")} ({mrukReason}) -> {path}"
             );
+        }
+
+        /// <summary>
+        /// Minimal JSON string escaping. The probe builds its document by
+        /// concatenation, and several interpolated values are outside this
+        /// project's control - DirectShow camera friendly names in particular
+        /// routinely contain quotes, backslashes and non-ASCII. One such
+        /// character silently corrupted the artifact the device gate depends
+        /// on.
+        /// </summary>
+        private static string Esc(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+            var sb = new StringBuilder(value.Length + 8);
+            foreach (char c in value)
+            {
+                switch (c)
+                {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '"': sb.Append("\\\""); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    case '\b': sb.Append("\\b"); break;
+                    case '\f': sb.Append("\\f"); break;
+                    default:
+                        if (c < 0x20)
+                        {
+                            sb.Append("\\u").Append(((int)c).ToString("x4"));
+                        }
+                        else
+                        {
+                            sb.Append(c);
+                        }
+                        break;
+                }
+            }
+            return sb.ToString();
         }
     }
 }

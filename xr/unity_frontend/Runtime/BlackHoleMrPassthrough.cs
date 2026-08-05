@@ -26,7 +26,17 @@ namespace GRBHXR
         [SerializeField] private int requestedFps = 30;
         [SerializeField] private float horizontalFovDeg = 82.0f;
         [SerializeField] private bool preferOfficialMetaCamera = true;
-        [SerializeField] private float officialBackendTimeoutSeconds = 10.0f;
+        // 10 s was shorter than a plausible first-frame latency over Link, and
+        // the timeout destroyed the supported path mid-gate. 30 s is the gate
+        // default; raise it further from the inspector if a device needs it.
+        [SerializeField] private float officialBackendTimeoutSeconds = 30.0f;
+        // MRUK-only gate mode. When false (the default) the legacy Windows
+        // WebCamTexture path is never opened, so a gate run cannot silently
+        // leave the supported backend and produce the ambiguous evidence that
+        // has cost several sessions. The legacy path also opens the same
+        // physical camera, so falling back may poison a later MRUK start
+        // within the same session.
+        [SerializeField] private bool allowLegacyFallback;
         // Outside the camera cone: 0 = black ("no data"), 1 = star field,
         // 2 = clamp to the frame edge (full-view passthrough feel; the
         // stretch band is a documented display fill, not data).
@@ -62,6 +72,45 @@ namespace GRBHXR
         private int attemptIndex = -1;
         private float attemptStartTime;
         private bool frameLocked;
+        private float lastWaitingLineTime = -100.0f;
+        private string lastResolutionText = "-";
+
+        /// <summary>
+        /// OpenXR extension that carries passthrough camera data. The last
+        /// device probe recorded it as AVAILABLE but NOT ENABLED, and nothing
+        /// in this repository enables it, so the distinction has to reach the
+        /// log rather than only the JSON artifact.
+        /// </summary>
+        public const string CameraExtensionName = "XR_METAX1_passthrough_camera_data";
+
+        /// <summary>
+        /// "enabled", "available", or "absent" for the camera extension.
+        /// Wrapped because OpenXRRuntime throws when no XR loader is active
+        /// (editor play without a headset), and a diagnostic must never be
+        /// the thing that breaks the run it is diagnosing.
+        /// </summary>
+        public static string CameraExtensionStateText()
+        {
+            try
+            {
+                if (UnityEngine.XR.OpenXR.OpenXRRuntime.IsExtensionEnabled(CameraExtensionName))
+                {
+                    return "enabled";
+                }
+                foreach (string name in UnityEngine.XR.OpenXR.OpenXRRuntime.GetAvailableExtensions())
+                {
+                    if (name == CameraExtensionName)
+                    {
+                        return "available";
+                    }
+                }
+                return "absent";
+            }
+            catch (Exception)
+            {
+                return "unknown";
+            }
+        }
         private static readonly Vector3Int[] AttemptModes =
         {
             new Vector3Int(0, 0, 0),        // device default
@@ -117,6 +166,14 @@ namespace GRBHXR
                 {
                     depthFeature.EnsurePassthroughStarted();
                 }
+                // Record enabled-vs-available once per MR enable. Without
+                // this the operator has to retrieve xr_capability_probe.json
+                // from persistentDataPath to learn the single most decisive
+                // fact about the session.
+                Debug.Log(
+                    $"GR-BH-XR MR: {CameraExtensionName} is {CameraExtensionStateText()}; " +
+                    $"MRUK type route={BlackHoleMrukCameraBridge.ResolvedVia}."
+                );
                 if (cameraBackend == CameraBackend.None && !TryStartPreferredCamera())
                 {
                     Debug.LogWarning(
@@ -180,9 +237,24 @@ namespace GRBHXR
             }
             if (cameraBackend == CameraBackend.OfficialMetaMruk)
             {
-                return frameLocked
-                    ? "MR passthrough: Meta MRUK calibrated feed."
-                    : $"MR passthrough: Meta MRUK waiting ({mrukCamera?.LastError}).";
+                // Compact enough to read in-headset. Everything here is what
+                // an operator needs to tell "delivering" from "allocated":
+                // the delivered-frame count, the negotiated resolution, and
+                // whether the camera OpenXR extension is enabled or merely
+                // available.
+                int stamps = mrukCamera != null ? mrukCamera.DistinctTimestamps : 0;
+                string ext = CameraExtensionStateText();
+                if (frameLocked)
+                {
+                    float age = mrukCamera != null ? mrukCamera.DeliveryAgeSeconds : -1.0f;
+                    string freshness = mrukCamera != null && mrukCamera.IsStreamStale
+                        ? $"STALE {age:F1}s"
+                        : $"age {age:F2}s";
+                    return $"MRUK feed  n={stamps}  {freshness}  {lastResolutionText}  ext={ext}";
+                }
+                return
+                    $"MRUK waiting  n={stamps}/{BlackHoleMrukCameraBridge.RequiredDistinctTimestamps}" +
+                    $"  ext={ext}  ({mrukCamera?.LastError})";
             }
             return $"MR passthrough: LEGACY {cameraTexture?.deviceName} {cameraTexture?.width}x{cameraTexture?.height}.";
         }
@@ -216,7 +288,90 @@ namespace GRBHXR
                 );
             }
 
+            if (!allowLegacyFallback)
+            {
+                Debug.LogWarning(
+                    "GR-BH-XR MR: MRUK-only mode; the legacy WebCamTexture fallback is " +
+                    "disabled. Set allowLegacyFallback to use the diagnostic path."
+                );
+                return false;
+            }
             return TryStartLegacyCamera();
+        }
+
+        /// <summary>
+        /// Corroborating device evidence for the acceptance record.
+        ///
+        /// This exists because a ticking timestamp is NOT sufficient on its
+        /// own. MRUK leaves MrukConfig.disablePcaMockFallback at its default
+        /// false and ships a mock camera backend, and the package exposes no
+        /// supported way for an application to disable that fallback before
+        /// native context creation. A mock feed would satisfy IsPlaying, a
+        /// non-null texture, parseable intrinsics AND advancing timestamps.
+        /// So the gate record also carries the active OpenXR runtime and the
+        /// reported headset type, and the caller additionally logs the lens
+        /// offset via DescribeCalibration. None of this makes the acceptance
+        /// string proof of device-verified RGB by itself: a real device log
+        /// showing the OpenXR camera backend opening is still required.
+        ///
+        /// OVRPlugin is reached by reflection so the package keeps no
+        /// compile-time dependency on Meta assemblies.
+        /// </summary>
+        public static string DeviceEvidenceText()
+        {
+            string runtime;
+            try
+            {
+                runtime = $"{UnityEngine.XR.OpenXR.OpenXRRuntime.name} {UnityEngine.XR.OpenXR.OpenXRRuntime.version}";
+            }
+            catch (Exception)
+            {
+                runtime = "unavailable";
+            }
+
+            string headset = "unknown";
+            try
+            {
+                Type ovrPlugin = null;
+                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    ovrPlugin = assembly.GetType("OVRPlugin", false);
+                    if (ovrPlugin != null)
+                    {
+                        break;
+                    }
+                }
+                var method = ovrPlugin?.GetMethod(
+                    "GetSystemHeadsetType",
+                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public
+                );
+                object value = method?.Invoke(null, null);
+                headset = value != null ? value.ToString() : "OVRPlugin absent";
+            }
+            catch (Exception ex)
+            {
+                headset = $"query failed: {ex.GetType().Name}";
+            }
+
+            return
+                $"evidence: openXrRuntime=\"{runtime}\" headsetType={headset} " +
+                $"cameraExtension={CameraExtensionStateText()} " +
+                "mockFallback=NOT-DISABLEABLE(MRUK default) " +
+                "deviceVerified=NO(requires a real device log showing the OpenXR camera backend opened)";
+        }
+
+        /// <summary>
+        /// 1 Hz throttle so a stalled bring-up leaves continuous evidence in
+        /// Player.log without flooding it at frame rate.
+        /// </summary>
+        private void ThrottledWaitingLine(string message)
+        {
+            if (Time.realtimeSinceStartup - lastWaitingLineTime < 1.0f)
+            {
+                return;
+            }
+            lastWaitingLineTime = Time.realtimeSinceStartup;
+            Debug.Log(message);
         }
 
         private bool TryStartLegacyCamera()
@@ -271,12 +426,44 @@ namespace GRBHXR
             {
                 if (mrukCamera != null && mrukCamera.TryGetFrame(out BlackHoleMrukCameraBridge.Frame frame))
                 {
-                    if (!frameLocked)
+                    // ACCEPTANCE. Gated on HasEverUpdated, which latches only
+                    // when MRUK's own Timestamp advances. A session that is
+                    // playing with an allocated-but-never-updated texture at
+                    // the requested resolution reproduces the exact failure
+                    // class of the 16-px WebCamTexture placeholder, and this
+                    // string is treated as *the* Task 10 criterion in five
+                    // documents - so it must not fire on an allocation.
+                    lastResolutionText = $"{frame.resolution.x}x{frame.resolution.y}";
+                    if (!frameLocked && mrukCamera.HasDeliveredStream)
                     {
                         frameLocked = true;
                         Debug.Log(
                             $"GR-BH-XR MR: Meta MRUK delivering calibrated " +
-                            $"{frame.resolution.x}x{frame.resolution.y} camera frames."
+                            $"{frame.resolution.x}x{frame.resolution.y} camera frames " +
+                            $"(distinctTimestamps={mrukCamera.DistinctTimestamps}). " +
+                            mrukCamera.DescribeCalibration() + " " + DeviceEvidenceText()
+                        );
+                    }
+                    else if (!frameLocked)
+                    {
+                        // Deliberately DIFFERENT, weaker strings, so playing /
+                        // one-fill / streaming are separable in Player.log.
+                        ThrottledWaitingLine(
+                            "GR-BH-XR MR: Meta MRUK session playing, awaiting a delivered stream " +
+                            $"({frame.resolution.x}x{frame.resolution.y}, distinctTimestamps=" +
+                            $"{mrukCamera.DistinctTimestamps}/{BlackHoleMrukCameraBridge.RequiredDistinctTimestamps})."
+                        );
+                    }
+                    else if (mrukCamera.IsStreamStale)
+                    {
+                        // Accepted, then delivery stopped. This must be visible:
+                        // the texture stays bound and the image simply freezes,
+                        // which looks like a working feed in a screenshot.
+                        ThrottledWaitingLine(
+                            "GR-BH-XR MR: STALE MRUK stream - no new timestamp for " +
+                            $"{mrukCamera.DeliveryAgeSeconds:F1}s " +
+                            $"(accepted after {mrukCamera.DistinctTimestamps} timestamps). " +
+                            "Any capture taken now shows a frozen frame."
                         );
                     }
                     return;
@@ -284,10 +471,28 @@ namespace GRBHXR
 
                 if (Time.realtimeSinceStartup - attemptStartTime < officialBackendTimeoutSeconds)
                 {
+                    // A stalled session used to leave exactly one message, at
+                    // timeout. Emit LastError continuously instead.
+                    ThrottledWaitingLine(
+                        "GR-BH-XR MR: waiting for Meta MRUK first frame " +
+                        $"({(mrukCamera != null ? mrukCamera.LastError : "bridge missing")})."
+                    );
                     return;
                 }
 
                 string reason = mrukCamera != null ? mrukCamera.LastError : "bridge missing";
+                if (!allowLegacyFallback)
+                {
+                    // MRUK-only: keep the supported backend alive and keep
+                    // waiting rather than destroying it and producing
+                    // ambiguous legacy evidence.
+                    ThrottledWaitingLine(
+                        $"GR-BH-XR MR: Meta MRUK delivered no updated frame within " +
+                        $"{officialBackendTimeoutSeconds:F1}s ({reason}). MRUK-only mode: " +
+                        "the legacy WebCamTexture fallback is disabled, still waiting."
+                    );
+                    return;
+                }
                 Debug.LogWarning(
                     $"GR-BH-XR MR: Meta MRUK delivered no frame within " +
                     $"{officialBackendTimeoutSeconds:F1}s ({reason}); trying legacy WebCamTexture."
@@ -354,11 +559,20 @@ namespace GRBHXR
 
         private void Update()
         {
-            if (!mrEnabled || targetMaterial == null || cameraBackend == CameraBackend.None)
+            if (!mrEnabled || cameraBackend == CameraBackend.None)
             {
                 return;
             }
+            // Bring-up diagnostics run BEFORE the material guard. Previously a
+            // scene without the sky shell (the only thing ResolveMaterial can
+            // find a material through) logged "MR ON" and then produced no
+            // further output at all - the same silent signature that has cost
+            // a debugging round before.
             UpdateCameraBringUp();
+            if (targetMaterial == null)
+            {
+                return;
+            }
 
             Camera head = Camera.main;
             if (head == null)

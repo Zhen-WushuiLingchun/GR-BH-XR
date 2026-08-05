@@ -22,9 +22,19 @@ namespace GRBHXR
             // v = projection.w + projection.y * (y / z)
             public Vector4 projection;
             public bool updatedThisFrame;
+            public long deliveredFrames;
+            public DateTime timestamp;
         }
 
         private const string AccessTypeName = "Meta.XR.PassthroughCameraAccess";
+        // Assembly-qualified fast path. MRUK 85.0.0 compiles
+        // Core/Scripts/PassthroughCameraAccess.cs into meta.xr.mrutilitykit,
+        // whose asmdef has empty includePlatforms and no defineConstraints, so
+        // no platform or define can suppress it. Resolving by name first
+        // removes the dependency on the type happening to be reachable through
+        // an AppDomain walk in a built player.
+        private const string AccessTypeQualifiedName =
+            "Meta.XR.PassthroughCameraAccess, meta.xr.mrutilitykit";
 
         private Type accessType;
         private GameObject host;
@@ -33,12 +43,68 @@ namespace GRBHXR
         private PropertyInfo isUpdatedProperty;
         private PropertyInfo currentResolutionProperty;
         private PropertyInfo intrinsicsProperty;
+        private PropertyInfo timestampProperty;
         private MethodInfo getTextureMethod;
         private MethodInfo getCameraPoseMethod;
         private string lastError = "not started";
+        private static string resolvedVia = "unresolved";
+
+        // Delivered-frame evidence. `IsPlaying` plus an allocated texture at
+        // the requested resolution proves an allocation, not a photon: it is
+        // the same failure class as the 16-px WebCamTexture placeholder one
+        // level up. MRUK publishes a real monotonic clock (Timestamp, written
+        // in the same block that stamps the update frame), so counting
+        // distinct timestamps is order-independent evidence of delivery,
+        // unlike a boolean latch on IsUpdatedThisFrame which depends on
+        // script execution order.
+        private bool hasEverUpdated;
+        private long deliveredFrames;
+        private int distinctTimestamps;
+        private DateTime lastTimestamp = DateTime.MinValue;
+        private float lastDeliveryRealtime = -1.0f;
+
+        /// <summary>
+        /// Distinct MRUK timestamps required before the calibrated-delivery
+        /// acceptance line may be emitted. One transition proves a single
+        /// buffer was populated once; it does not prove a live stream, and the
+        /// previous code latched on the first transition and then accepted the
+        /// same stale texture forever. At the requested 30 fps, three distinct
+        /// timestamps is ~0.1 s of real streaming and still lands well inside
+        /// any plausible bring-up window.
+        /// </summary>
+        public const int RequiredDistinctTimestamps = 3;
+
+        /// <summary>
+        /// Seconds without a new timestamp after acceptance before the stream
+        /// is reported stale. Generous against a 30 fps nominal rate so a
+        /// transient hitch does not trip it, tight enough that a dead feed
+        /// cannot masquerade as a live one for a whole capture.
+        /// </summary>
+        public const float StaleAfterSeconds = 2.0f;
 
         public bool IsRunning => access != null;
         public string LastError => lastError;
+        public bool HasEverUpdated => hasEverUpdated;
+        public long DeliveredFrames => deliveredFrames;
+        public int DistinctTimestamps => distinctTimestamps;
+        public DateTime LastTimestamp => lastTimestamp;
+        public static string ResolvedVia => resolvedVia;
+
+        /// <summary>
+        /// Delivery is accepted only after several DISTINCT timestamps.
+        /// `IsPlaying` plus an allocated texture proves an allocation; one
+        /// timestamp transition proves one fill; only repeated transitions
+        /// prove a stream.
+        /// </summary>
+        public bool HasDeliveredStream => distinctTimestamps >= RequiredDistinctTimestamps;
+
+        /// <summary>Seconds since the last distinct timestamp, or -1.</summary>
+        public float DeliveryAgeSeconds =>
+            lastDeliveryRealtime < 0.0f ? -1.0f : Time.realtimeSinceStartup - lastDeliveryRealtime;
+
+        /// <summary>True once delivery has succeeded and then stopped.</summary>
+        public bool IsStreamStale =>
+            HasDeliveredStream && DeliveryAgeSeconds > StaleAfterSeconds;
 
         public static bool IsAvailable(out string reason)
         {
@@ -65,6 +131,12 @@ namespace GRBHXR
         public bool Start(Transform parent, int width, int height, int fps)
         {
             Stop();
+            // Delivery evidence is PER SESSION. Without this reset a bridge
+            // that saw one genuine frame in an earlier attempt would satisfy
+            // HasEverUpdated immediately on restart, and an
+            // allocated-but-stalled camera would emit the calibrated-delivery
+            // acceptance line without a single new timestamp.
+            ResetDeliveryEvidence();
             accessType = FindAccessType();
             if (accessType == null)
             {
@@ -146,6 +218,23 @@ namespace GRBHXR
                 object intrinsics = intrinsicsProperty.GetValue(access);
                 Vector4 projection = ProjectionFromIntrinsics(intrinsics, resolution);
                 bool updated = (bool)isUpdatedProperty.GetValue(access);
+                // Count distinct timestamps, not IsUpdatedThisFrame ticks.
+                // PassthroughCameraAccess runs at [DefaultExecutionOrder(-100)]
+                // and this component at 0, so the boolean happens to be
+                // readable - but that is an accident of ordering, not a
+                // contract. A changed timestamp is unambiguous delivery.
+                DateTime timestamp = (DateTime)timestampProperty.GetValue(access);
+                if (timestamp != lastTimestamp && timestamp != default)
+                {
+                    lastTimestamp = timestamp;
+                    lastDeliveryRealtime = Time.realtimeSinceStartup;
+                    deliveredFrames += 1;
+                    hasEverUpdated = true;
+                    if (distinctTimestamps < int.MaxValue)
+                    {
+                        distinctTimestamps += 1;
+                    }
+                }
                 frame = new Frame
                 {
                     texture = texture,
@@ -153,6 +242,8 @@ namespace GRBHXR
                     resolution = resolution,
                     projection = projection,
                     updatedThisFrame = updated,
+                    deliveredFrames = deliveredFrames,
+                    timestamp = timestamp,
                 };
                 lastError = string.Empty;
                 return true;
@@ -168,11 +259,35 @@ namespace GRBHXR
         {
             if (host != null)
             {
+                // Destroy is deferred to end-of-frame, so a replacement bridge
+                // could otherwise create a second PassthroughCameraAccess host
+                // while this one is still active and driving the camera.
+                // Disable the component and deactivate the host FIRST, so the
+                // old feed is released in this frame rather than the next.
+                if (access is Behaviour behaviour)
+                {
+                    behaviour.enabled = false;
+                }
+                host.SetActive(false);
                 UnityEngine.Object.Destroy(host);
             }
             host = null;
             access = null;
             accessType = null;
+            ResetDeliveryEvidence();
+        }
+
+        /// <summary>
+        /// Clear every per-session delivery fact. Called on both the start and
+        /// stop edges so frame evidence can never cross a session boundary.
+        /// </summary>
+        private void ResetDeliveryEvidence()
+        {
+            hasEverUpdated = false;
+            deliveredFrames = 0;
+            distinctTimestamps = 0;
+            lastTimestamp = DateTime.MinValue;
+            lastDeliveryRealtime = -1.0f;
         }
 
         private void CacheMembers()
@@ -182,6 +297,7 @@ namespace GRBHXR
             isUpdatedProperty = RequireProperty("IsUpdatedThisFrame", flags);
             currentResolutionProperty = RequireProperty("CurrentResolution", flags);
             intrinsicsProperty = RequireProperty("Intrinsics", flags);
+            timestampProperty = RequireProperty("Timestamp", flags);
             getTextureMethod = RequireMethod("GetTexture", flags);
             getCameraPoseMethod = RequireMethod("GetCameraPose", flags);
         }
@@ -249,17 +365,87 @@ namespace GRBHXR
             return (T)field.GetValue(instance);
         }
 
+        /// <summary>
+        /// Resolve the MRUK camera type without a compile-time reference.
+        /// The assembly-qualified lookup is tried FIRST: an AppDomain walk
+        /// only sees assemblies that are already loaded, and nothing in this
+        /// package statically references MRUK, so relying on the walk alone
+        /// makes discovery depend on load order. Type.GetType with an
+        /// assembly-qualified name asks the runtime to load it. The scan is
+        /// kept as a fallback for a renamed or repackaged assembly, and the
+        /// route that succeeded is recorded so the player log distinguishes
+        /// "not installed" from "installed but not reachable the fast way".
+        /// </summary>
         private static Type FindAccessType()
         {
+            Type qualified = Type.GetType(AccessTypeQualifiedName, false);
+            if (qualified != null)
+            {
+                resolvedVia = "Type.GetType(assembly-qualified)";
+                return qualified;
+            }
+
             foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 Type type = assembly.GetType(AccessTypeName, false);
                 if (type != null)
                 {
+                    resolvedVia = $"AppDomain scan ({assembly.GetName().Name})";
                     return type;
                 }
             }
+            resolvedVia = "unresolved";
             return null;
+        }
+
+        /// <summary>
+        /// One formatted line carrying everything validation_targets.md
+        /// demands of the gate record: backend, delivered resolution, focal
+        /// length, principal point, sensor resolution, the derived projection,
+        /// the pose with its source, and the lens offset. All of this was
+        /// previously computed and discarded into a Vector4, so even a fully
+        /// successful device run could not close the documented gate.
+        ///
+        /// LensOffset is included deliberately. MRUK ships a mock camera
+        /// backend (PcaCameraMock) and leaves disablePcaMockFallback at its
+        /// default, so a mock feed would satisfy IsPlaying, a non-null
+        /// texture, parseable intrinsics AND a ticking timestamp. A
+        /// degenerate lens offset is one of the few things a mock is unlikely
+        /// to reproduce, so it belongs in the accepted evidence.
+        /// </summary>
+        public string DescribeCalibration()
+        {
+            if (access == null)
+            {
+                return "no MRUK camera bound";
+            }
+            try
+            {
+                Vector2Int resolution = (Vector2Int)currentResolutionProperty.GetValue(access);
+                object intrinsics = intrinsicsProperty.GetValue(access);
+                if (intrinsics == null)
+                {
+                    return $"current={resolution.x}x{resolution.y} intrinsics=NULL (calibration unavailable)";
+                }
+                Type intrinsicsType = intrinsics.GetType();
+                object focal = intrinsicsType.GetField("FocalLength")?.GetValue(intrinsics);
+                object principal = intrinsicsType.GetField("PrincipalPoint")?.GetValue(intrinsics);
+                object sensor = intrinsicsType.GetField("SensorResolution")?.GetValue(intrinsics);
+                object lensOffset = intrinsicsType.GetField("LensOffset")?.GetValue(intrinsics);
+                Vector4 projection = ProjectionFromIntrinsics(intrinsics, resolution);
+                Pose pose = (Pose)getCameraPoseMethod.Invoke(access, null);
+                return
+                    $"backend=Meta MRUK PassthroughCameraAccess route={resolvedVia} " +
+                    $"current={resolution.x}x{resolution.y} sensor={sensor} " +
+                    $"focal={focal} principal={principal} lensOffset={lensOffset} " +
+                    $"proj=(sx {projection.x:R}, sy {projection.y:R}, ox {projection.z:R}, oy {projection.w:R}) " +
+                    $"poseSource=GetCameraPose@Timestamp pos={pose.position:F4} rot={pose.rotation:F4} " +
+                    $"frames={deliveredFrames} lastTimestamp={lastTimestamp:O}";
+            }
+            catch (Exception ex)
+            {
+                return $"calibration read failed: {Unwrap(ex).Message}";
+            }
         }
 
         private static void ValidateContract(Type type)
@@ -277,6 +463,10 @@ namespace GRBHXR
                 "CurrentResolution",
                 "Intrinsics",
                 "MaxFramerate",
+                // The delivered-frame latch depends on this, so an MRUK
+                // version that drops it must fail the editor contract gate
+                // rather than silently reverting acceptance to "IsPlaying".
+                "Timestamp",
             })
             {
                 if (type.GetProperty(propertyName, flags) == null)

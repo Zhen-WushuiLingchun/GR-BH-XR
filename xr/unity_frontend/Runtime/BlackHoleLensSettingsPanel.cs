@@ -227,8 +227,13 @@ namespace GRBHXR
                 string metric = tracer != null
                     ? $"Metric M={tracer.MassValue:F2}  a={tracer.SpinValue:F3}  live={tracer.LiveTracingEnabled}"
                     : "Metric: live tracer not bound";
+                // MR diagnostics in-headset. Without this the operator has to
+                // quit and read Player.log to learn whether frames are being
+                // delivered - during a device session that is the difference
+                // between one run and three.
+                string mr = BlackHoleMrPassthrough.Ensure().StatusText();
                 statusText.text =
-                    $"{observer}\n{pose}\n{disk}\n{metric}\n" +
+                    $"{observer}\n{pose}\n{disk}\n{metric}\n{mr}\n" +
                     "Tier 0 playback: spin / inclination need GPU regenerate; r_obs roams keyframes.";
             }
             if (footerText != null)

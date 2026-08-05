@@ -187,8 +187,89 @@ namespace GRBHXR.EditorTools
             string oculusTouch = EnableFeature(settings.GetFeature<OculusTouchControllerProfile>(), "OculusTouch");
             string simpleController = EnableFeature(settings.GetFeature<KHRSimpleControllerProfile>(), "KHRSimple");
             string environmentDepth = EnableFeature(settings.GetFeature<GRBHXREnvironmentDepthFeature>(), "GRBHXREnvironmentDepth");
+            string metaXr = ReportMetaXrFeature(settings);
             EditorUtility.SetDirty(settings);
-            return $"{metaQuestPlus}, {oculusTouch}, {simpleController}, {environmentDepth}";
+            return $"{metaQuestPlus}, {oculusTouch}, {simpleController}, {environmentDepth}, {metaXr}";
+        }
+
+        /// <summary>
+        /// Report - deliberately without changing - the state of Meta's own
+        /// OpenXR feature.
+        ///
+        /// Why this matters: MRUK initialises its native OpenXR layer only if
+        /// OVRPlugin reports initialised, and under the Unity OpenXR loader
+        /// OVRPlugin is initialised only by MetaXRFeature. If that feature is
+        /// disabled, MRUK never calls InitOpenXr, PassthroughCameraAccess
+        /// cannot start, and no repository-side change can work around it.
+        ///
+        /// Why this only reports: enabling MetaXRFeature adds roughly 95
+        /// extensions to the OpenXR instance, which can perturb the
+        /// environment-depth path that currently works. Requesting an
+        /// unavailable extension can disable a working feature, so this is a
+        /// deliberate configuration decision that needs a before/after
+        /// capability probe, not a silent flip inside a setup helper.
+        /// Resolved by reflection so the package keeps no compile-time
+        /// dependency on Meta assemblies.
+        /// </summary>
+        private static string ReportMetaXrFeature(OpenXRSettings settings)
+        {
+            // Assembly is Oculus.VR - the Meta Core SDK's package-root asmdef.
+            // Naming the UPM package here instead of the assembly would never
+            // resolve, and the AppDomain fallback below would mask it in the
+            // editor (where every assembly is already loaded) while failing in
+            // a built player.
+            var metaFeatureType = System.Type.GetType(
+                "Meta.XR.MetaXRFeature, Oculus.VR", false
+            );
+            if (metaFeatureType == null)
+            {
+                foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    metaFeatureType = assembly.GetType("Meta.XR.MetaXRFeature", false);
+                    if (metaFeatureType != null)
+                    {
+                        break;
+                    }
+                }
+            }
+            if (metaFeatureType == null)
+            {
+                Debug.Log(
+                    "GR-BH-XR OpenXR: MetaXRFeature type not present (Meta Core SDK not installed). " +
+                    "MRUK PassthroughCameraAccess cannot initialise without it."
+                );
+                return "MetaXRFeature=absent";
+            }
+
+            OpenXRFeature feature = null;
+            foreach (OpenXRFeature candidate in settings.GetFeatures())
+            {
+                if (candidate != null && metaFeatureType.IsInstanceOfType(candidate))
+                {
+                    feature = candidate;
+                    break;
+                }
+            }
+            if (feature == null)
+            {
+                Debug.LogWarning("GR-BH-XR OpenXR: MetaXRFeature type exists but no feature instance was found.");
+                return "MetaXRFeature=noInstance";
+            }
+            if (!feature.enabled)
+            {
+                Debug.LogWarning(
+                    "GR-BH-XR OpenXR: MetaXRFeature is DISABLED for this build target. " +
+                    "OVRPlugin will not initialise, so MRUK never calls InitOpenXr and " +
+                    "PassthroughCameraAccess cannot deliver frames. This setup helper " +
+                    "reports the state but does not change it: enabling MetaXRFeature adds " +
+                    "~95 OpenXR extensions and can perturb the working environment-depth " +
+                    "path, so it needs a deliberate decision plus a before/after capability " +
+                    "probe. See docs and the MRUK source note."
+                );
+                return "MetaXRFeature=disabled(reported,notChanged)";
+            }
+            Debug.Log("GR-BH-XR OpenXR: MetaXRFeature is enabled.");
+            return "MetaXRFeature=enabled";
         }
 
         private static string EnableFeature(OpenXRFeature feature, string label)
