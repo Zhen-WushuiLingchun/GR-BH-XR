@@ -35,20 +35,192 @@ from pathlib import Path
 
 import numpy as np
 
+from gr_bh_xr.geodesic_ks import bl_to_ks_phi_shift
 from gr_bh_xr.gpu.generate_descent_keyframes import batch_escape_directions
 from gr_bh_xr.gpu.generate_transfer_cubemap import _face_directions, _face_directions_from_uv
 from gr_bh_xr.gpu.trace_ks import KsGpuTraceConfig, trace_ks_states
 from gr_bh_xr.types import MetricParams
+from gr_bh_xr.xr.export_unity_textures import unity_basis_from_inclination
 
 # Stages the Unity ValidationDump is expected to emit. `main` is implicit in
 # every dump; the rest are separately dispatched compute kernels, each of
 # which shipped unvalidated at some point in this file's history.
 REQUIRED_STAGES = ("main", "refine", "window", "windowRefine")
 
+# Observer-basis probe tolerance, degrees. Not a taste value: the run asserts
+# it is at least four times below the smallest separation between the accepted
+# basis and every wrong-sign candidate over the whole probe grid, so a passing
+# run cannot be a loose threshold accepting a sign error.
+BASIS_PROBE_TOLERANCE_DEG = 1.0e-3
+BASIS_PROBE_DISCRIMINATION_FACTOR = 4.0
+
+# Floor on the texel sample that resolves the escaped-momentum rotation sign.
+# The check used to be wrapped in `if np.any(...)`, so a dump that produced no
+# comparable texel skipped the only sign gate in the file and still printed
+# PASS.
+MIN_CHART_SIGN_SAMPLES = 256
+
 
 def horizon_radii(params: MetricParams) -> tuple[float, float]:
     root = math.sqrt(max(params.M * params.M - params.a * params.a, 0.0))
     return params.M + root, params.M - root
+
+
+def accepted_observer_basis_bh(theta_deg: float, phi_bl: float) -> np.ndarray:
+    """Accepted BH-frame observer basis at `(theta, phi_bl)`, rows right/up/forward.
+
+    `unity_basis_from_inclination` is exactly this construction at
+    `phi_bl = 0`: the observer direction is BL-SPHERICAL,
+    `(sin th cos phi, sin th sin phi, cos th)`, `forward = -observer`, `up` is
+    the spin-axis projection of forward and `right = up x forward`. Kerr
+    axisymmetry makes the generalization a rigid rotation about the spin axis,
+    which is asserted against `unity_basis_from_inclination` below rather than
+    assumed.
+    """
+
+    theta = math.radians(float(theta_deg))
+    observer = np.array(
+        [math.sin(theta) * math.cos(phi_bl), math.sin(theta) * math.sin(phi_bl), math.cos(theta)],
+        dtype=np.float64,
+    )
+    forward = -observer / np.linalg.norm(observer)
+    spin = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+    up = spin - float(np.dot(spin, forward)) * forward
+    if np.linalg.norm(up) < 1.0e-10:
+        fallback = np.array([1.0, 0.0, 0.0], dtype=np.float64)
+        up = fallback - float(np.dot(fallback, forward)) * forward
+    up = up / np.linalg.norm(up)
+    right = np.cross(up, forward)
+    right = right / np.linalg.norm(right)
+    up = np.cross(forward, right)
+    return np.stack([right, up, forward], axis=0)
+
+
+def ks_unrotated_observer_basis_bh(
+    params: MetricParams, theta_deg: float, phi_bl: float, radius: float
+) -> np.ndarray:
+    """The rejected alternative: un-rotate the KS Cartesian POSITION by -delta.
+
+    Correct in azimuth and wrong in polar angle - the KS embedding carries
+    `sqrt(r^2 + a^2)` in the equatorial component, so the recovered polar angle
+    is `atan2(sqrt(r^2 + a^2) sin th, r cos th)`. Kept here as a discrimination
+    candidate so the probe tolerance is measured against it.
+    """
+
+    theta = math.radians(float(theta_deg))
+    phi_ks = phi_bl + bl_to_ks_phi_shift(params, radius)
+    sin_t = math.sin(theta)
+    pos = np.array(
+        [
+            (radius * math.cos(phi_ks) - params.a * math.sin(phi_ks)) * sin_t,
+            (radius * math.sin(phi_ks) + params.a * math.cos(phi_ks)) * sin_t,
+            radius * math.cos(theta),
+        ],
+        dtype=np.float64,
+    )
+    delta = math.atan2(params.a, radius) + bl_to_ks_phi_shift(params, radius)
+    cos_d, sin_d = math.cos(-delta), math.sin(-delta)
+    pos_bh = np.array(
+        [cos_d * pos[0] - sin_d * pos[1], sin_d * pos[0] + cos_d * pos[1], pos[2]],
+        dtype=np.float64,
+    )
+    forward = -pos_bh / np.linalg.norm(pos_bh)
+    spin = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+    up = spin - float(np.dot(spin, forward)) * forward
+    up = up / np.linalg.norm(up)
+    right = np.cross(up, forward)
+    right = right / np.linalg.norm(right)
+    up = np.cross(forward, right)
+    return np.stack([right, up, forward], axis=0)
+
+
+def basis_separation_deg(left: np.ndarray, right: np.ndarray) -> float:
+    """Largest per-leg angular separation between two bases, degrees."""
+
+    dots = np.clip(np.sum(left * right, axis=1), -1.0, 1.0)
+    return float(np.max(np.degrees(np.arccos(dots))))
+
+
+def check_observer_basis_probes(params: MetricParams, probes: list) -> dict:
+    """Gate the C# observer-position basis role, independently of the kernel.
+
+    The traced directions in this dump use an identity `_Basis*Bh`, so nothing
+    else here touches the runtime observer basis. Each probe carries the basis
+    the runtime pass would build at `(r, azimuth, chart)`, produced by the same
+    code; this compares it against the accepted mapping and, critically, also
+    measures how far the WRONG-sign candidates sit, so the tolerance is proven
+    discriminating rather than merely small.
+    """
+
+    if not probes:
+        raise SystemExit(
+            "dump is missing observerBasisProbes: the C# observer-position "
+            "basis is the one escape-direction role this dump does not "
+            "otherwise exercise, and a dump without it cannot gate its sign."
+        )
+    # Anchor the generalization: at phi_bl = 0 it must BE the accepted
+    # function, not merely resemble it. Without this the reference could drift
+    # and both sides of the comparison would move together.
+    for theta_deg in sorted({float(probe["thetaDeg"]) for probe in probes}):
+        accepted_zero = unity_basis_from_inclination(theta_deg)
+        anchor = np.stack(
+            [accepted_zero.right_bh, accepted_zero.up_bh, accepted_zero.forward_bh], axis=0
+        )
+        drift = basis_separation_deg(accepted_observer_basis_bh(theta_deg, 0.0), anchor)
+        if drift > 1.0e-9:
+            raise SystemExit(
+                f"observer-basis reference drifted from unity_basis_from_inclination "
+                f"at theta = {theta_deg} deg by {drift:.3e} deg; the gate's own "
+                "reference is wrong."
+            )
+
+    worst_error = 0.0
+    smallest_separation = float("inf")
+    worst_probe = None
+    for probe in probes:
+        radius = float(probe["rM"])
+        theta_deg = float(probe["thetaDeg"])
+        azimuth = math.radians(float(probe["azimuthDeg"]))
+        shift = bl_to_ks_phi_shift(params, radius)
+        chart = str(probe["chart"])
+        if chart == "ks":
+            phi_bl = azimuth - shift
+        elif chart == "bl":
+            phi_bl = azimuth
+        else:
+            raise SystemExit(f"observerBasisProbes carries an unknown chart {chart!r}.")
+
+        unity_basis = np.array(
+            [probe["rightBh"], probe["upBh"], probe["forwardBh"]], dtype=np.float64
+        )
+        accepted = accepted_observer_basis_bh(theta_deg, phi_bl)
+        error = basis_separation_deg(unity_basis, accepted)
+        if error > worst_error:
+            worst_error = error
+            worst_probe = probe
+
+        # Wrong-sign candidates. `+shift` is the momentum convention applied to
+        # a position (only distinguishable on a KS-labelled probe, which is why
+        # the probe grid carries both charts); the KS-position un-rotation is
+        # the polar-angle mistake.
+        candidates = [ks_unrotated_observer_basis_bh(params, theta_deg, phi_bl, radius)]
+        if chart == "ks":
+            candidates.append(accepted_observer_basis_bh(theta_deg, azimuth + shift))
+        for candidate in candidates:
+            separation = basis_separation_deg(accepted, candidate)
+            smallest_separation = min(smallest_separation, separation)
+
+    return {
+        "probeCount": len(probes),
+        "maxDeg": worst_error,
+        "worstProbe": worst_probe,
+        "smallestWrongSignSeparationDeg": smallest_separation,
+        "toleranceDeg": BASIS_PROBE_TOLERANCE_DEG,
+        "toleranceIsDiscriminating": bool(
+            smallest_separation
+            > BASIS_PROBE_DISCRIMINATION_FACTOR * BASIS_PROBE_TOLERANCE_DEG
+        ),
+    }
 
 
 def main() -> None:
@@ -144,6 +316,7 @@ def main() -> None:
     # |a|/M > 0.994987 the floor takes over and the two surfaces diverge.
     r_plus, _r_minus = horizon_radii(params)
     unity_capture_r = float(meta["captureR"])
+    r_escape = float(meta["rEscape"])
     config = KsGpuTraceConfig(
         params=params,
         step_size=float(meta["stepSize"]),
@@ -152,7 +325,7 @@ def main() -> None:
         max_step=float(meta["maxStep"]),
         step_r_ref=float(meta["stepRRef"]),
         adaptive_step=bool(meta["adaptiveStep"]),
-        r_escape=float(meta["rEscape"]),
+        r_escape=r_escape,
         disk_r_in=float(meta["diskRIn"]),
         disk_r_out=float(meta["diskROut"]),
         time_orientation=orientation,
@@ -603,34 +776,66 @@ def main() -> None:
     )
 
     # ------------------------------------------------------------------
-    # Escape-direction chart rotation SIGN. A plain angular threshold at
-    # r_escape = 200 M cannot discriminate it: the whole correction is
-    # smaller than the measured agreement there. The only discriminating
-    # formulation is that agreeing with the ROTATED reference must beat
-    # agreeing with the unrotated one.
+    # ESCAPED-MOMENTUM chart rotation SIGN (the kernel's role). A plain
+    # angular threshold at r_escape = 200 M cannot discriminate it: the whole
+    # correction, 2|delta| = 2.60e-3 deg, is only ~8x the measured f32
+    # agreement floor there. The only discriminating formulation is that
+    # agreeing with the ROTATED reference must beat agreeing with the
+    # unrotated one - a dimensionless comparison with no tuned threshold.
+    #
+    # This is NOT skipped when the sample is thin: a sign gate that silently
+    # evaporates is the failure mode it exists to prevent.
     # ------------------------------------------------------------------
     unrotated = batch_escape_directions(
         params, result["final_x"], result["final_p"], escaped, apply_chart_rotation=False
     )
     rot_ok = both & np.all(np.isfinite(unrotated), axis=1)
-    if np.any(rot_ok):
-        def _max_angle(reference):
-            dots = np.clip(
-                np.sum(reference[rot_ok] * unity_dirs[rot_ok, :3], axis=1)
-                / (
-                    np.linalg.norm(reference[rot_ok], axis=1)
-                    * np.linalg.norm(unity_dirs[rot_ok, :3], axis=1)
-                ),
-                -1.0,
-                1.0,
-            )
-            return float(np.max(np.degrees(np.arccos(dots))))
-
-        summary["chartRotatedMaxDeg"] = _max_angle(py_dirs)
-        summary["chartUnrotatedMaxDeg"] = _max_angle(unrotated)
-        summary["rotationIsImprovement"] = bool(
-            summary["chartRotatedMaxDeg"] < summary["chartUnrotatedMaxDeg"]
+    rot_count = int(np.count_nonzero(rot_ok))
+    if rot_count < MIN_CHART_SIGN_SAMPLES:
+        raise SystemExit(
+            f"only {rot_count} texels can discriminate the escape-direction "
+            f"rotation sign (minimum {MIN_CHART_SIGN_SAMPLES}); refusing to "
+            "report a pass for a sign gate that did not run."
         )
+
+    def _max_angle(reference):
+        dots = np.clip(
+            np.sum(reference[rot_ok] * unity_dirs[rot_ok, :3], axis=1)
+            / (
+                np.linalg.norm(reference[rot_ok], axis=1)
+                * np.linalg.norm(unity_dirs[rot_ok, :3], axis=1)
+            ),
+            -1.0,
+            1.0,
+        )
+        return float(np.max(np.degrees(np.arccos(dots))))
+
+    summary["chartSignSamples"] = rot_count
+    summary["chartRotatedMaxDeg"] = _max_angle(py_dirs)
+    summary["chartUnrotatedMaxDeg"] = _max_angle(unrotated)
+    summary["rotationIsImprovement"] = bool(
+        summary["chartRotatedMaxDeg"] < summary["chartUnrotatedMaxDeg"]
+    )
+    # r_escape this dump actually resolved the sign at. The gate is only
+    # discriminating while 2|delta| stays above the f32 agreement floor, so
+    # record it and refuse a dump that resolved the sign nowhere useful. See
+    # `validation/quest_pcvr/README.md` for the multi-r_escape dump set.
+    delta_deg = abs(
+        math.degrees(math.atan2(params.a, r_escape) + bl_to_ks_phi_shift(params, r_escape))
+    )
+    summary["chartDeltaDeg"] = delta_deg
+    summary["chartSignMarginRatio"] = (
+        2.0 * delta_deg / max(summary["chartRotatedMaxDeg"], 1.0e-12)
+    )
+
+    # ------------------------------------------------------------------
+    # OBSERVER-POSITION basis SIGN (the C# role). Separate gate, separate
+    # data, opposite sign: this one must be -delta / BL-spherical while the
+    # kernel above must be +delta. Nothing else in this dump touches it.
+    # ------------------------------------------------------------------
+    summary["observerBasis"] = check_observer_basis_probes(
+        params, meta.get("observerBasisProbes") or []
+    )
 
     summary["validatedStages"] = sorted(validated_stages)
     summary["waivedStages"] = sorted(set(args.allow_missing_stage))
@@ -684,12 +889,34 @@ def main() -> None:
     )
     if summary.get("hMaxMedianDiff") is not None:
         assert summary["hMaxMedianDiff"] < 1.0e-5, "Hamiltonian residual disagreement"
-    # Chart-rotation sign. Never a bare threshold - see the comment above.
-    if "rotationIsImprovement" in summary:
-        assert summary["rotationIsImprovement"], (
-            "Unity matches the UNROTATED chart better than the rotated one: the "
-            "escape-direction rotation sign is wrong (must be +delta)"
-        )
+    # Escaped-MOMENTUM rotation sign. Never a bare threshold, and never
+    # conditional - see the comment above.
+    assert summary["rotationIsImprovement"], (
+        "Unity matches the UNROTATED chart better than the rotated one: the "
+        "escape-direction rotation sign is wrong (must be +delta)"
+    )
+    assert summary["chartSignMarginRatio"] > 2.0, (
+        f"at r_escape = {r_escape} the sign correction 2|delta| = "
+        f"{2.0 * summary['chartDeltaDeg']:.3e} deg is not comfortably above the "
+        f"measured agreement {summary['chartRotatedMaxDeg']:.3e} deg; this dump "
+        "cannot resolve the sign. Re-dump at a smaller r_escape."
+    )
+    # Observer-position basis sign. Independent of the above: it uses probe
+    # data, the opposite sign, and its own discrimination proof.
+    basis_summary = summary["observerBasis"]
+    assert basis_summary["toleranceIsDiscriminating"], (
+        f"observer-basis tolerance {basis_summary['toleranceDeg']} deg is not at "
+        f"least {BASIS_PROBE_DISCRIMINATION_FACTOR}x below the smallest wrong-sign "
+        f"separation {basis_summary['smallestWrongSignSeparationDeg']:.3e} deg; the "
+        "probe grid cannot discriminate and a pass would be meaningless"
+    )
+    assert basis_summary["maxDeg"] < BASIS_PROBE_TOLERANCE_DEG, (
+        f"Unity observer basis disagrees with the accepted keyframe mapping by "
+        f"{basis_summary['maxDeg']:.3e} deg (worst probe "
+        f"{basis_summary['worstProbe']}); the observer-position chart sign or the "
+        "BL-spherical construction is wrong (must be -delta, NOT the kernel's "
+        "+delta)"
+    )
     assert both.any(), "no texel escaped in both tracers; direction gate is vacuous"
     assert summary["dirMedianDeg"] < 0.05, "median direction error too large"
     assert disk_both.any(), "no disk crossing in both tracers; disk gate is vacuous"

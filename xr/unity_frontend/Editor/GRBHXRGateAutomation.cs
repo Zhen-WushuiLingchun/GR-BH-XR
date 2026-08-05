@@ -341,6 +341,12 @@ namespace GRBHXR.EditorTools
             CaptureRoamRadiiGate();
         }
 
+        // Escape radii (geometric length, M = 1 scene) for the multi-r_escape
+        // escaped-momentum sign dumps. Chosen so 2|delta| stays well above the
+        // f32 agreement floor: 4.24e-2 deg at 50 M and 1.05e-2 deg at 100 M,
+        // against 3.25e-4 deg measured agreement.
+        private static readonly float[] LiveTracerSignEscapeRadiiM = { 50.0f, 100.0f };
+
         [MenuItem("GR-BH-XR/Gate/Live Tracer Validation Dump")]
         public static void LiveTracerValidationDump()
         {
@@ -356,6 +362,22 @@ namespace GRBHXR.EditorTools
             string baseDir = options.CaptureDir;
             liveTracer.ValidationDump(Path.Combine(baseDir, "live_static_r14_t60"), 13.981958f, 60.0f, rainFrame: false);
             liveTracer.ValidationDump(Path.Combine(baseDir, "live_rain_r2p35_t60"), 2.349f, 60.0f, rainFrame: true);
+            // MULTI-r_escape sign set. The escaped-momentum chart correction
+            // falls off as 2 a M / r_escape^2, so the default 200 M dump above
+            // resolves the +delta sign with only ~8x margin over the f32
+            // agreement floor. These two widen it to ~32x and ~130x. Each dump
+            // is gated independently by compare_live_tracer.py; all three must
+            // pass, so no single r_escape can carry the whole sign claim.
+            foreach (float rEscape in LiveTracerSignEscapeRadiiM)
+            {
+                liveTracer.ValidationDump(
+                    Path.Combine(baseDir, $"live_rain_r2p35_t60_esc{Mathf.RoundToInt(rEscape)}"),
+                    2.349f,
+                    60.0f,
+                    rainFrame: true,
+                    rEscapeOverrideM: rEscape
+                );
+            }
             AssetDatabase.Refresh();
         }
 

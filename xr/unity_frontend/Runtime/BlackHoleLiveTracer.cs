@@ -906,37 +906,8 @@ namespace GRBHXR
                     new Vector4((float)g[row, 0], (float)g[row, 1], (float)g[row, 2], (float)g[row, 3])
                 );
             }
-            // BH basis from the observer's actual position direction: forward
-            // toward the hole, up along the spin-axis projection. The escape
-            // dirs are absolute, so the frame-dragging spiral shows up as the
-            // sky rotating in view with no extra display bookkeeping.
-            double deltaRot = Math.Atan2(spin, radius) + PhiShiftSafe(radius);
-            double cosD = Math.Cos(-deltaRot);
-            double sinD = Math.Sin(-deltaRot);
-            double[] posBh = { cosD * pos[0] - sinD * pos[1], sinD * pos[0] + cosD * pos[1], pos[2] };
-            double posLen = Math.Sqrt(posBh[0] * posBh[0] + posBh[1] * posBh[1] + posBh[2] * posBh[2]);
-            double[] forward = { -posBh[0] / posLen, -posBh[1] / posLen, -posBh[2] / posLen };
-            double[] spinAxis = { 0.0, 0.0, 1.0 };
-            double dotSF = spinAxis[2] * forward[2] + spinAxis[1] * forward[1] + spinAxis[0] * forward[0];
-            double[] up =
-            {
-                spinAxis[0] - dotSF * forward[0],
-                spinAxis[1] - dotSF * forward[1],
-                spinAxis[2] - dotSF * forward[2],
-            };
-            double upLen = Math.Sqrt(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
-            if (upLen < 1.0e-10)
-            {
-                up = new[] { 1.0, 0.0, 0.0 };
-                upLen = 1.0;
-            }
-            up = new[] { up[0] / upLen, up[1] / upLen, up[2] / upLen };
-            double[] right =
-            {
-                up[1] * forward[2] - up[2] * forward[1],
-                up[2] * forward[0] - up[0] * forward[2],
-                up[0] * forward[1] - up[1] * forward[0],
-            };
+            double phiBl = azimuthIsKerrSchild ? azimuth - phiShift : azimuth;
+            ObserverBasisBh(theta, phiBl, out double[] right, out double[] up, out double[] forward);
             tracerCompute.SetVector("_BasisRightBh", new Vector4((float)right[0], (float)right[1], (float)right[2], 0.0f));
             tracerCompute.SetVector("_BasisUpBh", new Vector4((float)up[0], (float)up[1], (float)up[2], 0.0f));
             tracerCompute.SetVector("_BasisForwardBh", new Vector4((float)forward[0], (float)forward[1], (float)forward[2], 0.0f));
@@ -954,6 +925,102 @@ namespace GRBHXR
         // -------------------------------------------------------------------
         // Kerr-Schild math (C# ports of the audited Python formulas)
         // -------------------------------------------------------------------
+
+        /// <summary>
+        /// Observer-position BH-frame basis, the C# form of the accepted
+        /// `unity_basis_from_inclination` generalized off `phi_bl = 0`.
+        ///
+        /// `unity_basis_from_inclination(theta)` builds the basis from the
+        /// BL-SPHERICAL observer direction
+        /// `(sin th cos phi_bl, sin th sin phi_bl, cos th)` with
+        /// `forward = -observer`, `up` the spin-axis projection of forward and
+        /// `right = up x forward`; `_bh_to_unity` then dots the escaped
+        /// BH-frame momentum against exactly those three vectors. So this is
+        /// the ONLY construction the escape directions are consistent with.
+        ///
+        /// SIGN, and why it is not the kernel's. This is the POSITION-SPACE
+        /// role and it carries the OPPOSITE sign to the momentum rotation. The
+        /// KS Cartesian azimuth of the observer is
+        /// `phi_bl + atan2(a, r) + shift(r)`, so recovering a BH-frame
+        /// direction from the KS position is a `-delta` rotation, whereas
+        /// `batch_escape_directions` rotates the outgoing MOMENTUM direction
+        /// by `+delta` - its docstring records that the two offsets have
+        /// opposite signs and that `-delta` on the momentum is worse than no
+        /// rotation at all. Copying the momentum sign into this role rotates
+        /// the whole sky by `2|delta|`: 1.20 deg at r = 30 M, 5.48 deg at
+        /// r = 5 M and 62.1 deg at r = 2 M for a = 0.9 M.
+        ///
+        /// Taking `phi_bl` from the chart-tagged rig azimuth and building the
+        /// direction directly - rather than un-rotating the KS Cartesian
+        /// position by `-delta` - also removes a polar-angle error. The KS
+        /// embedding carries `sqrt(r^2 + a^2)` in the equatorial component, so
+        /// un-rotating recovers polar angle
+        /// `atan2(sqrt(r^2 + a^2) sin th, r cos th)` rather than `th`: off by
+        /// 0.394 deg at r = 5 M and 2.23 deg at r = 2 M, larger than the
+        /// azimuthal offset the rotation existed to remove.
+        ///
+        /// `theta` and `phiBl` are radians.
+        /// </summary>
+        private static void ObserverBasisBh(
+            double theta,
+            double phiBl,
+            out double[] right,
+            out double[] up,
+            out double[] forward
+        )
+        {
+            double sinT = Math.Sin(theta);
+            double[] observerBh = { sinT * Math.Cos(phiBl), sinT * Math.Sin(phiBl), Math.Cos(theta) };
+            double obsLen = Math.Sqrt(
+                observerBh[0] * observerBh[0] + observerBh[1] * observerBh[1] + observerBh[2] * observerBh[2]
+            );
+            if (obsLen < 1.0e-12)
+            {
+                throw new InvalidOperationException(
+                    "Observer direction degenerated while building the BH basis.");
+            }
+            forward = new[] { -observerBh[0] / obsLen, -observerBh[1] / obsLen, -observerBh[2] / obsLen };
+            double[] spinAxis = { 0.0, 0.0, 1.0 };
+            double dotSF = spinAxis[0] * forward[0] + spinAxis[1] * forward[1] + spinAxis[2] * forward[2];
+            up = new[]
+            {
+                spinAxis[0] - dotSF * forward[0],
+                spinAxis[1] - dotSF * forward[1],
+                spinAxis[2] - dotSF * forward[2],
+            };
+            double upLen = Math.Sqrt(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
+            if (upLen < 1.0e-10)
+            {
+                // On the spin axis `forward` is parallel to it; fall back
+                // exactly as `unity_basis_from_inclination` does.
+                double[] fallback = { 1.0, 0.0, 0.0 };
+                double dotFF = fallback[0] * forward[0] + fallback[1] * forward[1] + fallback[2] * forward[2];
+                up = new[]
+                {
+                    fallback[0] - dotFF * forward[0],
+                    fallback[1] - dotFF * forward[1],
+                    fallback[2] - dotFF * forward[2],
+                };
+                upLen = Math.Sqrt(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
+            }
+            up = new[] { up[0] / upLen, up[1] / upLen, up[2] / upLen };
+            right = new[]
+            {
+                up[1] * forward[2] - up[2] * forward[1],
+                up[2] * forward[0] - up[0] * forward[2],
+                up[0] * forward[1] - up[1] * forward[0],
+            };
+            double rightLen = Math.Sqrt(right[0] * right[0] + right[1] * right[1] + right[2] * right[2]);
+            right = new[] { right[0] / rightLen, right[1] / rightLen, right[2] / rightLen };
+            // Re-orthogonalize `up` from the normalized `right`, matching the
+            // accepted construction's final `up = forward x right`.
+            up = new[]
+            {
+                forward[1] * right[2] - forward[2] * right[1],
+                forward[2] * right[0] - forward[0] * right[2],
+                forward[0] * right[1] - forward[1] * right[0],
+            };
+        }
 
         private double PhiShiftSafe(double r)
         {
@@ -1454,6 +1521,46 @@ namespace GRBHXR
         /// </summary>
         public void ValidationDump(string outputDirectory, float radiusM, float thetaDeg, bool rainFrame)
         {
+            ValidationDump(outputDirectory, radiusM, thetaDeg, rainFrame, rEscape);
+        }
+
+        /// <summary>
+        /// Dump at an explicit escape radius (geometric length, same unit as M).
+        ///
+        /// This exists so the gate can emit the MULTI-r_escape dump set. The
+        /// escaped-momentum chart correction is
+        /// `2|delta| = 2|atan2(a, r) + bl_to_ks_phi_shift(r)| ~ 2 a M / r^2`,
+        /// which for a = 0.9 M is 2.60e-3 deg at r_escape = 200 M - only about
+        /// 8x the measured f32 agreement floor of 3.25e-4 deg, i.e. the sign is
+        /// resolved with almost no margin. The same dump at 100 M and 50 M
+        /// widens the correction to 1.05e-2 and 4.24e-2 deg, so the sign gate
+        /// has 4x and 16x more room. A dump set that only ever runs far out is
+        /// one f32 regression away from being unable to see the sign at all.
+        /// </summary>
+        public void ValidationDump(
+            string outputDirectory, float radiusM, float thetaDeg, bool rainFrame, float rEscapeOverrideM)
+        {
+            if (rEscapeOverrideM <= 0.0f || !float.IsFinite(rEscapeOverrideM))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(rEscapeOverrideM),
+                    "Escape radius must be a positive geometric length.");
+            }
+            float savedREscape = rEscape;
+            rEscape = rEscapeOverrideM;
+            try
+            {
+                ValidationDumpAtCurrentEscapeRadius(outputDirectory, radiusM, thetaDeg, rainFrame);
+            }
+            finally
+            {
+                rEscape = savedREscape;
+            }
+        }
+
+        private void ValidationDumpAtCurrentEscapeRadius(
+            string outputDirectory, float radiusM, float thetaDeg, bool rainFrame)
+        {
             if (tracerCompute == null)
             {
                 throw new InvalidOperationException("tracerCompute not assigned.");
@@ -1719,6 +1826,10 @@ namespace GRBHXR
             }
             // Identity Unity basis for validation (BH frame dirs dumped raw)
             // and identity face order (the runtime path re-sorts per pass).
+            // NOTE: because of this, the traced directions in this dump do NOT
+            // exercise the runtime observer basis at all - that role was
+            // therefore completely ungated. `observerBasisProbes` below closes
+            // it without perturbing the raw-direction contract.
             tracerCompute.SetVector("_BasisRightBh", new Vector4(1, 0, 0, 0));
             tracerCompute.SetVector("_BasisUpBh", new Vector4(0, 1, 0, 0));
             tracerCompute.SetVector("_BasisForwardBh", new Vector4(0, 0, 1, 0));
@@ -1753,7 +1864,58 @@ namespace GRBHXR
                 + "  \"classBits\": {\"eventShift\": 0, \"eventMask\": 15, \"failureShift\": 4, \"failureMask\": 15, \"hamiltonianRejectedBit\": 256},\n"
                 + $"  \"diskRIn\": {diskRIn:R}, \"diskROut\": {diskROut:R}, \"diskMaxOrder\": 2,\n"
                 + "  \"refineSubrayGrid\": 3, \"refineSubrayOffsetScale\": 0.3333333333333333,\n"
+                + $"  \"observerBasisProbes\": {ObserverBasisProbeJson(thetaDeg)},\n"
                 + "  \"maskBits\": {\"escape\": 1, \"disk0\": 2, \"disk1\": 4}";
+        }
+
+        // Probe grid for the observer-basis gate. Radii are MULTIPLES OF M and
+        // are scaled by the live mass below, so the probe stays at the same
+        // physical station when the mass slider moves. The azimuths are
+        // deliberately non-zero: at phi = 0 the basis is symmetric under
+        // phi -> -phi, so a sign error in either the chart conversion or the
+        // basis derivation would be invisible.
+        private static readonly float[] BasisProbeRadiiOverM = { 30.0f, 10.0f, 5.0f, 3.0f, 2.0f };
+        private static readonly float[] BasisProbeAzimuthsDeg = { 0.0f, 37.0f, -122.0f };
+
+        /// <summary>
+        /// Publish the runtime observer basis at a grid of (r, azimuth, chart)
+        /// stations, built by the SAME code the runtime pass uses.
+        ///
+        /// This is the only place the C# observer-position role is externally
+        /// observable. Each probe runs the chart conversion
+        /// (`phi_bl = phi_ks - shift(r)` for a Kerr-Schild-labelled azimuth,
+        /// identity for a BL label) and then `ObserverBasisBh`, so the gate
+        /// fails if EITHER the chart sign or the basis sign is wrong, and
+        /// fails independently of the kernel's momentum rotation.
+        /// </summary>
+        private string ObserverBasisProbeJson(float thetaDeg)
+        {
+            double theta = thetaDeg * Math.PI / 180.0;
+            var parts = new System.Collections.Generic.List<string>();
+            string Vec(double[] v) => $"[{v[0]:R},{v[1]:R},{v[2]:R}]";
+            foreach (float overM in BasisProbeRadiiOverM)
+            {
+                double radius = overM * mass;
+                double shift = PhiShiftSafe(radius);
+                foreach (float azDeg in BasisProbeAzimuthsDeg)
+                {
+                    double azimuth = azDeg * Math.PI / 180.0;
+                    for (int chart = 0; chart < 2; chart += 1)
+                    {
+                        bool ks = chart == 1;
+                        double phiBl = ks ? azimuth - shift : azimuth;
+                        ObserverBasisBh(theta, phiBl, out double[] right, out double[] up, out double[] forward);
+                        parts.Add(
+                            "{"
+                            + $"\"rM\": {radius:R}, \"azimuthDeg\": {azDeg:R}, "
+                            + $"\"chart\": \"{(ks ? "ks" : "bl")}\", \"thetaDeg\": {thetaDeg:R}, "
+                            + $"\"rightBh\": {Vec(right)}, \"upBh\": {Vec(up)}, \"forwardBh\": {Vec(forward)}"
+                            + "}"
+                        );
+                    }
+                }
+            }
+            return "[" + string.Join(", ", parts) + "]";
         }
 
         private void Dump2D(RenderTexture source, string path)

@@ -293,8 +293,10 @@ escape direction, event mask, disk crossings, redshift, and refinement
 coverage. `BlackHoleLiveTracer.cs` distributes one complete map over multiple
 display frames and hard-swaps only a completed pass.
 
-`ValidationDump` writes **two** dumps, one per observer state, into
-subdirectories of the capture directory. Neither the editor menu
+`ValidationDump` writes **four** dumps into subdirectories of the capture
+directory: one static state, one rain state, and two extra rain dumps at
+nearer escape radii for the escape-direction sign gate (below). Neither the
+editor menu
 (`GR-BH-XR/Gate/Live Tracer Validation Dump`) nor the batch entry point takes a
 `--dump-dir`; the Unity-side flag is `-grbhxrCaptureDir` and it defaults to
 `F:/学习和研究/GR-BH-XR/outputs/task5/unity_gate`. Each dump is then compared
@@ -309,7 +311,38 @@ $dump = 'F:\学习和研究\GR-BH-XR\outputs\task9\live_tracer_validation'
 $env:PYTHONPATH='src'
 python validation\quest_pcvr\scripts\compare_live_tracer.py --dump-dir "$dump\live_static_r14_t60" --samples 4096
 python validation\quest_pcvr\scripts\compare_live_tracer.py --dump-dir "$dump\live_rain_r2p35_t60"  --samples 4096
+python validation\quest_pcvr\scripts\compare_live_tracer.py --dump-dir "$dump\live_rain_r2p35_t60_esc50"  --samples 4096
+python validation\quest_pcvr\scripts\compare_live_tracer.py --dump-dir "$dump\live_rain_r2p35_t60_esc100" --samples 4096
 ```
+
+**All four must pass.** The two `esc*` dumps exist because of the
+escape-direction chart-rotation sign, which has two independent roles that
+carry OPPOSITE signs and are gated separately:
+
+- *Escaped momentum* (the compute kernel). `batch_escape_directions` rotates
+  the outgoing momentum direction by `+delta`, `delta = atan2(a, r_escape) +
+  bl_to_ks_phi_shift(r_escape)`. The observable that separates `+delta` from
+  `-delta` is `2|delta| ~ 2 a M / r_escape^2`, which for `a = 0.9 M` is
+  `2.60e-3 deg` at `r_escape = 200 M` — only about 8x the measured f32
+  agreement floor of `3.25e-4 deg`. The same dump at `100 M` and `50 M` widens
+  the correction to `1.05e-2` and `4.24e-2 deg`. The gate is the dimensionless
+  statement that agreeing with the ROTATED reference beats agreeing with the
+  unrotated one, never a tuned angular threshold, and the run additionally
+  refuses any dump whose `chartSignMarginRatio` shows it could not resolve the
+  sign at all. It is not conditional: a dump with fewer than
+  `MIN_CHART_SIGN_SAMPLES` comparable texels is an error, not a skip.
+- *Observer position basis* (the C# runtime). This one must be `-delta`, i.e.
+  the BL-spherical construction `unity_basis_from_inclination` generalized off
+  `phi_bl = 0`. The traced directions in every dump use an identity
+  `_Basis*Bh`, so this role has no other external observable; the dump
+  publishes `observerBasisProbes`, a grid over
+  (`r/M` in {30, 10, 5, 3, 2}) x (azimuth in {0, 37, -122} deg) x (chart in
+  {BL, KS}), each built by the same runtime code. The comparator compares them
+  against the accepted mapping at `1e-3 deg` and, before accepting a pass,
+  asserts that tolerance is at least 4x below the smallest separation between
+  the accepted basis and every wrong-sign candidate over the grid (measured
+  `1.12e-2 deg`, an 11x margin). A loose threshold therefore cannot pass this
+  gate silently.
 
 The dump must come from the runtime resource path (Tex2DArray staging and packed
 face order), not an editor-only substitute.
@@ -324,7 +357,7 @@ populations (no escaped texel, no disk crossing, an empty limb set) are errors
 rather than skipped thresholds.
 
 Every constant the two implementations must agree on is read from the dump
-metadata: `captureR`, `hugMinR`, `hugLambda`, `diskRIn`, `diskROut`,
+metadata: `captureR`, `hamiltonianMax`, `rEscape`, `diskRIn`, `diskROut`,
 `timeOrientation`, `maxStep`, `stepRRef`, `adaptiveStep`, `refineSubrayGrid`,
 `refineSubrayOffsetScale`, and `maskBits`. The script asserts that the Python
 capture radius it derives equals Unity's `captureR` to `1e-6`. This closes a
@@ -344,7 +377,8 @@ gate validates the kernel, not the runtime resolution ladder or the fp16
 display path.
 
 **Cross-worktree dependency:** `compare_live_tracer.py` imports
-`gr_bh_xr.gpu.generate_descent_keyframes._batch_escape_directions` and uses the
+`gr_bh_xr.gpu.generate_descent_keyframes.batch_escape_directions` (the public
+name accepted on `main`) and uses the
 Kerr-Schild disk-crossing extensions to `gr_bh_xr.gpu.trace_ks`
 (`disk_r_in`/`disk_r_out`/`time_orientation`, the `disk_r_m`/`disk_g_m` result
 keys, and packed-array input). Those are owned by the Task 7-8 physics

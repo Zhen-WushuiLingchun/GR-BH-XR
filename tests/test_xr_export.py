@@ -1806,6 +1806,225 @@ def test_unity_roam_asset_absence_is_loud():
     assert "GR-BH-XR free fall unavailable" in rig
 
 
+def _load_compare_live_tracer_module():
+    """Import the comparator as a module so its gate helpers can be executed."""
+
+    spec = importlib.util.spec_from_file_location(
+        "grbhxr_compare_live_tracer", COMPARE_LIVE_TRACER
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_observer_basis_role_needs_the_opposite_sign_to_the_momentum_role():
+    """The two escape-direction roles are independent and carry opposite signs.
+
+    `batch_escape_directions` rotates the outgoing MOMENTUM direction by
+    `+delta`. The observer-POSITION basis must go the other way: the KS
+    Cartesian azimuth of the observer is `phi_bl + atan2(a, r) + shift(r)`, so
+    recovering a BH-frame direction is `-delta`. This test measures how far
+    apart the accepted construction and each wrong-sign candidate sit at every
+    station in the shipped probe grid, and asserts the comparator's tolerance
+    is far below the smallest of them - i.e. that a passing probe gate cannot
+    be a loose threshold quietly accepting a sign error.
+    """
+
+    from gr_bh_xr.geodesic_ks import bl_to_ks_phi_shift
+
+    compare = _load_compare_live_tracer_module()
+    params = MetricParams(M=1.0, a=0.9)
+    tracer = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.cs").read_text(encoding="utf8")
+
+    # Read the shipped probe grid out of the C#, so the test cannot drift from
+    # the dump it is supposed to gate.
+    radii = [
+        float(value)
+        for value in re.search(
+            r"BasisProbeRadiiOverM = \{([^}]*)\}", tracer
+        ).group(1).replace("f", "").split(",")
+        if value.strip()
+    ]
+    azimuths = [
+        float(value)
+        for value in re.search(
+            r"BasisProbeAzimuthsDeg = \{([^}]*)\}", tracer
+        ).group(1).replace("f", "").split(",")
+        if value.strip()
+    ]
+    assert len(radii) >= 4 and len(azimuths) >= 3
+    # Non-zero azimuths are load-bearing: at phi = 0 the basis is symmetric
+    # under phi -> -phi and no sign error is observable.
+    assert any(abs(value) > 1.0 for value in azimuths)
+
+    theta_deg = 60.0
+    smallest = float("inf")
+    for radius in radii:
+        shift = bl_to_ks_phi_shift(params, radius)
+        for azimuth_deg in azimuths:
+            azimuth = math.radians(azimuth_deg)
+            for chart in ("bl", "ks"):
+                phi_bl = azimuth - shift if chart == "ks" else azimuth
+                accepted = compare.accepted_observer_basis_bh(theta_deg, phi_bl)
+                candidates = [
+                    compare.ks_unrotated_observer_basis_bh(params, theta_deg, phi_bl, radius)
+                ]
+                if chart == "ks":
+                    # The kernel's +delta convention misapplied to a position.
+                    candidates.append(
+                        compare.accepted_observer_basis_bh(theta_deg, azimuth + shift)
+                    )
+                for candidate in candidates:
+                    smallest = min(smallest, compare.basis_separation_deg(accepted, candidate))
+
+    assert smallest > 0.0
+    assert smallest > (
+        compare.BASIS_PROBE_DISCRIMINATION_FACTOR * compare.BASIS_PROBE_TOLERANCE_DEG
+    ), (
+        f"probe grid separates the wrong signs by only {smallest:.3e} deg, which is "
+        f"not {compare.BASIS_PROBE_DISCRIMINATION_FACTOR}x the "
+        f"{compare.BASIS_PROBE_TOLERANCE_DEG} deg tolerance"
+    )
+
+
+def test_live_tracer_observer_basis_follows_the_accepted_keyframe_mapping():
+    """The C# basis is built from the BL-spherical direction, not the KS position.
+
+    Two things are pinned. First, the construction: `_bh_to_unity` dots the
+    escaped momentum against `unity_basis_from_inclination`, which is built
+    from `(sin th cos phi_bl, sin th sin phi_bl, cos th)`, so that is the only
+    direction the stored escape directions are consistent with. Second, that
+    the dump publishes the basis at all - the traced directions use an identity
+    `_Basis*Bh`, so without the probes this role has no external observable.
+    """
+
+    tracer = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.cs").read_text(encoding="utf8")
+    compare = COMPARE_LIVE_TRACER.read_text(encoding="utf8")
+    code = _shader_code_only(tracer)
+
+    basis = _csharp_block(
+        code,
+        "private static void ObserverBasisBh(",
+    )
+    # BL-spherical observer direction, forward = -observer, spin projection up,
+    # right = up x forward, final up = forward x right. The exact accepted
+    # sequence.
+    assert "sinT * Math.Cos(phiBl), sinT * Math.Sin(phiBl), Math.Cos(theta)" in basis
+    assert "forward = new[] { -observerBh[0] / obsLen" in basis
+    # The rejected alternative must be gone: no rotation of the KS position.
+    assert "posBh" not in code
+    assert "Math.Cos(-deltaRot)" not in code
+    assert "deltaRot" not in code
+
+    # The chart-tagged BL azimuth is what feeds it.
+    observer = _csharp_block(code, "private void ConfigureObserverUniforms(Snapshot snapshot)")
+    assert "double phiBl = azimuthIsKerrSchild ? azimuth - phiShift : azimuth;" in observer
+    assert "ObserverBasisBh(theta, phiBl, out double[] right" in observer
+
+    # The dump exposes the role, and the comparator gates it separately from
+    # the kernel's momentum rotation.
+    assert "observerBasisProbes" in tracer
+    assert "private string ObserverBasisProbeJson(float thetaDeg)" in tracer
+    assert "def check_observer_basis_probes(" in compare
+    assert 'summary["observerBasis"] = check_observer_basis_probes(' in compare
+    assert "toleranceIsDiscriminating" in compare
+    assert "must be -delta, NOT the kernel's" in compare
+
+
+def test_live_tracer_sign_gates_are_fail_closed_and_multi_r_escape():
+    """Neither sign gate may evaporate, and neither may rest on one r_escape.
+
+    The momentum-rotation check used to be wrapped in `if np.any(...)` and then
+    in `if "rotationIsImprovement" in summary`, so a dump with no comparable
+    texel skipped the only sign gate in the file and still printed PASS.
+    """
+
+    compare = COMPARE_LIVE_TRACER.read_text(encoding="utf8")
+    gate = (UNITY_EDITOR_DIR / "GRBHXRGateAutomation.cs").read_text(encoding="utf8")
+    tracer = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.cs").read_text(encoding="utf8")
+
+    # Fail-closed: no conditional wrapper survives on either sign gate.
+    assert 'if "rotationIsImprovement" in summary:' not in compare
+    assert "MIN_CHART_SIGN_SAMPLES" in compare
+    assert 'assert summary["rotationIsImprovement"]' in compare
+    assert 'assert basis_summary["maxDeg"] < BASIS_PROBE_TOLERANCE_DEG' in compare
+    # The dump must be able to resolve the sign at the r_escape it used.
+    assert 'summary["chartSignMarginRatio"]' in compare
+    assert 'assert summary["chartSignMarginRatio"] > 2.0' in compare
+
+    # Multi-r_escape dump set, and an API that can actually produce it.
+    assert "float rEscapeOverrideM)" in tracer
+    assert "private static readonly float[] LiveTracerSignEscapeRadiiM" in gate
+    assert "rEscapeOverrideM: rEscape" in gate
+    radii = re.search(r"LiveTracerSignEscapeRadiiM = \{([^}]*)\}", gate).group(1)
+    values = [float(v.replace("f", "")) for v in radii.split(",") if v.strip()]
+    assert len(values) >= 2
+    assert all(value > 0.0 for value in values)
+    # Nearer escape radii than the 200 M default, or the extra dumps add no
+    # margin at all.
+    assert max(values) < 200.0
+
+
+def test_accepted_momentum_rotation_sign_survives_multiple_escape_radii():
+    """`+delta` beats `-delta` and no rotation, at every escape radius tested.
+
+    The accepted gate `gpu.validate_descent_frames` already runs this at two
+    radii; the sign is the thing the whole chart discussion turns on, so run it
+    across the shipped multi-r_escape set as well and additionally check the
+    explicitly negated rotation, which no committed gate covered.
+    """
+
+    from gr_bh_xr.geodesic_ks import bl_to_ks_phi_shift
+    from gr_bh_xr.gpu.generate_descent_keyframes import batch_escape_directions
+
+    params = MetricParams(M=1.0, a=0.9)
+    rng = np.random.default_rng(20260806)
+    count = 512
+    # Endpoints on a sphere of radius r_escape with an outgoing momentum that
+    # is not radial, so the rotation is not degenerate.
+    for r_escape in (50.0, 100.0, 200.0, 400.0):
+        direction = rng.normal(size=(count, 3))
+        direction /= np.linalg.norm(direction, axis=1, keepdims=True)
+        final_x = np.zeros((count, 4), dtype=np.float64)
+        final_x[:, 1:4] = direction * r_escape
+        # Null momentum covector for a nearly radial outgoing ray, perturbed so
+        # the transverse components are non-zero.
+        outward = direction + 0.15 * rng.normal(size=(count, 3))
+        outward /= np.linalg.norm(outward, axis=1, keepdims=True)
+        final_p = np.zeros((count, 4), dtype=np.float64)
+        final_p[:, 0] = -1.0
+        final_p[:, 1:4] = outward
+        escaped = np.ones((count,), dtype=bool)
+
+        rotated = batch_escape_directions(params, final_x, final_p, escaped)
+        unrotated = batch_escape_directions(
+            params, final_x, final_p, escaped, apply_chart_rotation=False
+        )
+        delta = math.atan2(params.a, r_escape) + bl_to_ks_phi_shift(params, r_escape)
+        cos_d, sin_d = math.cos(-delta), math.sin(-delta)
+        negated = np.stack(
+            [
+                cos_d * unrotated[:, 0] - sin_d * unrotated[:, 1],
+                sin_d * unrotated[:, 0] + cos_d * unrotated[:, 1],
+                unrotated[:, 2],
+            ],
+            axis=1,
+        )
+
+        def separation(left, right):
+            dots = np.clip(np.sum(left * right, axis=1), -1.0, 1.0)
+            return float(np.max(np.degrees(np.arccos(dots))))
+
+        # The three candidates are genuinely distinct at this radius, and the
+        # accepted one differs from the negated one by 2|delta|.
+        span = separation(rotated, negated)
+        assert span > 1.5 * math.degrees(abs(delta)), (
+            f"at r_escape = {r_escape} the +delta and -delta extractions differ by "
+            f"only {span:.3e} deg; the sign is not resolvable here"
+        )
+        assert separation(rotated, unrotated) > 0.5 * math.degrees(abs(delta))
+
+
 def test_descent_manifest_azimuth_is_the_ingoing_kerr_schild_chart():
     """`_phi_tilde` is identically `phi_ks`, so Unity must not shift it again.
 
