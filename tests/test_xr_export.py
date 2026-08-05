@@ -523,7 +523,8 @@ def test_unity_live_tracer_refine_and_resolution_contract():
     # The main kernel keeps the packed view-priority face order; the refine
     # kernel walks the mask spatially (face-major).
     assert "int face = (_FaceOrderPacked >> (slot * 3)) & 7;" in compute
-    assert "_EventMask[face * pixelsPerFace + py * _FaceSize + px] = MaskOf(o);" in compute
+    assert "uint flat = face * pixelsPerFace + py * _FaceSize + px;" in compute
+    assert "_EventMask[flat] = MaskOf(o);" in compute
 
     tracer = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.cs").read_text(encoding="utf8")
     # Pin the declaration, not the bare identifier: a comment mentioning
@@ -591,6 +592,135 @@ def test_unity_live_window_contract():
     assert "windowHalfAlpha" in compare
 
 
+def test_live_tracer_validity_is_hamiltonian_not_launch_radius():
+    """The near-horizon darkening bug must be gone, not re-tuned.
+
+    The kernel darkened an escaped ray when `minR < _HugMinR`, with
+    `_HugMinR = r_+ + 0.05 M`. `minR` includes the LAUNCH radius, so every
+    genuinely escaped ray of an observer at `r_obs < r_+ + 0.05 M` went dark.
+    The accepted Task 8 default near-horizon frame sits at r = 1.4423 M -
+    only 0.0064 M above the horizon - with a physically valid escape fraction
+    of about 0.847, so that whole keyframe rendered black.
+
+    The comparator MIRRORED the same rule, which is why the gate reported
+    perfect agreement: two identical wrong implementations agree. Validity is
+    now the Hamiltonian residual, which is first-principles, observer-radius
+    independent and spin independent.
+    """
+
+    compute = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.compute").read_text(encoding="utf8")
+    tracer = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.cs").read_text(encoding="utf8")
+    compare = COMPARE_LIVE_TRACER.read_text(encoding="utf8")
+
+    # The launch-radius and affine-length criteria are gone from the kernel.
+    code = _shader_code_only(compute)
+    assert "_HugMinR" not in code
+    assert "_HugLambda" not in code
+    assert "minR < _HugMinR" not in code
+    # ...and from both C# paths.
+    cs_code = "\n".join(
+        line for line in tracer.splitlines() if not line.lstrip().startswith("//")
+    )
+    assert "_HugMinR" not in cs_code
+    assert "_HugLambda" not in cs_code
+
+    # Hamiltonian residual is computed, tracked, and used to reject.
+    assert "float HamiltonianKs(StateKS s)" in compute
+    assert "hMax = max(hMax, abs(HamiltonianKs(s)));" in code
+    assert "o.hamiltonianRejected = (eventCode == 1) && (hMax > _HamiltonianMax);" in code
+    assert "o.escaped = (eventCode == 1) && !o.hamiltonianRejected;" in code
+
+    # The threshold is published, not restated on both sides.
+    assert "[SerializeField] private float hamiltonianMax = 1.0e-2f;" in tracer
+    assert r'\"hamiltonianMax\"' in tracer
+    assert 'meta["hamiltonianMax"]' in compare
+
+    # The comparator must NOT mirror the removed heuristics.
+    assert 'meta["hugMinR"]' not in compare
+    assert 'meta["hugLambda"]' not in compare
+    assert 'result_dict["h_max_abs"] <= hamiltonian_max' in compare
+
+    # Fail-closed floors taken from the accepted producer/validator.
+    assert 'summary["excludedFraction"] <= 0.35' in compare
+    assert 'summary["escapeFraction"] >= 0.25' in compare
+
+
+def test_live_tracer_exposes_structured_event_classification():
+    """Capture, numerical invalid, and budget exhaustion must stay distinct.
+
+    The kernel collapsed all three into one dark `eventCode == 0`, so the
+    scientific artifact could not tell a physically captured ray from one the
+    integrator destroyed. The display may still render every non-escape class
+    dark; the dump and comparator may not.
+    """
+
+    compute = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.compute").read_text(encoding="utf8")
+    tracer = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.cs").read_text(encoding="utf8")
+    compare = COMPARE_LIVE_TRACER.read_text(encoding="utf8")
+    code = _shader_code_only(compute)
+
+    # Raw codes survive to the outputs, matching gr_bh_xr.gpu.codes.
+    for field in ("int eventCode;", "int failureCode;", "float hMaxAbs;", "float minR;", "float lambdaEnd;"):
+        assert field in compute, field
+    assert "int eventCode = 3;" in code            # EVENT_INVALID
+    assert "int failureCode = 2;" in code          # FAILURE_UNCLASSIFIED_MAX_LAMBDA
+    assert "eventCode = 3; failureCode = 3;" in code   # solver failure
+    assert "eventCode = 0; failureCode = 0;" in code   # physical capture
+    assert "eventCode = 1; failureCode = 0;" in code   # escape
+    # The non-finite radius branch the audited WGSL kernel has.
+    assert "IsBad(r) || r <= 1.0e-6" in code
+
+    # A separate audit buffer: widening the 3-bit limb mask would make a texel
+    # that differs only in failure code look like a shadow edge.
+    assert "uint ClassOf(TraceOutputs o)" in compute
+    assert "RWStructuredBuffer<uint> _ClassBuffer;" in compute
+    assert "RWStructuredBuffer<float> _HMaxBuffer;" in compute
+    assert "_ClassBuffer[flat] = ClassOf(o);" in code
+    assert "_HMaxBuffer[flat] = o.hMaxAbs;" in code
+
+    # Dumped, with the decoding contract published.
+    assert "live_class_u32.bytes" in tracer
+    assert "live_h_max_abs_f32.bytes" in tracer
+    for key in ("eventCodes", "failureCodes", "classBits"):
+        assert rf'\"{key}\"' in tracer, key
+
+    # The comparator requires them and compares per class.
+    assert "live_class_u32.bytes" in compare
+    assert 'summary["eventCodeAgreement"]' in compare
+    assert 'summary["failureCodeAgreement"]' in compare
+    assert 'summary["classCounts"]' in compare
+    assert 'summary["classCounts"]["numericalInvalid"] == 0' in compare
+    # A solver failure must be visibly distinct in the audit map, not black.
+    assert "solverFailure" in code
+
+
+def test_live_tracer_applies_the_accepted_chart_rotation_sign():
+    """Escape directions must use +delta, and be gated by improvement.
+
+    Accepted `batch_escape_directions` applies +delta; the kernel applied
+    -delta. The position-space chart offset and the momentum-direction offset
+    carry opposite signs, so -delta is worse than no rotation at all. A plain
+    angular threshold at r_escape = 200 M cannot catch this - the whole
+    correction is smaller than the measured agreement there - so the gate is
+    the dimensionless improvement comparison.
+    """
+
+    compute = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.compute").read_text(encoding="utf8")
+    compare = COMPARE_LIVE_TRACER.read_text(encoding="utf8")
+    code = _shader_code_only(compute)
+
+    assert "float delta = atan2(_SpinA, rEnd) + PhiShift(rEnd);" in code
+    assert "float cosD = cos(delta);" in code
+    assert "float sinD = sin(delta);" in code
+    assert "cos(-delta)" not in code
+    assert "sin(-delta)" not in code
+
+    # The discriminating gate, not a threshold.
+    assert "apply_chart_rotation=False" in compare
+    assert 'summary["rotationIsImprovement"]' in compare
+    assert "escape-direction rotation sign is wrong" in compare
+
+
 def test_live_tracer_horizon_thresholds_scale_with_mass():
     """Horizon-relative radii are geometric lengths and must carry M.
 
@@ -628,13 +758,19 @@ def test_live_tracer_horizon_thresholds_scale_with_mass():
     # Runtime pass and dump path both route through the helpers...
     runtime = _csharp_block(tracer, "private void ConfigureObserverUniforms(Snapshot snapshot)")
     assert 'SetFloat("_CaptureR", CaptureRadius(pastTracing))' in runtime
-    assert 'SetFloat("_HugMinR", pastTracing && !interior ? HorizonGuardRadius() : 0.0f)' in runtime
+    # _HugMinR is gone entirely (see the validity test); the guard radius now
+    # survives only as the exterior capture surface. Comments may still name
+    # it to explain the removal, so check executable lines only.
+    runtime_code = "\n".join(
+        line for line in runtime.splitlines() if not line.lstrip().startswith("//")
+    )
+    assert "_HugMinR" not in runtime_code
+    assert 'SetFloat("_HamiltonianMax", hamiltonianMax)' in runtime_code
     dump = _csharp_block(
         tracer,
         "private string ConfigureValidationUniforms(Snapshot snapshot, float radiusM, float thetaDeg, bool rainFrame)",
     )
     assert "float captureR = CaptureRadius(rainFrame);" in dump
-    assert "HorizonGuardRadius()" in dump
 
     # ...and the unscaled literals must be gone from every horizon threshold.
     for banned in (
@@ -714,8 +850,7 @@ def test_live_tracer_dump_and_gate_share_every_physics_constant():
 
     for key in (
         "captureR",
-        "hugMinR",
-        "hugLambda",
+        "hamiltonianMax",
         "diskRIn",
         "diskROut",
         "timeOrientation",

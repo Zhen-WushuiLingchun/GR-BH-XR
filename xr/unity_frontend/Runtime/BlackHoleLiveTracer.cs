@@ -134,6 +134,28 @@ namespace GRBHXR
         private int windowKernel = -1;
         private int windowRefineKernel = -1;
         private ComputeBuffer eventMaskBuffer;
+        private ComputeBuffer classBuffer;
+        private ComputeBuffer hMaxBuffer;
+
+        /// <summary>
+        /// Hamiltonian-residual validity threshold. H is identically zero for
+        /// a null geodesic, so max|H| along the ray is a first-principles
+        /// criterion - observer-radius independent and spin independent -
+        /// unlike the launch-radius and affine-length heuristics it replaces.
+        ///
+        /// 1e-2 is the accepted value from
+        /// gr_bh_xr.gpu.generate_descent_keyframes.DEFAULT_HAMILTONIAN_MAX and
+        /// transfers verbatim because it was calibrated on the SAME f32
+        /// tracer. It is not tuned: at the accepted near-horizon keyframe the
+        /// kept population tops out at ~1.8e-5 and the rejected population
+        /// starts at ~1.7e4, so every threshold in [1e-4, 1e0] selects the
+        /// identical set and f32 rounding cannot move a ray across.
+        ///
+        /// Published in the validation dump so the Python gate consumes it
+        /// rather than restating it.
+        /// </summary>
+        [SerializeField] private float hamiltonianMax = 1.0e-2f;
+        public float HamiltonianMax => hamiltonianMax;
         private ComputeBuffer windowMaskBuffer;
         private Texture2D diskRadialLutTexture;
         private bool diskLutDirty = true;
@@ -810,8 +832,12 @@ namespace GRBHXR
             bool pastTracing = useRain;
             tracerCompute.SetFloat("_TimeOrientation", pastTracing ? -1.0f : 1.0f);
             tracerCompute.SetFloat("_CaptureR", CaptureRadius(pastTracing));
-            tracerCompute.SetFloat("_HugMinR", pastTracing && !interior ? HorizonGuardRadius() : 0.0f);
-            tracerCompute.SetFloat("_HugLambda", pastTracing && interior ? 0.6f * maxLambda : 0.0f);
+            // Validity is the Hamiltonian residual only. The _HugMinR /
+            // _HugLambda heuristics are GONE: _HugMinR compared the launch
+            // radius against r_+ + 0.05 M and blanked every escaping ray for
+            // any observer below that, and _HugLambda both admitted destroyed
+            // rays and darkened healthy ones.
+            tracerCompute.SetFloat("_HamiltonianMax", hamiltonianMax);
             tracerCompute.SetFloat("_DiskRIn", (float)IscoRadius());
             tracerCompute.SetFloat("_DiskROut", 30.0f * mass);
             tracerCompute.SetInt("_FaceSize", snapshot.Size);
@@ -1162,6 +1188,13 @@ namespace GRBHXR
             }
             eventMaskBuffer?.Release();
             eventMaskBuffer = new ComputeBuffer(count, sizeof(uint));
+            // Audit buffers share the mask's length and lifetime. They are
+            // written by the trace kernel and read only by the validation
+            // dump; the display path never touches them.
+            classBuffer?.Release();
+            classBuffer = new ComputeBuffer(count, sizeof(uint));
+            hMaxBuffer?.Release();
+            hMaxBuffer = new ComputeBuffer(count, sizeof(float));
         }
 
         private void EnsureWindowTextures(WindowSnapshot snapshot, int size)
@@ -1254,6 +1287,8 @@ namespace GRBHXR
             tracerCompute.SetTexture(kernelIndex, "_OutRedshift0", snapshot.StagingRedshift0);
             tracerCompute.SetTexture(kernelIndex, "_OutRedshift1", snapshot.StagingRedshift1);
             tracerCompute.SetBuffer(kernelIndex, "_EventMask", eventMaskBuffer);
+            tracerCompute.SetBuffer(kernelIndex, "_ClassBuffer", classBuffer);
+            tracerCompute.SetBuffer(kernelIndex, "_HMaxBuffer", hMaxBuffer);
         }
 
         private void OnDestroy()
@@ -1268,6 +1303,10 @@ namespace GRBHXR
             }
             eventMaskBuffer?.Release();
             eventMaskBuffer = null;
+            classBuffer?.Release();
+            classBuffer = null;
+            hMaxBuffer?.Release();
+            hMaxBuffer = null;
             windowMaskBuffer?.Release();
             windowMaskBuffer = null;
             if (diskRadialLutTexture != null)
@@ -1349,6 +1388,12 @@ namespace GRBHXR
 
             int totalTexels = faceSize * faceSize * 6;
             var mask = new ComputeBuffer(totalTexels, sizeof(uint));
+            // Structured classification for the scientific artifact. The
+            // display may render every non-escape class dark; the dump and
+            // the comparator must be able to tell physical capture from a
+            // non-finite RK state from affine-budget exhaustion.
+            var classes = new ComputeBuffer(totalTexels, sizeof(uint));
+            var hMaxes = new ComputeBuffer(totalTexels, sizeof(float));
             tracerCompute.SetTexture(kernel, "_OutEscapeDir", dir);
             tracerCompute.SetTexture(kernel, "_OutEvent", evt);
             tracerCompute.SetTexture(kernel, "_OutDisk0", d0);
@@ -1356,6 +1401,8 @@ namespace GRBHXR
             tracerCompute.SetTexture(kernel, "_OutRedshift0", r0);
             tracerCompute.SetTexture(kernel, "_OutRedshift1", r1);
             tracerCompute.SetBuffer(kernel, "_EventMask", mask);
+            tracerCompute.SetBuffer(kernel, "_ClassBuffer", classes);
+            tracerCompute.SetBuffer(kernel, "_HMaxBuffer", hMaxes);
             tracerCompute.SetInt("_TexelBase", 0);
             tracerCompute.SetInt("_TexelCount", totalTexels);
             tracerCompute.Dispatch(kernel, Mathf.CeilToInt(totalTexels / 64.0f), 1, 1);
@@ -1374,6 +1421,8 @@ namespace GRBHXR
             tracerCompute.SetTexture(refineKernel, "_OutRedshift0", r0);
             tracerCompute.SetTexture(refineKernel, "_OutRedshift1", r1);
             tracerCompute.SetBuffer(refineKernel, "_EventMask", mask);
+            tracerCompute.SetBuffer(refineKernel, "_ClassBuffer", classes);
+            tracerCompute.SetBuffer(refineKernel, "_HMaxBuffer", hMaxes);
             tracerCompute.Dispatch(refineKernel, Mathf.CeilToInt(totalTexels / 64.0f), 1, 1);
 
             DumpArray(dir, System.IO.Path.Combine(outputDirectory, "live_escape_dir_refined_rgba32f.bytes"));
@@ -1387,6 +1436,24 @@ namespace GRBHXR
             System.IO.File.WriteAllBytes(
                 System.IO.Path.Combine(outputDirectory, "live_event_mask_u32.bytes"),
                 maskBytes
+            );
+
+            var classData = new uint[totalTexels];
+            classes.GetData(classData);
+            var classBytes = new byte[totalTexels * 4];
+            Buffer.BlockCopy(classData, 0, classBytes, 0, classBytes.Length);
+            System.IO.File.WriteAllBytes(
+                System.IO.Path.Combine(outputDirectory, "live_class_u32.bytes"),
+                classBytes
+            );
+
+            var hMaxData = new float[totalTexels];
+            hMaxes.GetData(hMaxData);
+            var hMaxBytes = new byte[totalTexels * 4];
+            Buffer.BlockCopy(hMaxData, 0, hMaxBytes, 0, hMaxBytes.Length);
+            System.IO.File.WriteAllBytes(
+                System.IO.Path.Combine(outputDirectory, "live_h_max_abs_f32.bytes"),
+                hMaxBytes
             );
 
             // Angular-window stage: same physics kernel, gnomonic texel ->
@@ -1475,6 +1542,8 @@ namespace GRBHXR
                 document
             );
             mask.Release();
+            classes.Release();
+            hMaxes.Release();
             dir.Release();
             evt.Release();
             d0.Release();
@@ -1520,8 +1589,7 @@ namespace GRBHXR
             // would have failed the run rather than silently disagreeing,
             // which is how this was caught.
             float captureR = CaptureRadius(rainFrame);
-            float hugMinR = rainFrame && radiusM > rPlus ? HorizonGuardRadius() : 0.0f;
-            float hugLambda = rainFrame && radiusM < rPlus ? 0.6f * maxLambda : 0.0f;
+            tracerCompute.SetFloat("_HamiltonianMax", hamiltonianMax);
             float diskRIn = (float)IscoRadius();
             // Was a bare 30.0f, which disagreed with the runtime path
             // (30 M, line 745) and with the runtime disk LUT whenever the
@@ -1530,8 +1598,6 @@ namespace GRBHXR
             float diskROut = 30.0f * mass;
             tracerCompute.SetFloat("_TimeOrientation", timeOrientation);
             tracerCompute.SetFloat("_CaptureR", captureR);
-            tracerCompute.SetFloat("_HugMinR", hugMinR);
-            tracerCompute.SetFloat("_HugLambda", hugLambda);
             tracerCompute.SetFloat("_DiskRIn", diskRIn);
             tracerCompute.SetFloat("_DiskROut", diskROut);
             tracerCompute.SetInt("_FaceSize", faceSize);
@@ -1577,7 +1643,10 @@ namespace GRBHXR
                 + $"  \"stepSize\": {stepSize:R}, \"maxSteps\": {maxSteps}, \"maxLambda\": {maxLambda:R}, \"rEscape\": {rEscape:R},\n"
                 + $"  \"maxStep\": {maxStep:R}, \"stepRRef\": {stepRRef:R}, \"adaptiveStep\": true,\n"
                 + $"  \"timeOrientation\": {timeOrientation:R},\n"
-                + $"  \"captureR\": {captureR:R}, \"hugMinR\": {hugMinR:R}, \"hugLambda\": {hugLambda:R},\n"
+                + $"  \"captureR\": {captureR:R}, \"hamiltonianMax\": {hamiltonianMax:R},\n"
+                + "  \"eventCodes\": {\"capture\": 0, \"escape\": 1, \"disk_crossing\": 2, \"invalid\": 3, \"object_hit\": 4},\n"
+                + "  \"failureCodes\": {\"none\": 0, \"trace_exception\": 1, \"unclassified_max_lambda\": 2, \"solver_failure\": 3},\n"
+                + "  \"classBits\": {\"eventShift\": 0, \"eventMask\": 15, \"failureShift\": 4, \"failureMask\": 15, \"hamiltonianRejectedBit\": 256},\n"
                 + $"  \"diskRIn\": {diskRIn:R}, \"diskROut\": {diskROut:R}, \"diskMaxOrder\": 2,\n"
                 + "  \"refineSubrayGrid\": 3, \"refineSubrayOffsetScale\": 0.3333333333333333,\n"
                 + "  \"maskBits\": {\"escape\": 1, \"disk0\": 2, \"disk1\": 4}";

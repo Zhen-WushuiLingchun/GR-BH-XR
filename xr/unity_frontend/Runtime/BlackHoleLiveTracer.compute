@@ -30,8 +30,22 @@ float _CaptureR;
 float _DiskRIn;
 float _DiskROut;
 float _TimeOrientation;   // +1 future (exterior emit convention), -1 past (descent/interior)
-float _HugMinR;           // exterior horizon-hug threshold (r_plus + 0.05); <=0 disables
-float _HugLambda;         // interior horizon-hug affine threshold; <=0 disables
+// First-principles ray validity. H = 0.5 g^{mu nu} p_mu p_nu is identically
+// zero for a null geodesic, so max|H| along the ray marks a ray the f32
+// backward integration destroyed. Observer-radius independent and spin
+// independent, and calibrated on the SAME f32 tracer:
+// gr_bh_xr.gpu.generate_descent_keyframes.DEFAULT_HAMILTONIAN_MAX = 1e-2.
+//
+// This REPLACES the two geometric heuristics this kernel used to apply:
+//   _HugMinR: darkened an escaped ray when minR < r_+ + 0.05. minR includes
+//     the LAUNCH radius, so every escaping ray of any observer sitting below
+//     that threshold was blanked - measured 100% of escaping rays at the
+//     accepted default near-horizon keyframe r = 1.4423 M, which should have
+//     an escape fraction of 0.847.
+//   _HugLambda: darkened on affine length. Roughly 10x under-inclusive - it
+//     admitted 519-661 destroyed rays per keyframe (residual up to 7.7e9)
+//     while darkening 36-52 healthy ones.
+float _HamiltonianMax;
 int _FaceSize;
 int _TexelBase;           // first global texel index of this dispatch
 int _TexelCount;
@@ -69,6 +83,11 @@ RWTexture2DArray<float4> _OutRedshift1;
 // face * faceSize^2 + py * faceSize + px. Bits: 1 escape, 2 disk order 0
 // valid, 4 disk order 1 valid.
 RWStructuredBuffer<uint> _EventMask;
+// Audit-only, same length and lifetime as _EventMask. Written by the trace
+// kernel and read only by the validation dump, so the display path is
+// unchanged and limb detection keeps its 3-bit mask.
+RWStructuredBuffer<uint> _ClassBuffer;
+RWStructuredBuffer<float> _HMaxBuffer;
 
 // High-resolution angular window centered on the hole (+z of the map
 // basis). Texels map to the display shader's gnomonic screen coordinates
@@ -355,13 +374,34 @@ float3 FaceDirection(int face, float u, float v)
 // ---------------------------------------------------------------------------
 struct TraceOutputs
 {
-    bool escaped;
+    // Presentation
+    bool escaped;      // eventCode == ESCAPE && !hamiltonianRejected
     float3 unityDir;   // valid when escaped
     float4 disk0;      // r, sin phi, cos phi, valid(0/1)
     float4 red0;       // g in x, premultiplied by disk0.w
     float4 disk1;
     float4 red1;
+    // Audit / classification, kept RAW so the scientific artifact never
+    // conflates physical capture, a non-finite RK state, and affine-budget
+    // exhaustion. The display may still render all non-escape classes dark;
+    // the dump and comparator must not. Values are the project-wide contract
+    // gr_bh_xr.gpu.codes.EVENT_CODES / FAILURE_CODES.
+    int eventCode;            // 0 capture, 1 escape, 3 invalid, 4 object_hit
+    int failureCode;          // 0 none, 2 unclassified_max_lambda, 3 solver_failure
+    float hMaxAbs;            // max |0.5 g^{mu nu} p_mu p_nu| along the ray
+    float minR;               // min Kerr-Schild radius reached
+    float lambdaEnd;          // affine parameter consumed
+    bool hamiltonianRejected; // eventCode == ESCAPE && hMaxAbs > _HamiltonianMax
 };
+
+// H is identically zero for a null geodesic. Recorded wherever it is used to
+// accept or reject a ray, so the rejection is auditable rather than implicit.
+float HamiltonianKs(StateKS s)
+{
+    MetricKS k = MetricAt(s.x, s.y, s.z);
+    float4 p = float4(s.pt, s.px, s.py, s.pz);
+    return 0.5 * dot(p, InvMetricTimesP(k, p));
+}
 
 TraceOutputs TraceDirection(float3 d)
 {
@@ -391,9 +431,14 @@ TraceOutputs TraceDirection(float3 d)
     s.py = p.z;
     s.pz = p.w;
 
-    int eventCode = -1;           // -1 running, 0 capture/dark, 1 escape
+    // Mirrors the audited WGSL kernel's initial state: a ray that exits the
+    // loop by budget alone stays INVALID/UNCLASSIFIED_MAX_LAMBDA rather than
+    // being relabelled a capture.
+    int eventCode = 3;            // EVENT_INVALID
+    int failureCode = 2;          // FAILURE_UNCLASSIFIED_MAX_LAMBDA
     float lambdaUsed = 0.0;
     float minR = KsRadius(s.x, s.y, s.z);
+    float hMax = abs(HamiltonianKs(s));
     float diskR0 = -1.0, diskPhi0 = -1.0, diskG0 = -1.0;
     float diskR1 = -1.0, diskPhi1 = -1.0, diskG1 = -1.0;
     int diskOrder = 0;
@@ -414,11 +459,17 @@ TraceOutputs TraceDirection(float3 d)
         lambdaUsed += dh;
         if (StateIsBad(s))
         {
-            eventCode = 0;
+            eventCode = 3; failureCode = 3;   // EVENT_INVALID, FAILURE_SOLVER_FAILURE
             break;
         }
         float r = KsRadius(s.x, s.y, s.z);
+        if (IsBad(r) || r <= 1.0e-6)
+        {
+            eventCode = 3; failureCode = 3;   // EVENT_INVALID, FAILURE_SOLVER_FAILURE
+            break;
+        }
         minR = min(minR, r);
+        hMax = max(hMax, abs(HamiltonianKs(s)));
         if (_DiskROut > 0.0)
         {
             bool crosses = (prevZ < -1.0e-9 && s.z >= 0.0) || (prevZ > 1.0e-9 && s.z <= 0.0);
@@ -448,33 +499,26 @@ TraceOutputs TraceDirection(float3 d)
         }
         if (r <= _CaptureR)
         {
-            eventCode = 0;
+            eventCode = 0; failureCode = 0;   // EVENT_CAPTURE
             break;
         }
         if (r >= _REscape)
         {
-            eventCode = 1;
+            eventCode = 1; failureCode = 0;   // EVENT_ESCAPE
             break;
         }
     }
 
-    // Past-horizon darkness (see the descent generator): budget exhaustion,
-    // exterior horizon hugs, interior extreme affine lengths.
-    if (eventCode < 0)
-    {
-        eventCode = 0;
-    }
-    if (eventCode == 1 && _HugMinR > 0.0 && minR < _HugMinR)
-    {
-        eventCode = 0;
-    }
-    if (eventCode == 1 && _HugLambda > 0.0 && lambdaUsed > _HugLambda)
-    {
-        eventCode = 0;
-    }
-
     TraceOutputs o;
-    o.escaped = eventCode == 1;
+    o.eventCode = eventCode;
+    o.failureCode = failureCode;
+    o.hMaxAbs = hMax;
+    o.minR = minR;
+    o.lambdaEnd = lambdaUsed;
+    // Validity is the Hamiltonian residual and nothing else. No launch-radius
+    // heuristic, no affine-length shortcut.
+    o.hamiltonianRejected = (eventCode == 1) && (hMax > _HamiltonianMax);
+    o.escaped = (eventCode == 1) && !o.hamiltonianRejected;
     o.unityDir = float3(0.0, 0.0, 0.0);
     if (o.escaped)
     {
@@ -490,9 +534,20 @@ TraceOutputs TraceDirection(float3 d)
         float4 uVec = InvMetricTimesP(k, float4(s.pt, s.px, s.py, s.pz));
         float3 spatial = normalize(float3(uVec.y, uVec.z, uVec.w));
         float rEnd = KsRadius(s.x, s.y, s.z);
+        // +delta, NOT -delta. The position-space chart offset and the
+        // momentum-direction offset carry OPPOSITE signs: the outgoing-ray
+        // momentum azimuth is phi_bl + shift + arctan(eps r / (1 - eps a)),
+        // i.e. phi_bl + aM/r^2 to O(r^-2), whereas delta itself is -aM/r^2.
+        // Rotating by -delta is therefore WORSE than applying no rotation at
+        // all. Matches gr_bh_xr.gpu.generate_descent_keyframes
+        // .batch_escape_directions, whose sign is gated by the
+        // `rotationIsImprovement` assertion in validate_descent_frames -
+        // the only formulation that discriminates it, because at
+        // r_escape = 200 M the whole correction is smaller than the
+        // measured agreement.
         float delta = atan2(_SpinA, rEnd) + PhiShift(rEnd);
-        float cosD = cos(-delta);
-        float sinD = sin(-delta);
+        float cosD = cos(delta);
+        float sinD = sin(delta);
         float3 bh = float3(
             cosD * spatial.x - sinD * spatial.y,
             sinD * spatial.x + cosD * spatial.y,
@@ -522,6 +577,18 @@ uint MaskOf(TraceOutputs o)
     return (o.escaped ? 1u : 0u)
         | (o.disk0.w > 0.5 ? 2u : 0u)
         | (o.disk1.w > 0.5 ? 4u : 0u);
+}
+
+// Structured classification for the scientific artifact. Deliberately a
+// SEPARATE buffer from _EventMask: the mask's low three bits drive limb
+// detection in the refine kernels, so widening it would make a texel that
+// differs only in failure code look like a shadow edge.
+// Bits 0-3 eventCode, 4-7 failureCode, bit 8 hamiltonianRejected.
+uint ClassOf(TraceOutputs o)
+{
+    return ((uint)o.eventCode & 15u)
+        | (((uint)o.failureCode & 15u) << 4)
+        | (o.hamiltonianRejected ? 256u : 0u);
 }
 
 [numthreads(64, 1, 1)]
@@ -556,13 +623,23 @@ void TraceTexels(uint3 id : SV_DispatchThreadID)
     else
     {
         _OutEscapeDir[coord] = float4(0.0, 0.0, 0.0, 0.0);
-        _OutEvent[coord] = float4(0.0, 0.0, 0.0, 1.0);
+        // Budget exhaustion asymptoting the past horizon is PHYSICAL darkness;
+        // a solver failure is not, and must never be indistinguishable from it
+        // in the audit map. Matches the Python audit palette.
+        bool darkPastHorizon = (o.eventCode == 3) && (o.failureCode == 2);
+        bool solverFailure = (o.eventCode == 3) && !darkPastHorizon;
+        _OutEvent[coord] = solverFailure
+            ? float4(0.824, 0.188, 0.251, 1.0)
+            : float4(0.0, 0.0, 0.0, 1.0);
     }
     _OutDisk0[coord] = o.disk0;
     _OutRedshift0[coord] = o.red0;
     _OutDisk1[coord] = o.disk1;
     _OutRedshift1[coord] = o.red1;
-    _EventMask[face * pixelsPerFace + py * _FaceSize + px] = MaskOf(o);
+    uint flat = face * pixelsPerFace + py * _FaceSize + px;
+    _EventMask[flat] = MaskOf(o);
+    _ClassBuffer[flat] = ClassOf(o);
+    _HMaxBuffer[flat] = o.hMaxAbs;
 }
 
 // ---------------------------------------------------------------------------

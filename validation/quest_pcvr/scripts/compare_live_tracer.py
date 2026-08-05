@@ -166,19 +166,19 @@ def main() -> None:
             "agreement figure from this dump is meaningful."
         )
 
-    hug_min_r = float(meta["hugMinR"])
-    hug_lambda = float(meta["hugLambda"])
+    hamiltonian_max = float(meta["hamiltonianMax"])
 
     def apply_hug_criteria(result_dict, escaped_mask):
-        # The compute tracer's post-hoc horizon-hug darkening, driven by the
-        # same two thresholds it used rather than by a re-derived branch. A
-        # zero threshold means the corresponding criterion was inactive for
-        # this dump, which is how Unity encodes it.
-        if hug_min_r > 0.0:
-            escaped_mask = escaped_mask & ~(result_dict["min_r"] < hug_min_r)
-        if hug_lambda > 0.0:
-            escaped_mask = escaped_mask & ~(result_dict["lambda_end"] > hug_lambda)
-        return escaped_mask
+        # Validity is the Hamiltonian residual and nothing else. H is
+        # identically zero for a null geodesic, so max|H| marks a ray the f32
+        # integration destroyed - observer-radius and spin independent.
+        #
+        # This replaces the launch-radius and affine-length heuristics the
+        # dump used to publish. Mirroring those here was worse than useless:
+        # the comparator reproduced the same bad rule, so the Unity kernel and
+        # its own gate agreed perfectly while both blanked the entire sky for
+        # any observer inside r_+ + 0.05 M.
+        return escaped_mask & (result_dict["h_max_abs"] <= hamiltonian_max)
 
     # The dumped tetrad is otherwise taken entirely on faith: every launch
     # state on both sides is built from it, so a wrong tetrad cancels out and
@@ -549,6 +549,89 @@ def main() -> None:
             )
             validated_stages.add("windowRefine")
 
+    # ------------------------------------------------------------------
+    # Structured event classification. The display renders every non-escape
+    # class dark, but the scientific artifact must not conflate physical
+    # capture, a non-finite RK state, and affine-budget exhaustion - and the
+    # comparator must be able to say WHICH class disagreed.
+    # ------------------------------------------------------------------
+    class_path = args.dump_dir / "live_class_u32.bytes"
+    hmax_path = args.dump_dir / "live_h_max_abs_f32.bytes"
+    for required in (class_path, hmax_path):
+        if not required.exists():
+            raise SystemExit(
+                f"dump is missing {required.name}: the structured classification "
+                "artifact is mandatory, a bare escape/not-escape mask cannot "
+                "distinguish capture from solver failure from budget exhaustion."
+            )
+    bits = meta["classBits"]
+    unity_class = np.fromfile(class_path, dtype=np.uint32).reshape(6, face, face)
+    unity_hmax = np.fromfile(hmax_path, dtype=np.float32).reshape(6, face, face)
+    flat_class = unity_class.reshape(-1)[picks]
+    flat_hmax = unity_hmax.reshape(-1)[picks]
+    unity_event = (flat_class >> int(bits["eventShift"])) & np.uint32(bits["eventMask"])
+    unity_failure = (flat_class >> int(bits["failureShift"])) & np.uint32(bits["failureMask"])
+    unity_rejected = (flat_class & np.uint32(bits["hamiltonianRejectedBit"])) > 0
+
+    py_event = result["event_code"].astype(np.uint32)
+    py_failure = result["failure_code"].astype(np.uint32)
+    py_rejected = (result["event_code"] == 1) & (result["h_max_abs"] > hamiltonian_max)
+
+    summary["eventCodeAgreement"] = float(np.mean(unity_event == py_event))
+    summary["failureCodeAgreement"] = float(np.mean(unity_failure == py_failure))
+    summary["hamiltonianRejectAgreement"] = float(np.mean(unity_rejected == py_rejected))
+    summary["hamiltonianMax"] = hamiltonian_max
+    summary["classCounts"] = {
+        "escape": int(np.count_nonzero((py_event == 1) & ~py_rejected)),
+        "physicalCapture": int(np.count_nonzero(py_event == 0)),
+        "numericalInvalid": int(np.count_nonzero((py_event == 3) & (py_failure == 3))),
+        "budgetExhausted": int(np.count_nonzero((py_event == 3) & (py_failure == 2))),
+        "hamiltonianRejected": int(np.count_nonzero(py_rejected)),
+    }
+    escaping_total = int(np.count_nonzero(py_event == 1))
+    summary["excludedFraction"] = (
+        float(np.count_nonzero(py_rejected) / escaping_total) if escaping_total else 0.0
+    )
+    summary["escapeFraction"] = float(
+        np.count_nonzero((py_event == 1) & ~py_rejected) / max(1, picks.size)
+    )
+    kept = (py_event == 1) & ~py_rejected
+    summary["hMaxMedianDiff"] = (
+        float(np.median(np.abs(flat_hmax[kept] - result["h_max_abs"][kept])))
+        if np.any(kept)
+        else None
+    )
+
+    # ------------------------------------------------------------------
+    # Escape-direction chart rotation SIGN. A plain angular threshold at
+    # r_escape = 200 M cannot discriminate it: the whole correction is
+    # smaller than the measured agreement there. The only discriminating
+    # formulation is that agreeing with the ROTATED reference must beat
+    # agreeing with the unrotated one.
+    # ------------------------------------------------------------------
+    unrotated = batch_escape_directions(
+        params, result["final_x"], result["final_p"], escaped, apply_chart_rotation=False
+    )
+    rot_ok = both & np.all(np.isfinite(unrotated), axis=1)
+    if np.any(rot_ok):
+        def _max_angle(reference):
+            dots = np.clip(
+                np.sum(reference[rot_ok] * unity_dirs[rot_ok, :3], axis=1)
+                / (
+                    np.linalg.norm(reference[rot_ok], axis=1)
+                    * np.linalg.norm(unity_dirs[rot_ok, :3], axis=1)
+                ),
+                -1.0,
+                1.0,
+            )
+            return float(np.max(np.degrees(np.arccos(dots))))
+
+        summary["chartRotatedMaxDeg"] = _max_angle(py_dirs)
+        summary["chartUnrotatedMaxDeg"] = _max_angle(unrotated)
+        summary["rotationIsImprovement"] = bool(
+            summary["chartRotatedMaxDeg"] < summary["chartUnrotatedMaxDeg"]
+        )
+
     summary["validatedStages"] = sorted(validated_stages)
     summary["waivedStages"] = sorted(set(args.allow_missing_stage))
     print(json.dumps(summary, indent=2))
@@ -577,6 +660,36 @@ def main() -> None:
     # photon-shell chaotic set. Each population must be non-empty; an empty
     # comparison set used to skip its threshold silently.
     assert event_match > 0.995, "event classification mismatch"
+    # Structured classification must agree class-by-class, not merely on
+    # escape/not-escape - two implementations can agree on a binary mask while
+    # disagreeing about why a ray is dark.
+    assert summary["eventCodeAgreement"] > 0.995, "raw event code disagreement"
+    assert summary["failureCodeAgreement"] > 0.995, "raw failure code disagreement"
+    assert summary["hamiltonianRejectAgreement"] > 0.995, "validity verdict disagreement"
+    assert summary["classCounts"]["numericalInvalid"] == 0, (
+        "solver failures present; the classification is not clean and no agreement "
+        "figure from this dump is meaningful"
+    )
+    # gr_bh_xr.gpu.validate_descent_frames.MAX_EXCLUDED_FRACTION
+    assert summary["excludedFraction"] <= 0.35, (
+        f"Hamiltonian residual excluded {summary['excludedFraction']:.3f} of escaping "
+        "rays; the configuration is broken"
+    )
+    # gr_bh_xr.gpu.generate_descent_keyframes.MIN_ESCAPE_FRACTION - a view whose
+    # sky is almost entirely dark is a blank frame, which is exactly what the
+    # removed launch-radius heuristic produced near the horizon.
+    assert summary["escapeFraction"] >= 0.25, (
+        f"escape fraction {summary['escapeFraction']:.3f} below the accepted floor; "
+        "refusing to report a blank sky as a pass"
+    )
+    if summary.get("hMaxMedianDiff") is not None:
+        assert summary["hMaxMedianDiff"] < 1.0e-5, "Hamiltonian residual disagreement"
+    # Chart-rotation sign. Never a bare threshold - see the comment above.
+    if "rotationIsImprovement" in summary:
+        assert summary["rotationIsImprovement"], (
+            "Unity matches the UNROTATED chart better than the rotated one: the "
+            "escape-direction rotation sign is wrong (must be +delta)"
+        )
     assert both.any(), "no texel escaped in both tracers; direction gate is vacuous"
     assert summary["dirMedianDeg"] < 0.05, "median direction error too large"
     assert disk_both.any(), "no disk crossing in both tracers; disk gate is vacuous"
