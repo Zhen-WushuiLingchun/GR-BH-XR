@@ -721,6 +721,57 @@ def test_live_tracer_applies_the_accepted_chart_rotation_sign():
     assert "escape-direction rotation sign is wrong" in compare
 
 
+def test_live_tracer_rain_frame_matches_accepted_construction():
+    """The Unity rain frame must match the accepted Kerr construction.
+
+    Three independent defects, none of which a Gram-matrix check can see:
+
+    - The normalization quadratic was solved with the cancellation-unstable
+      naive roots. `quad_a` goes to zero exactly at `r_+` (the outgoing branch
+      diverges as Delta -> 0 in the ingoing chart), so the naive form returned
+      a vector that is not a unit timelike four-velocity at all - measured
+      `|u.u + 1| = 0.876` at a/M = 0.9 and 5.26 at a/M = 0.998, silently.
+    - On failure it fell back to the static frame, whose `1/sqrt(-g_tt)` is
+      NaN inside the ergosphere, so a NaN tetrad went to the GPU.
+    - `sin(theta)` was reconstructed as `sqrt(max(1 - cos^2, 1e-16))`. That is
+      the Boyer-Lindquist sine, a different quantity from the accepted
+      `rho / r`, and it floors near the axis. The resulting `e_theta` stays
+      perfectly orthonormal while being mis-oriented, so a Gram check passes.
+    """
+
+    tracer = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.cs").read_text(encoding="utf8")
+    code = "\n".join(
+        line for line in tracer.splitlines() if not line.lstrip().startswith("//")
+    )
+
+    # Vieta-stable roots, not the naive quadratic formula.
+    assert "double helper = -0.5 * (qb + signB * sqrtDisc);" in code
+    assert "candidates.Add(qc / helper);" in code
+    assert "candidates.Add(helper / qa);" in code
+    assert "(-qb - disc) / (2.0 * qa)" not in code
+    assert "(-qb + disc) / (2.0 * qa)" not in code
+
+    # No silent static fallback; refuse instead.
+    rain = _csharp_block(tracer, "private double[] RainVelocity(double[] pos, double[,] g)")
+    assert "return StaticVelocity(g)" not in rain
+    assert "No ingoing future-pointing rain solution found." in rain
+
+    # Near-axis refusal, matching gr_bh_xr.observers.RAIN_MIN_SIN_THETA.
+    assert "private const double RainMinSinTheta = 1.0e-6;" in tracer
+    assert "rhoAxis <= RainMinSinTheta * r" in code
+    assert "undefined on the Kerr symmetry axis" in tracer
+
+    # Oriented polar leg from rho / r, not the floored BL sine.
+    assert "double sinT = rhoCyl / r;" in code
+    assert "Math.Sqrt(Math.Max(1.0 - cosT * cosT" not in code
+
+    # The refusal must reach a guard, not escape through Update, and must not
+    # break the hard-swap contract.
+    assert "private bool TryConfigureObserverUniforms(Snapshot snapshot)" in tracer
+    assert code.count("TryConfigureObserverUniforms(") >= 3
+    assert "GR-BH-XR live pass refused" in tracer
+
+
 def test_live_tracer_horizon_thresholds_scale_with_mass():
     """Horizon-relative radii are geometric lengths and must carry M.
 

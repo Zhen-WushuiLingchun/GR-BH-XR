@@ -180,6 +180,12 @@ namespace GRBHXR
         private const int RadialLutSamples = 512;
 
         /// <summary>
+        /// Relative cylindrical radius below which the rain frame is refused.
+        /// Mirrors gr_bh_xr.observers.RAIN_MIN_SIN_THETA.
+        /// </summary>
+        private const double RainMinSinTheta = 1.0e-6;
+
+        /// <summary>
         /// Numerical guard band outside the outer horizon, as a FRACTION OF M.
         /// This is a geometric length: written as a bare 0.05 it silently means
         /// 0.05 in world units, so every horizon-relative threshold broke scale
@@ -602,7 +608,7 @@ namespace GRBHXR
             // Same-state observer uniforms (the cube front is current, so this
             // re-uploads identical tetrad/metric values - kept explicit so the
             // window pass never depends on stale compute-shader state).
-            ConfigureObserverUniforms(snapshots[frontIndex]);
+            if (!TryConfigureObserverUniforms(snapshots[frontIndex])) { return; }
             tracerCompute.SetInt("_WindowSize", back.Size);
             tracerCompute.SetFloat("_WindowHalfAlpha", back.HalfAlpha);
             tracerCompute.SetFloat("_WindowRObs", radius);
@@ -652,7 +658,7 @@ namespace GRBHXR
             back.OriginMass = mass;
             back.OriginSpin = spin;
             EnsureDiskRadialLut();
-            ConfigureObserverUniforms(back);
+            if (!TryConfigureObserverUniforms(back)) { return; }
             UpdateFacePriority();
             nextTexel = 0;
             refinePhase = false;
@@ -795,6 +801,35 @@ namespace GRBHXR
         /// rain inside or when falling), metric rows, basis, and E-inf uniform
         /// for the pass, and uploads them to the compute shader.
         /// </summary>
+        /// <summary>
+        /// Refuse a pass rather than upload a degraded or NaN observer frame.
+        /// The rain construction now throws on the symmetry axis and when the
+        /// normalization has no ingoing future-pointing root; previously it
+        /// fell back to the static frame, whose 1/sqrt(-g_tt) is NaN inside
+        /// the ergosphere. On refusal the previous COMPLETE front snapshot
+        /// keeps displaying, which preserves the hard-swap contract.
+        /// </summary>
+        private bool TryConfigureObserverUniforms(Snapshot snapshot)
+        {
+            try
+            {
+                ConfigureObserverUniforms(snapshot);
+                observerFrameRefused = false;
+                return true;
+            }
+            catch (InvalidOperationException e)
+            {
+                if (!observerFrameRefused)
+                {
+                    observerFrameRefused = true;
+                    Debug.LogError($"GR-BH-XR live pass refused: {e.Message}");
+                }
+                return false;
+            }
+        }
+
+        private bool observerFrameRefused;
+
         private void ConfigureObserverUniforms(Snapshot snapshot)
         {
             float radius = Mathf.Max(observerRig.VirtualRadiusM, 0.7f);
@@ -956,6 +991,19 @@ namespace GRBHXR
             // Constraints: (g u)_t = -1; axial L = -y (g u)_x + x (g u)_y = 0;
             // theta constant: r u^z - z (grad r . u_spatial) = 0.
             double r = KsRadiusOf(pos);
+            // The rain constraint system loses rank on the symmetry axis: both
+            // the axial-Killing row and the polar row vanish identically there.
+            // Off axis the condition number grows like 6 / theta, so the
+            // velocity error scales as 2e-16 / theta. Refuse rather than return
+            // a silently degraded frame. Mirrors
+            // gr_bh_xr.observers.RAIN_MIN_SIN_THETA.
+            double rhoAxis = Math.Sqrt(pos[0] * pos[0] + pos[1] * pos[1]);
+            if (rhoAxis <= RainMinSinTheta * r)
+            {
+                throw new InvalidOperationException(
+                    "Rain frame is undefined on the Kerr symmetry axis: the constraint " +
+                    $"system loses rank there (sin(theta) ~ {rhoAxis / r:E3} <= {RainMinSinTheta:E1}).");
+            }
             double a2 = spin * spin;
             double rho2 = pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2];
             double gradDen = 2.0 * r * r - rho2 + a2;
@@ -1001,8 +1049,29 @@ namespace GRBHXR
             double qa = Quad(g, n, n);
             double qb = 2.0 * Quad(g, u0, n);
             double qc = Quad(g, u0, u0) + 1.0;
-            double disc = Math.Sqrt(Math.Max(qb * qb - 4.0 * qa * qc, 0.0));
-            foreach (double root in new[] { (-qb - disc) / (2.0 * qa), (-qb + disc) / (2.0 * qa) })
+            double discriminant = qb * qb - 4.0 * qa * qc;
+            if (discriminant < 0.0)
+            {
+                throw new InvalidOperationException(
+                    "Rain velocity normalization has no real solution here.");
+            }
+            // Vieta-stable roots, mirroring gr_bh_xr.observers.kerr_rain_velocity_ks.
+            // The outgoing rain branch diverges as Delta -> 0 in the ingoing
+            // chart, which drives qa to zero EXACTLY at r_+. The naive
+            // (-qb -/+ sqrt(disc)) / (2 qa) form then divides a catastrophically
+            // cancelled numerator by a near-zero denominator and returns a
+            // vector that is not a unit timelike four-velocity at all: measured
+            // |u.u + 1| = 0.876 at a/M = 0.9 and 5.26 at a/M = 0.998, silently,
+            // with no exception. The stable form never subtracts nearly equal
+            // quantities. Accepted-main regression:
+            // tests/test_observers.py::test_rain_velocity_is_stable_exactly_on_the_outer_horizon.
+            double sqrtDisc = Math.Sqrt(discriminant);
+            double signB = qb != 0.0 ? Math.Sign(qb) : 1.0;
+            double helper = -0.5 * (qb + signB * sqrtDisc);
+            var candidates = new System.Collections.Generic.List<double>(2);
+            if (helper != 0.0) { candidates.Add(qc / helper); }
+            if (qa != 0.0) { candidates.Add(helper / qa); }
+            foreach (double root in candidates)
             {
                 var u = new double[4];
                 for (int j = 0; j < 4; j += 1)
@@ -1010,12 +1079,20 @@ namespace GRBHXR
                     u[j] = u0[j] + root * n[j];
                 }
                 double drTau = gradR[0] * u[1] + gradR[1] * u[2] + gradR[2] * u[3];
+                // Ingoing and future-pointing. g^tt = -(1 + 2H) < 0 everywhere
+                // in the ingoing chart, so u^t > 0 is a valid causal test on
+                // both sides of the outer horizon.
                 if (drTau < 0.0 && u[0] > 0.0)
                 {
                     return u;
                 }
             }
-            return StaticVelocity(g);  // unreachable in practice
+            // NEVER silently fall back to the static frame: StaticVelocity
+            // evaluates 1/sqrt(-g_tt), which is NaN inside the ergosphere, so
+            // the old fallback uploaded a NaN tetrad to the GPU rather than
+            // failing. Refuse the pass instead.
+            throw new InvalidOperationException(
+                "No ingoing future-pointing rain solution found.");
         }
 
         private double[][] TetradLegs(double[] pos, double[,] g, double[] uVec)
@@ -1027,7 +1104,16 @@ namespace GRBHXR
             double[] radial = { 0.0, pos[0] * r / gradDen, pos[1] * r / gradDen, pos[2] * (r * r + a2) / (r * gradDen) };
             double[] phiLeg = { 0.0, -pos[1], pos[0], 0.0 };
             double cosT = pos[2] / r;
-            double sinT = Math.Sqrt(Math.Max(1.0 - cosT * cosT, 1.0e-16));
+            // sin(theta) = rho / r, matching gr_bh_xr.observers.kerr_rain_tetrad_ks
+            // exactly. The sqrt(max(1 - cos^2, 1e-16)) form is a DIFFERENT
+            // quantity - it is the Boyer-Lindquist sin(theta), smaller by
+            // sqrt(1 + a^2/r^2) - and it additionally floors silently near the
+            // axis, producing a mis-oriented e_theta that still orthonormalizes
+            // perfectly, so no Gram check can detect it. The systematic leg
+            // rotation reaches 11.7 deg at the accepted near-horizon keyframe
+            // r = 1.4423 M, far above the comparator's 0.05 deg direction gate.
+            double rhoCyl = Math.Sqrt(pos[0] * pos[0] + pos[1] * pos[1]);
+            double sinT = rhoCyl / r;
             double[] thetaLeg = { 0.0, pos[0] * cosT / sinT, pos[1] * cosT / sinT, -r * sinT };
 
             double[] ePhi = ProjectNormalize(g, phiLeg, new[] { uVec });
