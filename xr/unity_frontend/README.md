@@ -1,8 +1,43 @@
-# Unity PCVR Static Texture Bridge
+# Unity PCVR/MR Kerr Renderer
 
-This directory is a Unity package scaffold for Task 5. It consumes exported
-GPU lens-map textures; it does not run geodesic integration inside Unity or on
-the headset.
+This directory is the `com.grbhxr.lensing` Unity package. It is no longer a
+static texture bridge: it carries two distinct runtime paths.
+
+- **Baked transfer playback.** Unity loads exported full-sky / local transfer
+  textures and does a real-time lookup of offline-traced geodesics. This
+  remains the deterministic audit and fallback path.
+- **Live tracing (Task 9).** `BlackHoleLiveTracer.compute` integrates
+  single-precision Cartesian Kerr-Schild null geodesics inside Unity for the
+  current observer state. `BlackHoleLiveTracer.cs` dispatches a bounded ray
+  budget per display frame and hard-swaps only a completed pass, so the view
+  is always exactly one complete solution at one observer state. Geodesic
+  integration therefore does happen inside Unity — but it is amortized over
+  several display frames, and the package does **not** claim a newly converged
+  full-resolution sky at every 72/90 Hz frame, nor per-eye per-frame solving.
+  The per-eye per-frame cost is a texture lookup.
+- **Roam/descent playback (Tasks 7-8).** Unity loads finite-observer
+  keyframes. The rain-frame horizon-descent assets and their gates are owned
+  by the Task 7-8 physics worktree; this package plays them back and makes no
+  claim about their physics.
+- **MR camera/depth (Task 10).** The Meta MRUK camera backend and
+  environment-depth acquisition are implemented and late-bound. Live
+  camera-pixel lensing is **unaccepted**: no calibrated RGB frame delivery has
+  been demonstrated on a device.
+
+The validated editor baseline is Unity `6000.0.76f1`, URP `17.0.4`, OpenXR
+`1.17.1`, D3D11, and Meta MRUK `85.0.0` for PCVR. `package.json` declares
+`"unity": "6000.0"` — the generation this package is actually tested against.
+No backward compatibility with earlier Unity generations is claimed or
+verified; the previously declared `2022.3` had never been tested.
+
+Every asset in this package carries a committed `.meta` file. That is
+deliberate: this is a UPM package consumed by an out-of-repo Unity project,
+and an absent `.meta` makes Unity mint a fresh random GUID per clone, silently
+breaking every material, scene and prefab reference to the affected asset.
+The committed GUIDs match the formal embedded package, which is
+content-identical to this directory modulo line endings.
+`Runtime/link.xml.meta` is the sole exception with no upstream provenance,
+because `link.xml` is new here.
 
 ## Export From Python
 

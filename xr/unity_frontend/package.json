@@ -1,9 +1,9 @@
 {
   "name": "com.grbhxr.lensing",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "GR-BH-XR Lensing",
-  "description": "Static texture bridge for physics-auditable Kerr lens maps.",
-  "unity": "2022.3",
+  "description": "Physics-auditable Kerr lensing for PCVR. Two runtime paths: real-time lookup of offline-traced transfer maps (baked), and live Cartesian Kerr-Schild geodesic integration in a compute shader, amortized over several display frames and hard-swapped only when a pass completes. Not a static texture bridge, and not a full-resolution per-eye per-frame solve. Meta MRUK passthrough is late-bound and unaccepted: no calibrated camera-frame delivery has been demonstrated on device.",
+  "unity": "6000.0",
   "author": {
     "name": "GR-BH-XR"
   }

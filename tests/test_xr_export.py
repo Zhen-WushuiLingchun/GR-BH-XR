@@ -449,6 +449,54 @@ def _cg_function_body(source: str, header: str) -> str:
     raise AssertionError(f"unbalanced braces after {header!r}")
 
 
+def test_unity_package_metadata_describes_both_runtime_paths():
+    """The shipped manifest is what a package consumer actually reads.
+
+    It described this package as a "Static texture bridge" long after the live
+    Kerr-Schild tracer landed, and declared `unity: 2022.3`, a generation that
+    has never been tested against it.
+    """
+
+    root = Path(__file__).resolve().parents[1] / "xr" / "unity_frontend"
+    manifest = json.loads((root / "package.json").read_text(encoding="utf8"))
+    readme = (root / "README.md").read_text(encoding="utf8")
+
+    description = manifest["description"]
+    assert "Static texture bridge for physics-auditable Kerr lens maps." != description
+    assert "static texture bridge" in description.lower()  # only as a denial
+    assert "Not a static texture bridge" in description
+    # Both paths must be distinguished, and the overclaim ruled out.
+    assert "Kerr-Schild" in description
+    assert "baked" in description.lower()
+    assert "not a full-resolution per-eye per-frame solve" in description.lower()
+    # Supported generation, with no unverified backward-compatibility claim.
+    assert manifest["unity"] == "6000.0"
+
+    assert "Unity PCVR Static Texture Bridge" not in readme
+    assert "6000.0.76f1" in readme and "17.0.4" in readme and "1.17.1" in readme
+    assert "85.0.0" in readme
+    assert "No backward compatibility with earlier Unity generations" in readme
+    # Task 10 stays explicitly pending.
+    assert "unaccepted" in readme.lower()
+
+    # Complete .meta coverage: an absent .meta means a per-clone random GUID.
+    missing = [
+        str(path.relative_to(root))
+        for path in root.rglob("*")
+        if path.is_file() and path.suffix != ".meta" and not (path.parent / (path.name + ".meta")).exists()
+    ]
+    assert not missing, f"assets without a .meta: {missing}"
+    for folder in ("Runtime", "Editor"):
+        assert (root / f"{folder}.meta").exists(), folder
+    guids = [
+        line.split(":", 1)[1].strip()
+        for path in root.rglob("*.meta")
+        for line in path.read_text(encoding="utf8").splitlines()
+        if line.startswith("guid:")
+    ]
+    assert len(guids) == len(set(guids)), "duplicate asset GUIDs"
+
+
 def test_unity_disk_layer_weights_observed_radiance_exactly_once():
     """`F(r) g^p` must reach the frame buffer once, not squared.
 
