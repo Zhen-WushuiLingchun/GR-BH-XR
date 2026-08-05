@@ -423,6 +423,90 @@ def test_unity_disk_lut_uses_producer_endpoint_row_coordinate():
     assert 'new Vector4((float)rIsco, (float)rOut, RadialLutSamples, 0.0f)' in tracer
 
 
+def _shader_code_only(source: str) -> str:
+    """Shader text with `//` line comments removed.
+
+    Every pin below must match executable HLSL; a comment restating the
+    convention must never be able to turn a test green.
+    """
+
+    return "\n".join(re.sub(r"//.*$", "", line) for line in source.splitlines())
+
+
+def _cg_function_body(source: str, header: str) -> str:
+    """Return the brace-balanced body that follows `header`."""
+
+    start = source.index(header)
+    open_brace = source.index("{", start)
+    depth = 0
+    for index in range(open_brace, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[open_brace : index + 1]
+    raise AssertionError(f"unbalanced braces after {header!r}")
+
+
+def test_unity_disk_layer_weights_observed_radiance_exactly_once():
+    """`F(r) g^p` must reach the frame buffer once, not squared.
+
+    `diskVisualLayer` returns premultiplied radiance in `.rgb`
+    (`color * observedWeight`) and EVERY compositor - full-sky cube,
+    GRBHXR_ROAM_BLEND macro, live angular window, legacy 2D - adds
+    `layer.rgb * layer.a`. When `.a` also carried `observedWeight` the
+    rendered intensity was `F(r)^2 g^(2p)` (`F^2 g^8` on the documented LUT
+    path), and `_DiskBrightness` / `_DiskSecondaryScale` were squared too,
+    while docs/equations.md and the shader comment claim `F_norm g^4`.
+
+    `.a` is the producer's sub-texel coverage times the `_DiskOpacity`
+    display knob and nothing else.
+    """
+
+    shader = (UNITY_RUNTIME_DIR / "BlackHoleLensStaticPreview.shader").read_text(encoding="utf8")
+    code = _shader_code_only(shader)
+    layer = _cg_function_body(code, "fixed4 diskVisualLayer(")
+
+    # observedWeight is built once and read once, by rgb:
+    #   1: `float observedWeight = emissivity * pow(g, redshiftPower) ...`
+    #   2: `observedWeight += hotSpot * ...`
+    #   3: `... * observedWeight;` on the color line
+    # A fourth occurrence means it leaked into a second channel, including
+    # via an alias such as `float w = observedWeight;`.
+    assert layer.count("observedWeight") == 3, layer
+    assert "float observedWeight = emissivity * pow(g, redshiftPower)" in layer
+    assert re.search(r"float3 color = lerp\(.*\) \* observedWeight;", layer), layer
+
+    # The alpha channel is coverage/opacity only.
+    alpha_statements = [
+        line.strip() for line in layer.splitlines() if re.search(r"\bfloat\s+alpha\s*=", line)
+    ]
+    assert len(alpha_statements) == 1, alpha_statements
+    alpha = alpha_statements[0]
+    assert "observedWeight" not in alpha, alpha
+    assert "emissivity" not in alpha and "pow(g" not in alpha, alpha
+    assert "_DiskBrightness" not in alpha and "orderScale" not in alpha, alpha
+    assert "_DiskOpacity" in alpha and "coverage" in alpha, alpha
+
+    # Nothing outside the helper may re-apply a radiance weight, and all
+    # paths must consume the layer through the same single multiplication.
+    outside = code.replace(layer, "")
+    assert "observedWeight" not in outside
+    consumers = sorted(re.findall(r"(\w*[Ll]ayer\d)\.rgb\s*\*\s*\1\.a", code))
+    assert consumers == [
+        "layer0", "layer1",            # compositeDiskVisual: cube + legacy 2D
+        "shadeLayer0", "shadeLayer1",  # GRBHXR_SHADE_SET: roam blend
+        "winLayer0", "winLayer1",      # live angular window
+    ], consumers
+    # Every layer produced must be composited; no path may drop or re-scale one.
+    assert code.count("diskVisualLayer(") == len(consumers) + 1  # +1 definition
+
+    # Lock the convention the shader is held to.
+    equations = (Path(__file__).resolve().parents[1] / "docs" / "equations.md").read_text(encoding="utf8")
+    assert "baseline Unity LUT path: normalized F(r) times g^4" in equations
+
+
 def test_unity_live_tracer_refine_and_resolution_contract():
     """Live tracer: limb-refine subray AA plus distance-adaptive resolution."""
 

@@ -525,8 +525,18 @@ Shader "GR-BH-XR/Kerr Lens Static Preview"
                 float3 baseDiskColor = usePhysicalColor > 0.5
                     ? sampleDiskColorLut(observedTemperature)
                     : blackbodyRamp(g);
+                // Channel split, load-bearing: `.rgb` is the observed radiance
+                // and carries F(r) g^p EXACTLY ONCE; `.a` is the producer's
+                // sub-texel disk coverage times the display opacity knob and
+                // nothing else. Every compositor below adds `rgb * a`, so
+                // carrying observedWeight in both channels rendered
+                // F(r)^2 g^(2p) - F^2 g^8 on the documented LUT path - and
+                // squared _DiskBrightness and _DiskSecondaryScale with it.
+                // generate_transfer_cubemap.py states the contract: "alpha is
+                // disk-hit coverage in [0,1] ... consumers divide by
+                // interpolated coverage and use coverage as opacity."
                 float3 color = lerp(baseDiskColor, float3(1.0, 0.92, 0.62), saturate(hotSpot)) * observedWeight;
-                float alpha = saturate(observedWeight * _DiskOpacity * coverage);
+                float alpha = saturate(_DiskOpacity * coverage);
                 return fixed4(color, alpha);
             }
 
