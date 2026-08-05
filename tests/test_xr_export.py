@@ -25,6 +25,13 @@ from gr_bh_xr.xr.export_unity_textures import (
 
 UNITY_RUNTIME_DIR = Path(__file__).resolve().parents[1] / "xr" / "unity_frontend" / "Runtime"
 UNITY_EDITOR_DIR = Path(__file__).resolve().parents[1] / "xr" / "unity_frontend" / "Editor"
+COMPARE_LIVE_TRACER = (
+    Path(__file__).resolve().parents[1]
+    / "validation"
+    / "quest_pcvr"
+    / "scripts"
+    / "compare_live_tracer.py"
+)
 PROTRACTOR_SCRIPT = (
     Path(__file__).resolve().parents[1]
     / "validation"
@@ -355,9 +362,233 @@ def test_unity_preview_shader_has_screen_space_gate_and_world_space_sampling():
     assert "mul((float3x3)unity_ObjectToWorld, dir.xyz)" not in shader
     assert "mul((float3x3)unity_WorldToObject, worldRay)" not in shader
     assert "protractorProbe(worldDir)" in shader
-    assert "sampleSkybox(worldRay, _SkyboxLodBias)" in shader
-    assert "sampleSkybox(worldDir, _StrongLensLodBias)" in shader
+    assert "sampleBackground(worldRay, worldRay, _SkyboxLodBias)" in shader
+    assert "sampleBackground(worldDir, worldRay, _StrongLensLodBias)" in shader
     assert "texCUBEbias(_SkyboxCubemap" in shader
+
+
+def test_unity_sky_chromatic_shift_contract():
+    """Sky chromatic shift: per-pixel blackbody ratio on the LUT v2 alpha.
+
+    The emitter model fits each sky texel's temperature from its own
+    chromaticity (inverse Planck locus in the LUT alpha channel); the
+    observed color is rgb * LUT(T*g)/LUT(T) with bolometric g^4 - exactly
+    the identity at g=1, so the fit cannot distort the unshifted sky.
+    """
+
+    shader = (UNITY_RUNTIME_DIR / "BlackHoleLensStaticPreview.shader").read_text(encoding="utf8")
+    assert "_UseSkyChromaticShift" in shader
+    assert "float3 applySkyObserver(float3 rgb, float obsFactor)" in shader
+    assert "float chroma = rgb.r / max(rgb.r + rgb.b, 1.0e-5)" in shader
+    assert "tex2D(_DiskColorLut, float2(chroma, 0.5)).a" in shader
+    assert "sampleDiskColorLut(tEmit * obsFactor)" in shader
+    # Both sky paths (single set and blend macro) must route through it.
+    assert shader.count("applySkyObserver(") >= 3
+    # The old brightness-only boost must not survive anywhere.
+    assert "skyColor.rgb * pow(min(skyObsFactor" not in shader
+
+
+def test_unity_disk_lut_uses_producer_endpoint_row_coordinate():
+    """The LUT consumer must honour the producer's published texel contract.
+
+    `disk_spectrum.py` publishes `rgbCoordinateExact` / `radiusCoordinateExact`:
+    row i of a `samples`-row LUT holds the value at s = i / (samples - 1), so
+    the coordinate landing exactly on that row is
+    `u = (s * (samples - 1) + 0.5) / samples`. Sampling with `u = s` is a
+    half-texel offset - 0.72% in effective temperature at 256 rows and 0.027 M
+    in radius (0.048 in normalized flux) at 512.
+
+    The alpha channel is the deliberate exception: the producer already
+    resamples it at texel centers of `u = R/(R+B)`, so a direct fetch is the
+    correct consumer and applying the row correction there would be a bug.
+    """
+
+    shader = (UNITY_RUNTIME_DIR / "BlackHoleLensStaticPreview.shader").read_text(encoding="utf8")
+    assert "float lutRowCoordinate(float s, float samples)" in shader
+    assert "return (s * (samples - 1.0) + 0.5) / samples;" in shader
+    # Both RGB consumers route through the correction...
+    assert "tex2D(_DiskRadialLut, float2(lutRowCoordinate(s, _DiskRadialLutBounds.z), 0.5))" in shader
+    assert "tex2D(_DiskColorLut, float2(lutRowCoordinate(s, _DiskColorLutLogT.z), 0.5)).rgb" in shader
+    # ...and the uncorrected u = s form must not survive on either.
+    assert "tex2D(_DiskRadialLut, float2(u, 0.5))" not in shader
+    assert "tex2D(_DiskColorLut, float2(u, 0.5)).rgb" not in shader
+    # The alpha fetch stays uncorrected, by contract.
+    assert "tex2D(_DiskColorLut, float2(chroma, 0.5)).a" in shader
+
+    # The row count has to actually reach the shader, or the correction is a
+    # no-op that silently keeps the old mapping.
+    tracer = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.cs").read_text(encoding="utf8")
+    assert "private const int RadialLutSamples = 512;" in tracer
+    assert 'new Vector4((float)rIsco, (float)rOut, RadialLutSamples, 0.0f)' in tracer
+
+
+def test_unity_live_tracer_refine_and_resolution_contract():
+    """Live tracer: limb-refine subray AA plus distance-adaptive resolution."""
+
+    compute = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.compute").read_text(encoding="utf8")
+    assert "#pragma kernel RefineTexels" in compute
+    assert "RWStructuredBuffer<uint> _EventMask" in compute
+    assert "TraceOutputs TraceDirection(float3 d)" in compute
+    # 3x3 subray grid with fractional escape coverage, premultiplied values,
+    # and a genuine (not synthetic) representative escape direction.
+    assert "for (int sub = 0; sub < 9; sub += 1)" in compute
+    assert "float coverage = escCount * inv;" in compute
+    assert "_OutEscapeDir[coord] = float4(rep * coverage, coverage);" in compute
+    assert "_OutDisk0[coord] = disk0Sum * inv;" in compute
+    # The main kernel keeps the packed view-priority face order; the refine
+    # kernel walks the mask spatially (face-major).
+    assert "int face = (_FaceOrderPacked >> (slot * 3)) & 7;" in compute
+    assert "_EventMask[face * pixelsPerFace + py * _FaceSize + px] = MaskOf(o);" in compute
+
+    tracer = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.cs").read_text(encoding="utf8")
+    # Pin the declaration, not the bare identifier: a comment mentioning
+    # "autoResolution" would satisfy a substring match.
+    assert "[SerializeField] private bool autoResolution = true;" in tracer
+    assert "private int AutoLadderSize(float radiusM)" in tracer
+    assert "Mathf.Sqrt(27.0f) * mass" in tracer
+    assert "EnsureSnapshotTextures(back, passFaceSize)" in tracer
+    assert "EnsureEventMaskBuffer(passFaceSize)" in tracer
+    assert "BindOutputs(refineKernel, snapshots[backIndex])" in tracer
+    # HARD swap stays: exactly one complete solution on screen, never a blend.
+    assert "(frontIndex, backIndex) = (backIndex, frontIndex);" in tracer
+    assert "live_event_mask_u32.bytes" in tracer
+    assert "live_escape_dir_refined_rgba32f.bytes" in tracer
+
+    compare = COMPARE_LIVE_TRACER.read_text(encoding="utf8")
+    assert "live_event_mask_u32.bytes" in compare
+    assert "refineCoverageMeanDiff" in compare
+    assert "nonLimbUntouched" in compare
+
+
+def test_unity_live_window_contract():
+    """Live angular window: headset-density strong-field map, never stale.
+
+    The window shares the audited TraceDirection physics; only the texel ->
+    direction map differs (inverse of the display shader's gnomonic window
+    lookup). It is traced while stationary and displayed ONLY when its pass
+    origin matches the displayed cube's - stale sharp data must never be
+    composited with fresh data.
+    """
+
+    compute = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.compute").read_text(encoding="utf8")
+    assert "#pragma kernel TraceWindow" in compute
+    assert "#pragma kernel RefineWindow" in compute
+    assert "float3 WindowDirection(int px, int py)" in compute
+    assert "normalize(float3(alpha / rObs, -beta / rObs, 1.0))" in compute
+    assert "RWStructuredBuffer<uint> _WinEventMask" in compute
+
+    tracer = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.cs").read_text(encoding="utf8")
+    assert "StepWindowPass" in tracer
+    assert "windowDensityPxPerDeg" in tracer
+    assert "_UseLiveWindow" in tracer
+    assert "live_window_dir_rgba32f.bytes" in tracer
+    # The staleness gate is inlined, so pin the actual comparison terms. A
+    # pin on the unused `SameObserverState` helper would stay green if the
+    # composite were reduced to `liveWindowEnabled && frontWindow.Valid` -
+    # exactly the stale-composite bug the docstring warns about.
+    assert "bool showWindow = liveWindowEnabled" in tracer
+    for term in ("OriginR", "OriginTheta", "OriginAz", "OriginMass", "OriginSpin"):
+        assert f"frontWindow.{term}" in tracer, term
+    assert "frontWindow.OriginMass == front.OriginMass" in tracer
+    assert "frontWindow.OriginSpin == front.OriginSpin" in tracer
+
+    shader = (UNITY_RUNTIME_DIR / "BlackHoleLensStaticPreview.shader").read_text(encoding="utf8")
+    assert "_UseLiveWindow" in shader
+    assert "_WindowDisk0Tex" in shader
+    assert "_WindowRedshift1Tex" in shader
+    # Window shading must route sky through the chromatic observer path and
+    # feather into the complete cube composite (one solution, two densities).
+    assert "applySkyObserver(winSky.rgb, winObs)" in shader
+    assert "lerp(cubeComposite, winColor, windowWeight)" in shader
+
+    compare = COMPARE_LIVE_TRACER.read_text(encoding="utf8")
+    assert "windowEventAgreement" in compare
+    assert "windowHalfAlpha" in compare
+
+
+def test_live_tracer_dump_and_gate_share_every_physics_constant():
+    """A constant hardcoded on both sides is an assumption, not a test.
+
+    The capture surface was independently hardcoded in Unity (`r_+ + 0.05`)
+    and in Python (`horizon_eps = 0.3`), differing by 0.35 M in the static
+    case, while the gate still reported `eventAgreement = 1.0` because no
+    escaping ray approaches either surface. Every such constant must now be
+    published by the dump and consumed from it.
+    """
+
+    tracer = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.cs").read_text(encoding="utf8")
+    compare = COMPARE_LIVE_TRACER.read_text(encoding="utf8")
+
+    for key in (
+        "captureR",
+        "hugMinR",
+        "hugLambda",
+        "diskRIn",
+        "diskROut",
+        "timeOrientation",
+        "maxStep",
+        "stepRRef",
+        "adaptiveStep",
+    ):
+        # The C# writes JSON as an escaped string literal, so the source
+        # carries \"captureR\" rather than "captureR".
+        assert rf'\"{key}\"' in tracer, f"{key} not published by the dump"
+        assert f'meta["{key}"]' in compare, f"{key} not consumed by the gate"
+
+    # The exactness assertion is the point: publishing without checking would
+    # still allow the two capture surfaces to drift apart.
+    assert "capture surface mismatch" in compare
+    assert "abs(config.capture_r - unity_capture_r) > 1.0e-6" in compare
+
+    # The old independent hardcodes must be gone.
+    assert "horizon_eps=1.0 if rain else 0.3" not in compare
+    assert "disk_r_out=30.0," not in compare
+    # ...and the dump's own disk outer radius must carry M.
+    assert 'float diskROut = 30.0f * mass;' in tracer
+
+    # The dumped tetrad is the common ancestor of every launch state on both
+    # sides, so an unchecked tetrad cancels out of the comparison entirely.
+    assert "tetradGramError" in compare
+    assert "is not orthonormal" in compare
+
+
+def test_live_tracer_validation_is_fail_closed_on_stages():
+    """Missing stages must fail the run, not silently shrink it.
+
+    Every stage used to be guarded by a bare `path.exists()`, and a dump
+    containing only the three main buffers printed PASS. The window keys were
+    also spliced into finished JSON with `metadata.Replace("\\n}\\n", ...)`,
+    so any reformatting of the writer would have silently disabled the window
+    stage while still emitting its `.bytes` files.
+    """
+
+    tracer = (UNITY_RUNTIME_DIR / "BlackHoleLiveTracer.cs").read_text(encoding="utf8")
+    compare = COMPARE_LIVE_TRACER.read_text(encoding="utf8")
+
+    # Structural composition, not string splicing into a closed document.
+    assert "metadata.Replace(" not in tracer
+    assert "stages" in tracer
+    for stage in ("main", "refine", "window", "windowRefine"):
+        assert rf'\"{stage}\"' in tracer, stage
+
+    # The window limb-refine kernel must actually be dispatched by the dump;
+    # it previously shipped entirely unvalidated.
+    assert 'windowRefineKernel = tracerCompute.FindKernel("RefineWindow");' in tracer
+    assert "live_window_dir_refined_rgba32f.bytes" in tracer
+    assert "live_window_mask_u32.bytes" in tracer
+
+    assert 'REQUIRED_STAGES = ("main", "refine", "window", "windowRefine")' in compare
+    assert "--allow-missing-stage" in compare
+    assert "were not validated" in compare
+    assert "unvalidated:" in compare
+    assert "windowRefineCoverageMeanDiff" in compare
+    # Vacuous passes are errors, not skipped thresholds.
+    assert 'assert both.any(), "no texel escaped in both tracers' in compare
+    assert 'assert disk_both.any(), "no disk crossing in both tracers' in compare
+    assert "Refusing to report a vacuous pass." in compare
+    # The old permissive guards must be gone.
+    assert 'if summary.get("refineSamples"):' not in compare
+    assert 'if "windowEventAgreement" in summary:' not in compare
 
 
 def test_unity_lens_map_loader_keeps_raw_textures_linear():

@@ -1,0 +1,1564 @@
+using System;
+using UnityEngine;
+
+namespace GRBHXR
+{
+    /// <summary>
+    /// Real-time Kerr transfer-map solver: dispatches the Kerr-Schild compute
+    /// tracer over the full sky in per-frame batches, always from the CURRENT
+    /// virtual observer position. Each pass runs a full-texel trace phase and
+    /// a limb-refine phase (3x3 subrays at event-mask discontinuities for
+    /// fractional-coverage anti-aliasing), then HARD-swaps the completed
+    /// snapshot into display - the view is always exactly one complete
+    /// solution at one position, never a mixture. Keyframe playback remains
+    /// as the instant-on fallback while the first snapshot converges.
+    /// </summary>
+    public sealed class BlackHoleLiveTracer : MonoBehaviour
+    {
+        private sealed class Snapshot
+        {
+            // Compute writes into Tex2DArray staging (cube UAV binding is not
+            // reliable on D3D11); completed passes are GPU-copied face by face
+            // into the sampled cube textures.
+            public RenderTexture StagingEscapeDir;
+            public RenderTexture StagingEvent;
+            public RenderTexture StagingDisk0;
+            public RenderTexture StagingDisk1;
+            public RenderTexture StagingRedshift0;
+            public RenderTexture StagingRedshift1;
+            public RenderTexture EscapeDir;
+            public RenderTexture Event;
+            public RenderTexture Disk0;
+            public RenderTexture Disk1;
+            public RenderTexture Redshift0;
+            public RenderTexture Redshift1;
+            public Vector4 EInf;
+            public float RadiusM;
+            public bool Valid;
+            // Faces are sized per snapshot so a resolution change reallocates
+            // only the back buffer while the front keeps displaying.
+            public int Size;
+            // Pass origin (virtual observer state + metric parameters the
+            // pass was solved at - mass/spin edits invalidate like motion).
+            public float OriginR;
+            public float OriginTheta;
+            public float OriginAz;
+            public float OriginMass;
+            public float OriginSpin;
+        }
+
+        private sealed class WindowSnapshot
+        {
+            // 2D UAV targets are reliable on D3D11 (the cube-UAV trap does
+            // not apply), so the window writes straight into sampled RTs.
+            public RenderTexture Dir;
+            public RenderTexture Event;
+            public RenderTexture Disk0;
+            public RenderTexture Disk1;
+            public RenderTexture Redshift0;
+            public RenderTexture Redshift1;
+            public int Size;
+            public float HalfAlpha;
+            public float OriginR;
+            public float OriginTheta;
+            public float OriginAz;
+            public float OriginMass;
+            public float OriginSpin;
+            public bool Valid;
+        }
+
+        [SerializeField] private ComputeShader tracerCompute;
+        [SerializeField] private Material targetMaterial;
+        [SerializeField] private BlackHoleObserverRigControls observerRig;
+        [SerializeField] private BlackHoleRoamKeyframes roamKeyframes;
+        [SerializeField] private int faceSize = 128;
+        [SerializeField] private int targetPassFrames = 2;
+        // Distance-adaptive angular resolution: the shadow shrinks like
+        // asin(sqrt(27) M / r), so a fixed cube resolution pixelates at large
+        // radius. Auto mode keeps the shadow diameter sampled by a roughly
+        // constant texel count; the per-frame ray budget stays fixed, so
+        // higher resolutions refresh over more frames (exactly where the map
+        // changes most slowly with position).
+        [SerializeField] private bool autoResolution = true;
+        [SerializeField] private bool liveTracingEnabled = true;
+        // High-resolution angular window around the hole: traced only while
+        // the observer is stationary (the cube handles motion), converges to
+        // near-headset angular density over the strong-field region, and is
+        // displayed ONLY when its pass origin matches the displayed cube's -
+        // stale sharp data is never mixed with fresh data.
+        [SerializeField] private bool liveWindowEnabled = true;
+        [SerializeField] private float windowDensityPxPerDeg = 20.0f;
+        [SerializeField] private float mass = 1.0f;
+        [SerializeField] private float spin = 0.9f;
+        [SerializeField] private float stepSize = 0.01f;
+        [SerializeField] private float maxStep = 1.0f;
+        [SerializeField] private float stepRRef = 5.0f;
+        [SerializeField] private int maxSteps = 60000;
+        [SerializeField] private float maxLambda = 1500.0f;
+        [SerializeField] private float rEscape = 200.0f;
+
+        // Double buffer with HARD swap: the display always shows exactly one
+        // complete solution at one position - never a mixture (a dissolve of
+        // two exact images at different radii superimposes two photon rings).
+        private readonly Snapshot[] snapshots = { new Snapshot(), new Snapshot() };
+        private int backIndex = 1;
+        private int frontIndex = 0;
+        private int nextTexel;
+        private bool refinePhase;
+        private bool passActive;
+        private int passFaceSize = 128;
+        private int autoFaceSize = 128;
+        private float passStartTime;
+        private float lastPassDuration = 0.05f;
+        private int kernel = -1;
+        private int refineKernel = -1;
+        private int windowKernel = -1;
+        private int windowRefineKernel = -1;
+        private ComputeBuffer eventMaskBuffer;
+        private ComputeBuffer windowMaskBuffer;
+        private Texture2D diskRadialLutTexture;
+        private bool diskLutDirty = true;
+        private bool warmed;
+        private readonly int[] faceOrder = { 0, 1, 2, 3, 4, 5 };
+
+        // Window pass state (runs only while the cube is converged and the
+        // observer is stationary; abandoned on motion).
+        private readonly WindowSnapshot[] windowSnapshots = { new WindowSnapshot(), new WindowSnapshot() };
+        private int windowFrontIndex = 0;
+        private int windowBackIndex = 1;
+        private bool windowPassActive;
+        private bool windowRefinePhase;
+        private int windowNextTexel;
+
+        private static readonly int[] ResolutionLadder = { 96, 128, 192, 256, 384, 512 };
+        private static readonly int[] WindowLadder = { 512, 768, 1024, 1536, 2048 };
+
+        // Row count of the runtime-built Page-Thorne radial LUT. Published to
+        // the shader in _DiskRadialLutBounds.z so the endpoint-row texel
+        // coordinate matches the Python LUT producer's published contract.
+        private const int RadialLutSamples = 512;
+
+        public bool LiveTracingEnabled => liveTracingEnabled;
+        public float LastPassDuration => lastPassDuration;
+        public int FaceSize => passFaceSize;
+
+        /// <summary>
+        /// Cycle the live angular resolution: auto (distance-adaptive), then
+        /// the manual ladder 96..512, then back to auto. The switch only
+        /// changes what the NEXT pass allocates - the front snapshot keeps
+        /// displaying, so cycling never blanks the view.
+        /// </summary>
+        public void CycleResolution()
+        {
+            if (autoResolution)
+            {
+                autoResolution = false;
+                faceSize = ResolutionLadder[0];
+            }
+            else
+            {
+                int index = Array.IndexOf(ResolutionLadder, faceSize);
+                if (index < 0 || index >= ResolutionLadder.Length - 1)
+                {
+                    autoResolution = true;
+                }
+                else
+                {
+                    faceSize = ResolutionLadder[index + 1];
+                }
+            }
+            Debug.Log(
+                autoResolution
+                    ? "GR-BH-XR live resolution -> auto (distance-adaptive)."
+                    : $"GR-BH-XR live resolution -> {faceSize} per face (manual)."
+            );
+        }
+
+        /// <summary>
+        /// Distance-adaptive face size: keep the shadow diameter sampled by
+        /// at least ~40 texels. The shadow angular radius uses the far-field
+        /// idiom asin(sqrt(27) M / r) - a sampling heuristic only, physics is
+        /// unaffected. Hysteresis: stepping DOWN also has to hold at a 15%
+        /// larger radius, so the ladder cannot ping-pong at a band edge.
+        /// </summary>
+        private int DesiredFaceSize(float radiusM)
+        {
+            if (!autoResolution)
+            {
+                return faceSize;
+            }
+            int target = AutoLadderSize(radiusM);
+            if (target > autoFaceSize)
+            {
+                autoFaceSize = target;
+            }
+            else if (AutoLadderSize(radiusM * 1.15f) < autoFaceSize)
+            {
+                autoFaceSize = target;
+            }
+            return autoFaceSize;
+        }
+
+        private int AutoLadderSize(float radiusM)
+        {
+            float sinShadow = Mathf.Clamp01(
+                Mathf.Sqrt(27.0f) * mass / Mathf.Max(radiusM, 3.0f * mass));
+            float shadowRadians = Mathf.Asin(sinShadow);
+            float required = 40.0f / Mathf.Max(shadowRadians, 1.0e-3f);
+            for (int i = 1; i < ResolutionLadder.Length; i += 1)
+            {
+                if (ResolutionLadder[i] >= required)
+                {
+                    return ResolutionLadder[i];
+                }
+            }
+            return ResolutionLadder[ResolutionLadder.Length - 1];
+        }
+
+        public void SetLiveTracing(bool enabledValue)
+        {
+            liveTracingEnabled = enabledValue;
+            if (roamKeyframes != null)
+            {
+                roamKeyframes.enabled = !enabledValue;
+            }
+            if (!enabledValue)
+            {
+                warmed = false;
+                passActive = false;
+                refinePhase = false;
+                nextTexel = 0;
+                windowPassActive = false;
+                windowRefinePhase = false;
+                windowNextTexel = 0;
+                if (targetMaterial != null)
+                {
+                    targetMaterial.DisableKeyword("GRBHXR_ROAM_BLEND");
+                    targetMaterial.SetFloat("_UseLiveWindow", 0.0f);
+                }
+            }
+            Debug.Log($"GR-BH-XR live tracing {(enabledValue ? "ON" : "OFF")} (faceSize={passFaceSize}).");
+        }
+
+        public void ToggleLiveTracing()
+        {
+            SetLiveTracing(!liveTracingEnabled);
+        }
+
+        public string StatusText()
+        {
+            if (!liveTracingEnabled)
+            {
+                return "Live tracing OFF (keyframe playback).";
+            }
+            string mode = autoResolution ? $"auto {passFaceSize}" : $"manual {faceSize}";
+            string window = "off";
+            if (liveWindowEnabled)
+            {
+                WindowSnapshot frontWindow = windowSnapshots[windowFrontIndex];
+                if (windowPassActive)
+                {
+                    WindowSnapshot back = windowSnapshots[windowBackIndex];
+                    int total = Mathf.Max(back.Size * back.Size, 1);
+                    window = $"{back.Size} solving {100 * windowNextTexel / total}%";
+                }
+                else if (frontWindow.Valid)
+                {
+                    window = $"{frontWindow.Size} ready";
+                }
+                else
+                {
+                    window = "waiting (stand still to converge)";
+                }
+            }
+            return warmed
+                ? $"LIVE tracing: {mode} cube, window {window}, pass {lastPassDuration * 1000.0f:F0} ms."
+                : "LIVE tracing warming up...";
+        }
+
+        private void Awake()
+        {
+            ResolveReferences();
+        }
+
+        private void Update()
+        {
+            if (!Application.isPlaying || !liveTracingEnabled || tracerCompute == null)
+            {
+                return;
+            }
+            ResolveReferences();
+            if (targetMaterial == null || observerRig == null)
+            {
+                return;
+            }
+            if (kernel < 0)
+            {
+                kernel = tracerCompute.FindKernel("TraceTexels");
+                refineKernel = tracerCompute.FindKernel("RefineTexels");
+                windowKernel = tracerCompute.FindKernel("TraceWindow");
+                windowRefineKernel = tracerCompute.FindKernel("RefineWindow");
+            }
+
+            // The per-frame ray budget is fixed at the 128-face baseline, so
+            // higher resolutions spread one pass over more frames instead of
+            // spiking the frame cost.
+            int budget = Mathf.Max(6 * 128 * 128 / Mathf.Max(targetPassFrames, 1), 4096);
+            Snapshot front = snapshots[frontIndex];
+            bool cubeCurrent = front.Valid
+                && SameObserverState(front.OriginR, front.OriginTheta, front.OriginAz, front.OriginMass, front.OriginSpin);
+            if (passActive || !cubeCurrent)
+            {
+                // Motion (or warm-up): keep the fast full-sky cube fresh.
+                if (!passActive)
+                {
+                    BeginPass();
+                }
+                StepCubePass(budget);
+            }
+            else if (liveWindowEnabled)
+            {
+                // Stationary and the cube is converged at this exact state:
+                // re-solving it would be redundant (the metric is stationary),
+                // so the whole budget goes into the high-resolution window.
+                StepWindowPass(budget * 2);
+            }
+            if (warmed)
+            {
+                BindFrontToMaterial();
+            }
+        }
+
+        /// <summary>True when the rig's virtual observer state AND the metric
+        /// parameters equal the recorded pass origin (exact up to float noise
+        /// - locomotion and mass/spin edits change them by finite steps).</summary>
+        private bool SameObserverState(float r, float thetaDeg, float azDeg, float originMass, float originSpin)
+        {
+            return Mathf.Abs(observerRig.VirtualRadiusM - r) < 1.0e-5f * Mathf.Max(r, 1.0f)
+                && Mathf.Abs(observerRig.VirtualThetaDeg - thetaDeg) < 1.0e-4f
+                && Mathf.Abs(observerRig.VirtualAzimuthDeg - azDeg) < 1.0e-4f
+                && mass == originMass
+                && spin == originSpin;
+        }
+
+        /// <summary>Continuous spin control (falsification affordance: the
+        /// live tracer re-solves the metric within a pass, so flipping the
+        /// sign must flip beaming side, ISCO, shadow asymmetry, and frame
+        /// dragging together). Kerr bound |a| < M enforced.</summary>
+        public void AdjustSpin(float delta)
+        {
+            spin = Mathf.Clamp(spin + delta, -0.998f * mass, 0.998f * mass);
+            diskLutDirty = true;
+        }
+
+        /// <summary>Continuous mass control (rescales the hole; all radii in
+        /// the tracer carry M explicitly).</summary>
+        public void AdjustMass(float delta)
+        {
+            mass = Mathf.Clamp(mass + delta, 0.5f, 2.0f);
+            spin = Mathf.Clamp(spin, -0.998f * mass, 0.998f * mass);
+            diskLutDirty = true;
+        }
+
+        public float MassValue => mass;
+        public float SpinValue => spin;
+
+        /// <summary>Regenerates the Page-Thorne radial LUT (F_norm, T_shape)
+        /// for the CURRENT mass/spin, so disk emissivity, temperature shape,
+        /// and inner edge stay first-principles under live parameter edits.</summary>
+        private void EnsureDiskRadialLut()
+        {
+            if ((!diskLutDirty && diskRadialLutTexture != null) || targetMaterial == null)
+            {
+                return;
+            }
+            double rOut = 30.0 * mass;
+            Color[] rows = KerrDiskPhysics.BuildRadialLut(mass, spin, rOut, RadialLutSamples, out double rIsco);
+            if (diskRadialLutTexture == null)
+            {
+                diskRadialLutTexture = new Texture2D(RadialLutSamples, 1, TextureFormat.RGBAFloat, false, true)
+                {
+                    name = "GR-BH-XR live disk_radial_lut",
+                    wrapMode = TextureWrapMode.Clamp,
+                    filterMode = FilterMode.Bilinear,
+                    hideFlags = HideFlags.DontSave,
+                };
+            }
+            diskRadialLutTexture.SetPixels(rows);
+            diskRadialLutTexture.Apply(false, false);
+            targetMaterial.SetTexture("_DiskRadialLut", diskRadialLutTexture);
+            // .z publishes the row count so the shader can use the producer's
+            // endpoint-row texel coordinate (s (samples-1) + 0.5)/samples
+            // instead of u = s; the half-texel offset is 0.027 M in radius at
+            // 512 rows (0.048 in normalized flux on the steep inner rise).
+            targetMaterial.SetVector(
+                "_DiskRadialLutBounds",
+                new Vector4((float)rIsco, (float)rOut, RadialLutSamples, 0.0f)
+            );
+            diskLutDirty = false;
+        }
+
+        private void StepCubePass(int budget)
+        {
+            int totalTexels = passFaceSize * passFaceSize * 6;
+            if (!refinePhase)
+            {
+                int count = Mathf.Min(budget, totalTexels - nextTexel);
+                tracerCompute.SetInt("_TexelBase", nextTexel);
+                tracerCompute.SetInt("_TexelCount", count);
+                BindOutputs(kernel, snapshots[backIndex]);
+                tracerCompute.Dispatch(kernel, Mathf.CeilToInt(count / 64.0f), 1, 1);
+                nextTexel += count;
+                if (nextTexel >= totalTexels)
+                {
+                    refinePhase = true;
+                    nextTexel = 0;
+                }
+            }
+            else
+            {
+                // Limb refine scans are mask reads for all but the ~1% edge
+                // texels, so the scan rate can run above the trace budget.
+                int count = Mathf.Min(budget * 2, totalTexels - nextTexel);
+                tracerCompute.SetInt("_TexelBase", nextTexel);
+                tracerCompute.SetInt("_TexelCount", count);
+                BindOutputs(refineKernel, snapshots[backIndex]);
+                tracerCompute.Dispatch(refineKernel, Mathf.CeilToInt(count / 64.0f), 1, 1);
+                nextTexel += count;
+                if (nextTexel >= totalTexels)
+                {
+                    CompletePass();
+                }
+            }
+        }
+
+        private void StepWindowPass(int budget)
+        {
+            WindowSnapshot back = windowSnapshots[windowBackIndex];
+            if (windowPassActive
+                && !SameObserverState(back.OriginR, back.OriginTheta, back.OriginAz, back.OriginMass, back.OriginSpin))
+            {
+                // The observer moved while the window was integrating: a
+                // partially traced window would mix two positions. Abandon;
+                // restart when stationary again.
+                windowPassActive = false;
+            }
+            WindowSnapshot frontWindow = windowSnapshots[windowFrontIndex];
+            if (!windowPassActive
+                && frontWindow.Valid
+                && SameObserverState(frontWindow.OriginR, frontWindow.OriginTheta, frontWindow.OriginAz, frontWindow.OriginMass, frontWindow.OriginSpin))
+            {
+                return; // window converged at this position - nothing to do
+            }
+            if (!windowPassActive)
+            {
+                BeginWindowPass();
+            }
+
+            int totalTexels = back.Size * back.Size;
+            if (!windowRefinePhase)
+            {
+                int count = Mathf.Min(budget, totalTexels - windowNextTexel);
+                tracerCompute.SetInt("_TexelBase", windowNextTexel);
+                tracerCompute.SetInt("_TexelCount", count);
+                BindWindowOutputs(windowKernel, back);
+                tracerCompute.Dispatch(windowKernel, Mathf.CeilToInt(count / 64.0f), 1, 1);
+                windowNextTexel += count;
+                if (windowNextTexel >= totalTexels)
+                {
+                    windowRefinePhase = true;
+                    windowNextTexel = 0;
+                }
+            }
+            else
+            {
+                int count = Mathf.Min(budget * 2, totalTexels - windowNextTexel);
+                tracerCompute.SetInt("_TexelBase", windowNextTexel);
+                tracerCompute.SetInt("_TexelCount", count);
+                BindWindowOutputs(windowRefineKernel, back);
+                tracerCompute.Dispatch(windowRefineKernel, Mathf.CeilToInt(count / 64.0f), 1, 1);
+                windowNextTexel += count;
+                if (windowNextTexel >= totalTexels)
+                {
+                    back.Valid = true;
+                    (windowFrontIndex, windowBackIndex) = (windowBackIndex, windowFrontIndex);
+                    windowPassActive = false;
+                    windowRefinePhase = false;
+                    windowNextTexel = 0;
+                }
+            }
+        }
+
+        private void BeginWindowPass()
+        {
+            WindowSnapshot back = windowSnapshots[windowBackIndex];
+            float radius = observerRig.VirtualRadiusM;
+            int size = DesiredWindowSize(radius);
+            EnsureWindowTextures(back, size);
+            EnsureWindowMaskBuffer(size);
+            back.HalfAlpha = radius * Mathf.Tan(WindowHalfAngleRad(radius));
+            back.OriginR = radius;
+            back.OriginTheta = observerRig.VirtualThetaDeg;
+            back.OriginAz = observerRig.VirtualAzimuthDeg;
+            back.OriginMass = mass;
+            back.OriginSpin = spin;
+            back.Valid = false;
+            // Same-state observer uniforms (the cube front is current, so this
+            // re-uploads identical tetrad/metric values - kept explicit so the
+            // window pass never depends on stale compute-shader state).
+            ConfigureObserverUniforms(snapshots[frontIndex]);
+            tracerCompute.SetInt("_WindowSize", back.Size);
+            tracerCompute.SetFloat("_WindowHalfAlpha", back.HalfAlpha);
+            tracerCompute.SetFloat("_WindowRObs", radius);
+            windowNextTexel = 0;
+            windowRefinePhase = false;
+            windowPassActive = true;
+        }
+
+        /// <summary>Window half-angle: cover the shadow plus the photon ring
+        /// and inner strong-lensing zone (2.2x the shadow angular radius),
+        /// clamped so the gnomonic map stays well-conditioned.</summary>
+        private float WindowHalfAngleRad(float radiusM)
+        {
+            float sinShadow = Mathf.Clamp01(
+                Mathf.Sqrt(27.0f) * mass / Mathf.Max(radiusM, 3.0f * mass));
+            float shadow = Mathf.Asin(sinShadow);
+            return Mathf.Clamp(2.2f * shadow, 4.0f * Mathf.Deg2Rad, 55.0f * Mathf.Deg2Rad);
+        }
+
+        /// <summary>Window resolution targeting a headset-scale angular
+        /// density (default 20 texels/deg) across the window diameter.</summary>
+        private int DesiredWindowSize(float radiusM)
+        {
+            float halfDeg = WindowHalfAngleRad(radiusM) * Mathf.Rad2Deg;
+            float required = 2.0f * halfDeg * Mathf.Max(windowDensityPxPerDeg, 1.0f);
+            foreach (int size in WindowLadder)
+            {
+                if (size >= required)
+                {
+                    return size;
+                }
+            }
+            return WindowLadder[WindowLadder.Length - 1];
+        }
+
+        private void BeginPass()
+        {
+            passStartTime = Time.realtimeSinceStartup;
+            Snapshot back = snapshots[backIndex];
+            passFaceSize = DesiredFaceSize(observerRig.VirtualRadiusM);
+            EnsureSnapshotTextures(back, passFaceSize);
+            EnsureEventMaskBuffer(passFaceSize);
+            back.RadiusM = observerRig.VirtualRadiusM;
+            back.OriginR = observerRig.VirtualRadiusM;
+            back.OriginTheta = observerRig.VirtualThetaDeg;
+            back.OriginAz = observerRig.VirtualAzimuthDeg;
+            back.OriginMass = mass;
+            back.OriginSpin = spin;
+            EnsureDiskRadialLut();
+            ConfigureObserverUniforms(back);
+            UpdateFacePriority();
+            nextTexel = 0;
+            refinePhase = false;
+            passActive = true;
+        }
+
+        private void CompletePass()
+        {
+            Snapshot back = snapshots[backIndex];
+            CopyStagingToCubes(back);
+            back.Valid = true;
+            lastPassDuration = Mathf.Max(Time.realtimeSinceStartup - passStartTime, 1.0f / 90.0f);
+            // HARD swap: the newest complete solution becomes the one and only
+            // displayed map. No dissolve - a blend of two exact images at
+            // different radii would superimpose two photon rings.
+            (frontIndex, backIndex) = (backIndex, frontIndex);
+            warmed = snapshots[frontIndex].Valid;
+            passActive = false;
+            refinePhase = false;
+            nextTexel = 0;
+        }
+
+        private static void CopyStagingToCubes(Snapshot snapshot)
+        {
+            for (int face = 0; face < 6; face += 1)
+            {
+                Graphics.CopyTexture(snapshot.StagingEscapeDir, face, snapshot.EscapeDir, face);
+                Graphics.CopyTexture(snapshot.StagingEvent, face, snapshot.Event, face);
+                Graphics.CopyTexture(snapshot.StagingDisk0, face, snapshot.Disk0, face);
+                Graphics.CopyTexture(snapshot.StagingDisk1, face, snapshot.Disk1, face);
+                Graphics.CopyTexture(snapshot.StagingRedshift0, face, snapshot.Redshift0, face);
+                Graphics.CopyTexture(snapshot.StagingRedshift1, face, snapshot.Redshift1, face);
+            }
+        }
+
+        /// <summary>
+        /// View-priority face ordering: the faces most aligned with the
+        /// current gaze are integrated first within each pass, so the visible
+        /// region is always the freshest.
+        /// </summary>
+        private void UpdateFacePriority()
+        {
+            Vector3 view = Camera.main != null ? Camera.main.transform.forward : Vector3.forward;
+            var anchor = FindAnyObjectByType<BlackHoleLensAnchorControls>();
+            Quaternion rotation = anchor != null ? anchor.transform.rotation : Quaternion.identity;
+            Vector3 local = Quaternion.Inverse(rotation) * view;
+            Vector3[] faceDirs =
+            {
+                Vector3.right, Vector3.left, Vector3.up, Vector3.down, Vector3.forward, Vector3.back,
+            };
+            var order = new int[6] { 0, 1, 2, 3, 4, 5 };
+            Array.Sort(order, (a, b) =>
+                Vector3.Dot(faceDirs[b], local).CompareTo(Vector3.Dot(faceDirs[a], local)));
+            int packed = 0;
+            for (int i = 0; i < 6; i += 1)
+            {
+                faceOrder[i] = order[i];
+                packed |= order[i] << (3 * i);
+            }
+            tracerCompute.SetInt("_FaceOrderPacked", packed);
+        }
+
+        private void BindFrontToMaterial()
+        {
+            Snapshot front = snapshots[frontIndex];
+            targetMaterial.SetTexture("_EventCube", front.Event);
+            targetMaterial.SetTexture("_EscapeDirCube", front.EscapeDir);
+            targetMaterial.SetTexture("_DiskOrder0Cube", front.Disk0);
+            targetMaterial.SetTexture("_DiskOrder1Cube", front.Disk1);
+            targetMaterial.SetTexture("_DiskOrder0RedshiftCube", front.Redshift0);
+            targetMaterial.SetTexture("_DiskOrder1RedshiftCube", front.Redshift1);
+            targetMaterial.SetVector("_ObsEInf", front.EInf);
+            targetMaterial.SetFloat("_RoamBlend", 0.0f);
+            targetMaterial.SetFloat("_LensRObs", front.RadiusM);
+            targetMaterial.SetFloat("_UseFullSkyTransfer", 1.0f);
+            targetMaterial.SetFloat("_UseDiskTransfer", 1.0f);
+            targetMaterial.SetFloat("_UseDiskCoverageTransfer", 1.0f);
+            targetMaterial.SetFloat("_UseAngularWindow", 1.0f);
+            targetMaterial.SetFloat("_SkyBlueshift", 1.0f);
+            // Live mode stores ABSOLUTE Boyer-Lindquist azimuth in the disk
+            // maps (the observer position is baked into each pass), so no
+            // observer-azimuth compensation applies - a stale legacy value
+            // here would offset the hot spot.
+            targetMaterial.SetFloat("_DiskObserverAzimuth", 0.0f);
+            // Hot-spot pattern speed is the physical Keplerian Omega at its
+            // radius for the CURRENT mass/spin (sign follows the spin, so a
+            // spin flip visibly reverses the orbit direction).
+            float hotSpotRadius = Mathf.Max(targetMaterial.GetFloat("_DiskHotSpotRadius"), 1.0f);
+            targetMaterial.SetFloat(
+                "_DiskHotSpotOmega",
+                (float)KerrDiskPhysics.KeplerianOmega(mass, spin, hotSpotRadius)
+            );
+            targetMaterial.DisableKeyword("GRBHXR_ROAM_BLEND");
+            // High-resolution window: shown ONLY when its pass origin matches
+            // the displayed cube's origin (one exact solution at one position,
+            // sampled at two densities). Otherwise the window collapses and
+            // the cube covers the whole sky.
+            WindowSnapshot frontWindow = windowSnapshots[windowFrontIndex];
+            bool showWindow = liveWindowEnabled
+                && frontWindow.Valid
+                && Mathf.Abs(frontWindow.OriginR - front.OriginR) < 1.0e-6f * Mathf.Max(front.OriginR, 1.0f)
+                && Mathf.Abs(frontWindow.OriginTheta - front.OriginTheta) < 1.0e-5f
+                && Mathf.Abs(frontWindow.OriginAz - front.OriginAz) < 1.0e-5f
+                && frontWindow.OriginMass == front.OriginMass
+                && frontWindow.OriginSpin == front.OriginSpin;
+            if (showWindow)
+            {
+                targetMaterial.SetFloat("_UseLiveWindow", 1.0f);
+                targetMaterial.SetTexture("_EscapeDirTex", frontWindow.Dir);
+                targetMaterial.SetTexture("_EventTex", frontWindow.Event);
+                targetMaterial.SetTexture("_WindowDisk0Tex", frontWindow.Disk0);
+                targetMaterial.SetTexture("_WindowDisk1Tex", frontWindow.Disk1);
+                targetMaterial.SetTexture("_WindowRedshift0Tex", frontWindow.Redshift0);
+                targetMaterial.SetTexture("_WindowRedshift1Tex", frontWindow.Redshift1);
+                targetMaterial.SetVector(
+                    "_LensScreenBounds",
+                    new Vector4(
+                        -frontWindow.HalfAlpha, frontWindow.HalfAlpha,
+                        -frontWindow.HalfAlpha, frontWindow.HalfAlpha
+                    )
+                );
+            }
+            else
+            {
+                targetMaterial.SetFloat("_UseLiveWindow", 0.0f);
+                targetMaterial.SetVector("_LensScreenBounds", new Vector4(1.0f, -1.0f, 1.0f, -1.0f));
+            }
+            // In live mode the map basis is baked from the observer position
+            // inside the compute pass; the display applies only the anchor
+            // placement rotation.
+            var anchor = FindAnyObjectByType<BlackHoleLensAnchorControls>();
+            Quaternion rotation = anchor != null ? anchor.transform.rotation : Quaternion.identity;
+            targetMaterial.SetVector("_LensWorldRight", rotation * Vector3.right);
+            targetMaterial.SetVector("_LensWorldUp", rotation * Vector3.up);
+            targetMaterial.SetVector("_LensWorldForward", rotation * Vector3.forward);
+        }
+
+        /// <summary>
+        /// Computes observer position, tetrad (static outside the ergosphere,
+        /// rain inside or when falling), metric rows, basis, and E-inf uniform
+        /// for the pass, and uploads them to the compute shader.
+        /// </summary>
+        private void ConfigureObserverUniforms(Snapshot snapshot)
+        {
+            float radius = Mathf.Max(observerRig.VirtualRadiusM, 0.7f);
+            float thetaDeg = observerRig.VirtualThetaDeg;
+            float azimuthDeg = observerRig.VirtualAzimuthDeg;
+            double theta = thetaDeg * Math.PI / 180.0;
+            double azimuth = azimuthDeg * Math.PI / 180.0;
+            // KS position at the BL-equivalent azimuth (exterior); inside the
+            // horizon the azimuth label is the KS one (regular).
+            double phiKs = azimuth + PhiShiftSafe(radius);
+            double sinT = Math.Sin(theta);
+            double[] pos =
+            {
+                (radius * Math.Cos(phiKs) - spin * Math.Sin(phiKs)) * sinT,
+                (radius * Math.Sin(phiKs) + spin * Math.Cos(phiKs)) * sinT,
+                radius * Math.Cos(theta),
+            };
+
+            double[,] g = KsMetric(pos);
+            bool useRain = observerRig.FreeFalling || StaticFrameInvalid(g);
+            double[] uVec = useRain ? RainVelocity(pos, g) : StaticVelocity(g);
+            double[][] legs = TetradLegs(pos, g, uVec);
+
+            tracerCompute.SetFloat("_MassM", mass);
+            tracerCompute.SetFloat("_SpinA", spin);
+            tracerCompute.SetFloat("_StepSize", stepSize);
+            tracerCompute.SetFloat("_MaxStep", maxStep);
+            tracerCompute.SetFloat("_StepRRef", stepRRef);
+            tracerCompute.SetInt("_MaxSteps", maxSteps);
+            tracerCompute.SetFloat("_MaxLambda", maxLambda);
+            tracerCompute.SetFloat("_REscape", rEscape);
+            float rPlus = mass + Mathf.Sqrt(Mathf.Max(mass * mass - spin * spin, 0.0f));
+            float rMinus = mass - Mathf.Sqrt(Mathf.Max(mass * mass - spin * spin, 0.0f));
+            bool interior = radius < rPlus;
+            bool pastTracing = useRain;
+            tracerCompute.SetFloat("_TimeOrientation", pastTracing ? -1.0f : 1.0f);
+            tracerCompute.SetFloat(
+                "_CaptureR",
+                pastTracing ? Mathf.Max(rMinus + 0.05f, 1.0e-4f) : rPlus + 0.05f
+            );
+            tracerCompute.SetFloat("_HugMinR", pastTracing && !interior ? rPlus + 0.05f : 0.0f);
+            tracerCompute.SetFloat("_HugLambda", pastTracing && interior ? 0.6f * maxLambda : 0.0f);
+            tracerCompute.SetFloat("_DiskRIn", (float)IscoRadius());
+            tracerCompute.SetFloat("_DiskROut", 30.0f * mass);
+            tracerCompute.SetInt("_FaceSize", snapshot.Size);
+            tracerCompute.SetVector("_ObserverPosition", new Vector4((float)pos[0], (float)pos[1], (float)pos[2], 0.0f));
+            tracerCompute.SetVector("_TetradTime", ToVector(uVec));
+            tracerCompute.SetVector("_TetradR", ToVector(legs[0]));
+            tracerCompute.SetVector("_TetradTheta", ToVector(legs[1]));
+            tracerCompute.SetVector("_TetradPhi", ToVector(legs[2]));
+            for (int row = 0; row < 4; row += 1)
+            {
+                tracerCompute.SetVector(
+                    $"_ObsMetricRow{row}",
+                    new Vector4((float)g[row, 0], (float)g[row, 1], (float)g[row, 2], (float)g[row, 3])
+                );
+            }
+            // BH basis from the observer's actual position direction: forward
+            // toward the hole, up along the spin-axis projection. The escape
+            // dirs are absolute, so the frame-dragging spiral shows up as the
+            // sky rotating in view with no extra display bookkeeping.
+            double deltaRot = Math.Atan2(spin, radius) + PhiShiftSafe(radius);
+            double cosD = Math.Cos(-deltaRot);
+            double sinD = Math.Sin(-deltaRot);
+            double[] posBh = { cosD * pos[0] - sinD * pos[1], sinD * pos[0] + cosD * pos[1], pos[2] };
+            double posLen = Math.Sqrt(posBh[0] * posBh[0] + posBh[1] * posBh[1] + posBh[2] * posBh[2]);
+            double[] forward = { -posBh[0] / posLen, -posBh[1] / posLen, -posBh[2] / posLen };
+            double[] spinAxis = { 0.0, 0.0, 1.0 };
+            double dotSF = spinAxis[2] * forward[2] + spinAxis[1] * forward[1] + spinAxis[0] * forward[0];
+            double[] up =
+            {
+                spinAxis[0] - dotSF * forward[0],
+                spinAxis[1] - dotSF * forward[1],
+                spinAxis[2] - dotSF * forward[2],
+            };
+            double upLen = Math.Sqrt(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
+            if (upLen < 1.0e-10)
+            {
+                up = new[] { 1.0, 0.0, 0.0 };
+                upLen = 1.0;
+            }
+            up = new[] { up[0] / upLen, up[1] / upLen, up[2] / upLen };
+            double[] right =
+            {
+                up[1] * forward[2] - up[2] * forward[1],
+                up[2] * forward[0] - up[0] * forward[2],
+                up[0] * forward[1] - up[1] * forward[0],
+            };
+            tracerCompute.SetVector("_BasisRightBh", new Vector4((float)right[0], (float)right[1], (float)right[2], 0.0f));
+            tracerCompute.SetVector("_BasisUpBh", new Vector4((float)up[0], (float)up[1], (float)up[2], 0.0f));
+            tracerCompute.SetVector("_BasisForwardBh", new Vector4((float)forward[0], (float)forward[1], (float)forward[2], 0.0f));
+
+            // Per-pixel observer factor uniform: E_inf(d) = w + dot(d, xyz)
+            // with covector t-components (sign convention locked against the
+            // traced conserved q_t in the Python validation).
+            double ut = Row0Dot(g, uVec);
+            double etR = Row0Dot(g, legs[0]);
+            double etTheta = Row0Dot(g, legs[1]);
+            double etPhi = Row0Dot(g, legs[2]);
+            snapshot.EInf = new Vector4((float)(-etPhi), (float)(-etTheta), (float)(-etR), (float)(-ut));
+        }
+
+        // -------------------------------------------------------------------
+        // Kerr-Schild math (C# ports of the audited Python formulas)
+        // -------------------------------------------------------------------
+
+        private double PhiShiftSafe(double r)
+        {
+            double rPlus = mass + Math.Sqrt(Math.Max(mass * mass - spin * spin, 0.0));
+            double rMinus = mass - Math.Sqrt(Math.Max(mass * mass - spin * spin, 0.0));
+            double gap = Math.Max(rPlus - rMinus, 1.0e-6);
+            double ratio = Math.Abs((r - rPlus) / Math.Max(Math.Abs(r - rMinus), 1.0e-9));
+            return spin / gap * Math.Log(Math.Max(ratio, 1.0e-12));
+        }
+
+        private double KsRadiusOf(double[] pos)
+        {
+            double a2 = spin * spin;
+            double rho2 = pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2];
+            double q = rho2 - a2;
+            double r2 = 0.5 * (q + Math.Sqrt(q * q + 4.0 * a2 * pos[2] * pos[2]));
+            return Math.Sqrt(Math.Max(r2, 0.0));
+        }
+
+        private double[,] KsMetric(double[] pos)
+        {
+            double r = KsRadiusOf(pos);
+            double a2 = spin * spin;
+            double den = r * r + a2;
+            double hden = r * r * r * r + a2 * pos[2] * pos[2];
+            double h = mass * r * r * r / hden;
+            double[] l = { 1.0, (r * pos[0] + spin * pos[1]) / den, (r * pos[1] - spin * pos[0]) / den, pos[2] / r };
+            var g = new double[4, 4];
+            for (int i = 0; i < 4; i += 1)
+            {
+                for (int j = 0; j < 4; j += 1)
+                {
+                    double eta = i == j ? (i == 0 ? -1.0 : 1.0) : 0.0;
+                    g[i, j] = eta + 2.0 * h * l[i] * l[j];
+                }
+            }
+            return g;
+        }
+
+        private static bool StaticFrameInvalid(double[,] g)
+        {
+            return g[0, 0] >= -1.0e-4;  // at/inside the ergosphere
+        }
+
+        private static double[] StaticVelocity(double[,] g)
+        {
+            double factor = 1.0 / Math.Sqrt(-g[0, 0]);
+            return new[] { factor, 0.0, 0.0, 0.0 };
+        }
+
+        private double[] RainVelocity(double[] pos, double[,] g)
+        {
+            // Constraints: (g u)_t = -1; axial L = -y (g u)_x + x (g u)_y = 0;
+            // theta constant: r u^z - z (grad r . u_spatial) = 0.
+            double r = KsRadiusOf(pos);
+            double a2 = spin * spin;
+            double rho2 = pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2];
+            double gradDen = 2.0 * r * r - rho2 + a2;
+            double[] gradR =
+            {
+                pos[0] * r / gradDen,
+                pos[1] * r / gradDen,
+                pos[2] * (r * r + a2) / (r * gradDen),
+            };
+            var c = new double[3, 4];
+            var b = new double[3];
+            for (int j = 0; j < 4; j += 1)
+            {
+                c[0, j] = g[0, j];
+                c[1, j] = -pos[1] * g[1, j] + pos[0] * g[2, j];
+            }
+            b[0] = -1.0;
+            b[1] = 0.0;
+            c[2, 1] = -pos[2] * gradR[0];
+            c[2, 2] = -pos[2] * gradR[1];
+            c[2, 3] = r - pos[2] * gradR[2];
+            b[2] = 0.0;
+
+            // Null direction via the generalized (Levi-Civita) cross product.
+            double[] n = GeneralizedCross(c);
+            // Particular solution: solve [c; n] u0 = [b; 0].
+            var m4 = new double[4, 5];
+            for (int i = 0; i < 3; i += 1)
+            {
+                for (int j = 0; j < 4; j += 1)
+                {
+                    m4[i, j] = c[i, j];
+                }
+                m4[i, 4] = b[i];
+            }
+            for (int j = 0; j < 4; j += 1)
+            {
+                m4[3, j] = n[j];
+            }
+            m4[3, 4] = 0.0;
+            double[] u0 = Solve4(m4);
+
+            double qa = Quad(g, n, n);
+            double qb = 2.0 * Quad(g, u0, n);
+            double qc = Quad(g, u0, u0) + 1.0;
+            double disc = Math.Sqrt(Math.Max(qb * qb - 4.0 * qa * qc, 0.0));
+            foreach (double root in new[] { (-qb - disc) / (2.0 * qa), (-qb + disc) / (2.0 * qa) })
+            {
+                var u = new double[4];
+                for (int j = 0; j < 4; j += 1)
+                {
+                    u[j] = u0[j] + root * n[j];
+                }
+                double drTau = gradR[0] * u[1] + gradR[1] * u[2] + gradR[2] * u[3];
+                if (drTau < 0.0 && u[0] > 0.0)
+                {
+                    return u;
+                }
+            }
+            return StaticVelocity(g);  // unreachable in practice
+        }
+
+        private double[][] TetradLegs(double[] pos, double[,] g, double[] uVec)
+        {
+            double r = KsRadiusOf(pos);
+            double a2 = spin * spin;
+            double rho2 = pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2];
+            double gradDen = 2.0 * r * r - rho2 + a2;
+            double[] radial = { 0.0, pos[0] * r / gradDen, pos[1] * r / gradDen, pos[2] * (r * r + a2) / (r * gradDen) };
+            double[] phiLeg = { 0.0, -pos[1], pos[0], 0.0 };
+            double cosT = pos[2] / r;
+            double sinT = Math.Sqrt(Math.Max(1.0 - cosT * cosT, 1.0e-16));
+            double[] thetaLeg = { 0.0, pos[0] * cosT / sinT, pos[1] * cosT / sinT, -r * sinT };
+
+            double[] ePhi = ProjectNormalize(g, phiLeg, new[] { uVec });
+            double[] eTheta = ProjectNormalize(g, thetaLeg, new[] { uVec, ePhi });
+            double[] eR = ProjectNormalize(g, radial, new[] { uVec, ePhi, eTheta });
+            return new[] { eR, eTheta, ePhi };
+        }
+
+        private static double[] ProjectNormalize(double[,] g, double[] candidate, double[][] against)
+        {
+            var v = (double[])candidate.Clone();
+            foreach (double[] basis in against)
+            {
+                double norm = Quad(g, basis, basis);
+                double coefficient = Quad(g, v, basis) / norm;
+                for (int j = 0; j < 4; j += 1)
+                {
+                    v[j] -= coefficient * basis[j];
+                }
+            }
+            double length = Math.Sqrt(Quad(g, v, v));
+            for (int j = 0; j < 4; j += 1)
+            {
+                v[j] /= length;
+            }
+            return v;
+        }
+
+        private static double Quad(double[,] g, double[] u, double[] v)
+        {
+            double total = 0.0;
+            for (int i = 0; i < 4; i += 1)
+            {
+                for (int j = 0; j < 4; j += 1)
+                {
+                    total += g[i, j] * u[i] * v[j];
+                }
+            }
+            return total;
+        }
+
+        private static double Row0Dot(double[,] g, double[] v)
+        {
+            return g[0, 0] * v[0] + g[0, 1] * v[1] + g[0, 2] * v[2] + g[0, 3] * v[3];
+        }
+
+        private static double[] GeneralizedCross(double[,] c)
+        {
+            // n_mu = det of the 3x3 minor with column mu removed, alternating sign.
+            var n = new double[4];
+            for (int mu = 0; mu < 4; mu += 1)
+            {
+                var minor = new double[3, 3];
+                for (int i = 0; i < 3; i += 1)
+                {
+                    int col = 0;
+                    for (int j = 0; j < 4; j += 1)
+                    {
+                        if (j == mu)
+                        {
+                            continue;
+                        }
+                        minor[i, col] = c[i, j];
+                        col += 1;
+                    }
+                }
+                double det =
+                    minor[0, 0] * (minor[1, 1] * minor[2, 2] - minor[1, 2] * minor[2, 1])
+                    - minor[0, 1] * (minor[1, 0] * minor[2, 2] - minor[1, 2] * minor[2, 0])
+                    + minor[0, 2] * (minor[1, 0] * minor[2, 1] - minor[1, 1] * minor[2, 0]);
+                n[mu] = (mu % 2 == 0 ? 1.0 : -1.0) * det;
+            }
+            return n;
+        }
+
+        private static double[] Solve4(double[,] augmented)
+        {
+            // Gaussian elimination with partial pivoting on a 4x5 system.
+            for (int pivot = 0; pivot < 4; pivot += 1)
+            {
+                int best = pivot;
+                for (int row = pivot + 1; row < 4; row += 1)
+                {
+                    if (Math.Abs(augmented[row, pivot]) > Math.Abs(augmented[best, pivot]))
+                    {
+                        best = row;
+                    }
+                }
+                if (best != pivot)
+                {
+                    for (int col = 0; col < 5; col += 1)
+                    {
+                        (augmented[pivot, col], augmented[best, col]) = (augmented[best, col], augmented[pivot, col]);
+                    }
+                }
+                double diag = augmented[pivot, pivot];
+                for (int row = pivot + 1; row < 4; row += 1)
+                {
+                    double factor = augmented[row, pivot] / diag;
+                    for (int col = pivot; col < 5; col += 1)
+                    {
+                        augmented[row, col] -= factor * augmented[pivot, col];
+                    }
+                }
+            }
+            var solution = new double[4];
+            for (int row = 3; row >= 0; row -= 1)
+            {
+                double sum = augmented[row, 4];
+                for (int col = row + 1; col < 4; col += 1)
+                {
+                    sum -= augmented[row, col] * solution[col];
+                }
+                solution[row] = sum / augmented[row, row];
+            }
+            return solution;
+        }
+
+        private double IscoRadius()
+        {
+            // Co-rotating BPT ISCO (shared with the live disk LUT physics).
+            return KerrDiskPhysics.IscoRadius(mass, spin);
+        }
+
+        private static Vector4 ToVector(double[] v)
+        {
+            return new Vector4((float)v[0], (float)v[1], (float)v[2], (float)v[3]);
+        }
+
+        private void EnsureSnapshotTextures(Snapshot snapshot, int size)
+        {
+            if (snapshot.EscapeDir != null && snapshot.Size == size)
+            {
+                return;
+            }
+            ReleaseSnapshot(snapshot);
+            snapshot.Size = size;
+            snapshot.StagingEscapeDir = NewTexture(size, RenderTextureFormat.ARGBFloat, cube: false);
+            snapshot.StagingEvent = NewTexture(size, RenderTextureFormat.ARGB32, cube: false);
+            snapshot.StagingDisk0 = NewTexture(size, RenderTextureFormat.ARGBHalf, cube: false);
+            snapshot.StagingDisk1 = NewTexture(size, RenderTextureFormat.ARGBHalf, cube: false);
+            snapshot.StagingRedshift0 = NewTexture(size, RenderTextureFormat.ARGBHalf, cube: false);
+            snapshot.StagingRedshift1 = NewTexture(size, RenderTextureFormat.ARGBHalf, cube: false);
+            snapshot.EscapeDir = NewTexture(size, RenderTextureFormat.ARGBFloat, cube: true);
+            snapshot.Event = NewTexture(size, RenderTextureFormat.ARGB32, cube: true);
+            snapshot.Disk0 = NewTexture(size, RenderTextureFormat.ARGBHalf, cube: true);
+            snapshot.Disk1 = NewTexture(size, RenderTextureFormat.ARGBHalf, cube: true);
+            snapshot.Redshift0 = NewTexture(size, RenderTextureFormat.ARGBHalf, cube: true);
+            snapshot.Redshift1 = NewTexture(size, RenderTextureFormat.ARGBHalf, cube: true);
+        }
+
+        private void EnsureEventMaskBuffer(int size)
+        {
+            int count = size * size * 6;
+            if (eventMaskBuffer != null && eventMaskBuffer.count == count)
+            {
+                return;
+            }
+            eventMaskBuffer?.Release();
+            eventMaskBuffer = new ComputeBuffer(count, sizeof(uint));
+        }
+
+        private void EnsureWindowTextures(WindowSnapshot snapshot, int size)
+        {
+            if (snapshot.Dir != null && snapshot.Size == size)
+            {
+                return;
+            }
+            ReleaseWindowSnapshot(snapshot);
+            snapshot.Size = size;
+            snapshot.Dir = NewWindowTexture(size, RenderTextureFormat.ARGBFloat);
+            snapshot.Event = NewWindowTexture(size, RenderTextureFormat.ARGB32);
+            snapshot.Disk0 = NewWindowTexture(size, RenderTextureFormat.ARGBHalf);
+            snapshot.Disk1 = NewWindowTexture(size, RenderTextureFormat.ARGBHalf);
+            snapshot.Redshift0 = NewWindowTexture(size, RenderTextureFormat.ARGBHalf);
+            snapshot.Redshift1 = NewWindowTexture(size, RenderTextureFormat.ARGBHalf);
+        }
+
+        private RenderTexture NewWindowTexture(int size, RenderTextureFormat format)
+        {
+            var texture = new RenderTexture(size, size, 0, format)
+            {
+                enableRandomWrite = true,
+                useMipMap = false,
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+                hideFlags = HideFlags.DontSave,
+            };
+            texture.Create();
+            return texture;
+        }
+
+        private void EnsureWindowMaskBuffer(int size)
+        {
+            int count = size * size;
+            if (windowMaskBuffer != null && windowMaskBuffer.count == count)
+            {
+                return;
+            }
+            windowMaskBuffer?.Release();
+            windowMaskBuffer = new ComputeBuffer(count, sizeof(uint));
+        }
+
+        private void BindWindowOutputs(int kernelIndex, WindowSnapshot snapshot)
+        {
+            tracerCompute.SetTexture(kernelIndex, "_OutWinEscapeDir", snapshot.Dir);
+            tracerCompute.SetTexture(kernelIndex, "_OutWinEvent", snapshot.Event);
+            tracerCompute.SetTexture(kernelIndex, "_OutWinDisk0", snapshot.Disk0);
+            tracerCompute.SetTexture(kernelIndex, "_OutWinDisk1", snapshot.Disk1);
+            tracerCompute.SetTexture(kernelIndex, "_OutWinRedshift0", snapshot.Redshift0);
+            tracerCompute.SetTexture(kernelIndex, "_OutWinRedshift1", snapshot.Redshift1);
+            tracerCompute.SetBuffer(kernelIndex, "_WinEventMask", windowMaskBuffer);
+        }
+
+        private static void ReleaseWindowSnapshot(WindowSnapshot snapshot)
+        {
+            ReleaseTexture(ref snapshot.Dir);
+            ReleaseTexture(ref snapshot.Event);
+            ReleaseTexture(ref snapshot.Disk0);
+            ReleaseTexture(ref snapshot.Disk1);
+            ReleaseTexture(ref snapshot.Redshift0);
+            ReleaseTexture(ref snapshot.Redshift1);
+            snapshot.Valid = false;
+        }
+
+        private RenderTexture NewTexture(int size, RenderTextureFormat format, bool cube)
+        {
+            var texture = new RenderTexture(size, size, 0, format)
+            {
+                dimension = cube
+                    ? UnityEngine.Rendering.TextureDimension.Cube
+                    : UnityEngine.Rendering.TextureDimension.Tex2DArray,
+                volumeDepth = cube ? 1 : 6,
+                enableRandomWrite = !cube,
+                useMipMap = false,
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+                hideFlags = HideFlags.DontSave,
+            };
+            texture.Create();
+            return texture;
+        }
+
+        private void BindOutputs(int kernelIndex, Snapshot snapshot)
+        {
+            tracerCompute.SetTexture(kernelIndex, "_OutEscapeDir", snapshot.StagingEscapeDir);
+            tracerCompute.SetTexture(kernelIndex, "_OutEvent", snapshot.StagingEvent);
+            tracerCompute.SetTexture(kernelIndex, "_OutDisk0", snapshot.StagingDisk0);
+            tracerCompute.SetTexture(kernelIndex, "_OutDisk1", snapshot.StagingDisk1);
+            tracerCompute.SetTexture(kernelIndex, "_OutRedshift0", snapshot.StagingRedshift0);
+            tracerCompute.SetTexture(kernelIndex, "_OutRedshift1", snapshot.StagingRedshift1);
+            tracerCompute.SetBuffer(kernelIndex, "_EventMask", eventMaskBuffer);
+        }
+
+        private void OnDestroy()
+        {
+            foreach (Snapshot snapshot in snapshots)
+            {
+                ReleaseSnapshot(snapshot);
+            }
+            foreach (WindowSnapshot snapshot in windowSnapshots)
+            {
+                ReleaseWindowSnapshot(snapshot);
+            }
+            eventMaskBuffer?.Release();
+            eventMaskBuffer = null;
+            windowMaskBuffer?.Release();
+            windowMaskBuffer = null;
+            if (diskRadialLutTexture != null)
+            {
+                Destroy(diskRadialLutTexture);
+                diskRadialLutTexture = null;
+            }
+        }
+
+        private static void ReleaseSnapshot(Snapshot snapshot)
+        {
+            ReleaseTexture(ref snapshot.StagingEscapeDir);
+            ReleaseTexture(ref snapshot.StagingEvent);
+            ReleaseTexture(ref snapshot.StagingDisk0);
+            ReleaseTexture(ref snapshot.StagingDisk1);
+            ReleaseTexture(ref snapshot.StagingRedshift0);
+            ReleaseTexture(ref snapshot.StagingRedshift1);
+            ReleaseTexture(ref snapshot.EscapeDir);
+            ReleaseTexture(ref snapshot.Event);
+            ReleaseTexture(ref snapshot.Disk0);
+            ReleaseTexture(ref snapshot.Disk1);
+            ReleaseTexture(ref snapshot.Redshift0);
+            ReleaseTexture(ref snapshot.Redshift1);
+            snapshot.Valid = false;
+        }
+
+        private static void ReleaseTexture(ref RenderTexture texture)
+        {
+            if (texture != null)
+            {
+                texture.Release();
+                texture = null;
+            }
+        }
+
+        /// <summary>
+        /// Synchronous full-sky pass at an explicit observer state, dumped to
+        /// raw files plus a metadata JSON carrying the exact tetrad used, so
+        /// the Python wgpu tracer can re-trace the same rays and compare
+        /// texel-wise (the repo's CPU/GPU cross-check pattern).
+        /// </summary>
+        public void ValidationDump(string outputDirectory, float radiusM, float thetaDeg, bool rainFrame)
+        {
+            if (tracerCompute == null)
+            {
+                throw new InvalidOperationException("tracerCompute not assigned.");
+            }
+            if (kernel < 0)
+            {
+                kernel = tracerCompute.FindKernel("TraceTexels");
+                refineKernel = tracerCompute.FindKernel("RefineTexels");
+            }
+            System.IO.Directory.CreateDirectory(outputDirectory);
+
+            RenderTexture NewArray(RenderTextureFormat format)
+            {
+                var texture = new RenderTexture(faceSize, faceSize, 0, format)
+                {
+                    dimension = UnityEngine.Rendering.TextureDimension.Tex2DArray,
+                    volumeDepth = 6,
+                    enableRandomWrite = true,
+                    useMipMap = false,
+                };
+                texture.Create();
+                return texture;
+            }
+
+            RenderTexture dir = NewArray(RenderTextureFormat.ARGBFloat);
+            RenderTexture evt = NewArray(RenderTextureFormat.ARGB32);
+            RenderTexture d0 = NewArray(RenderTextureFormat.ARGBFloat);
+            RenderTexture d1 = NewArray(RenderTextureFormat.ARGBFloat);
+            RenderTexture r0 = NewArray(RenderTextureFormat.ARGBFloat);
+            RenderTexture r1 = NewArray(RenderTextureFormat.ARGBFloat);
+
+            var stub = new Snapshot();
+            // Drive the uniforms from an explicit state instead of the rig.
+            float savedRadius = observerRig != null ? observerRig.VirtualRadiusM : -1.0f;
+            var metadata = ConfigureValidationUniforms(stub, radiusM, thetaDeg, rainFrame);
+
+            int totalTexels = faceSize * faceSize * 6;
+            var mask = new ComputeBuffer(totalTexels, sizeof(uint));
+            tracerCompute.SetTexture(kernel, "_OutEscapeDir", dir);
+            tracerCompute.SetTexture(kernel, "_OutEvent", evt);
+            tracerCompute.SetTexture(kernel, "_OutDisk0", d0);
+            tracerCompute.SetTexture(kernel, "_OutDisk1", d1);
+            tracerCompute.SetTexture(kernel, "_OutRedshift0", r0);
+            tracerCompute.SetTexture(kernel, "_OutRedshift1", r1);
+            tracerCompute.SetBuffer(kernel, "_EventMask", mask);
+            tracerCompute.SetInt("_TexelBase", 0);
+            tracerCompute.SetInt("_TexelCount", totalTexels);
+            tracerCompute.Dispatch(kernel, Mathf.CeilToInt(totalTexels / 64.0f), 1, 1);
+
+            DumpArray(dir, System.IO.Path.Combine(outputDirectory, "live_escape_dir_rgba32f.bytes"));
+            DumpArray(d0, System.IO.Path.Combine(outputDirectory, "live_disk0_rgba32f.bytes"));
+            DumpArray(r0, System.IO.Path.Combine(outputDirectory, "live_redshift0_rgba32f.bytes"));
+
+            // Limb-refine stage on top of the same textures: dump the event
+            // mask plus the refined maps so Python can re-trace the 3x3
+            // subrays of every limb texel and compare fractional coverage.
+            tracerCompute.SetTexture(refineKernel, "_OutEscapeDir", dir);
+            tracerCompute.SetTexture(refineKernel, "_OutEvent", evt);
+            tracerCompute.SetTexture(refineKernel, "_OutDisk0", d0);
+            tracerCompute.SetTexture(refineKernel, "_OutDisk1", d1);
+            tracerCompute.SetTexture(refineKernel, "_OutRedshift0", r0);
+            tracerCompute.SetTexture(refineKernel, "_OutRedshift1", r1);
+            tracerCompute.SetBuffer(refineKernel, "_EventMask", mask);
+            tracerCompute.Dispatch(refineKernel, Mathf.CeilToInt(totalTexels / 64.0f), 1, 1);
+
+            DumpArray(dir, System.IO.Path.Combine(outputDirectory, "live_escape_dir_refined_rgba32f.bytes"));
+            DumpArray(d0, System.IO.Path.Combine(outputDirectory, "live_disk0_refined_rgba32f.bytes"));
+            DumpArray(r0, System.IO.Path.Combine(outputDirectory, "live_redshift0_refined_rgba32f.bytes"));
+
+            var maskData = new uint[totalTexels];
+            mask.GetData(maskData);
+            var maskBytes = new byte[totalTexels * 4];
+            Buffer.BlockCopy(maskData, 0, maskBytes, 0, maskBytes.Length);
+            System.IO.File.WriteAllBytes(
+                System.IO.Path.Combine(outputDirectory, "live_event_mask_u32.bytes"),
+                maskBytes
+            );
+
+            // Angular-window stage: same physics kernel, gnomonic texel ->
+            // direction map. Python re-derives the directions from the
+            // dumped bounds and re-traces.
+            int windowSize = 256;
+            float windowHalfAlpha = radiusM * Mathf.Tan(WindowHalfAngleRad(radiusM));
+            RenderTexture winDir = NewWindowTexture(windowSize, RenderTextureFormat.ARGBFloat);
+            RenderTexture winEvt = NewWindowTexture(windowSize, RenderTextureFormat.ARGB32);
+            RenderTexture winD0 = NewWindowTexture(windowSize, RenderTextureFormat.ARGBFloat);
+            RenderTexture winD1 = NewWindowTexture(windowSize, RenderTextureFormat.ARGBFloat);
+            RenderTexture winR0 = NewWindowTexture(windowSize, RenderTextureFormat.ARGBFloat);
+            RenderTexture winR1 = NewWindowTexture(windowSize, RenderTextureFormat.ARGBFloat);
+            var winMask = new ComputeBuffer(windowSize * windowSize, sizeof(uint));
+            if (windowKernel < 0)
+            {
+                windowKernel = tracerCompute.FindKernel("TraceWindow");
+            }
+            tracerCompute.SetInt("_WindowSize", windowSize);
+            tracerCompute.SetFloat("_WindowHalfAlpha", windowHalfAlpha);
+            tracerCompute.SetFloat("_WindowRObs", radiusM);
+            tracerCompute.SetTexture(windowKernel, "_OutWinEscapeDir", winDir);
+            tracerCompute.SetTexture(windowKernel, "_OutWinEvent", winEvt);
+            tracerCompute.SetTexture(windowKernel, "_OutWinDisk0", winD0);
+            tracerCompute.SetTexture(windowKernel, "_OutWinDisk1", winD1);
+            tracerCompute.SetTexture(windowKernel, "_OutWinRedshift0", winR0);
+            tracerCompute.SetTexture(windowKernel, "_OutWinRedshift1", winR1);
+            tracerCompute.SetBuffer(windowKernel, "_WinEventMask", winMask);
+            int windowTexels = windowSize * windowSize;
+            tracerCompute.SetInt("_TexelBase", 0);
+            tracerCompute.SetInt("_TexelCount", windowTexels);
+            tracerCompute.Dispatch(windowKernel, Mathf.CeilToInt(windowTexels / 64.0f), 1, 1);
+            Dump2D(winDir, System.IO.Path.Combine(outputDirectory, "live_window_dir_rgba32f.bytes"));
+            Dump2D(winD0, System.IO.Path.Combine(outputDirectory, "live_window_disk0_rgba32f.bytes"));
+            Dump2D(winR0, System.IO.Path.Combine(outputDirectory, "live_window_redshift0_rgba32f.bytes"));
+
+            // Window limb-refine stage. Previously never dispatched here, so
+            // the RefineWindow kernel shipped entirely unvalidated while the
+            // cube-face RefineTexels kernel was gated. Same 3x3 subray
+            // fractional-coverage contract as the cube path.
+            if (windowRefineKernel < 0)
+            {
+                windowRefineKernel = tracerCompute.FindKernel("RefineWindow");
+            }
+            tracerCompute.SetTexture(windowRefineKernel, "_OutWinEscapeDir", winDir);
+            tracerCompute.SetTexture(windowRefineKernel, "_OutWinEvent", winEvt);
+            tracerCompute.SetTexture(windowRefineKernel, "_OutWinDisk0", winD0);
+            tracerCompute.SetTexture(windowRefineKernel, "_OutWinDisk1", winD1);
+            tracerCompute.SetTexture(windowRefineKernel, "_OutWinRedshift0", winR0);
+            tracerCompute.SetTexture(windowRefineKernel, "_OutWinRedshift1", winR1);
+            tracerCompute.SetBuffer(windowRefineKernel, "_WinEventMask", winMask);
+            tracerCompute.SetInt("_TexelBase", 0);
+            tracerCompute.SetInt("_TexelCount", windowTexels);
+            tracerCompute.Dispatch(windowRefineKernel, Mathf.CeilToInt(windowTexels / 64.0f), 1, 1);
+            Dump2D(winDir, System.IO.Path.Combine(outputDirectory, "live_window_dir_refined_rgba32f.bytes"));
+            Dump2D(winD0, System.IO.Path.Combine(outputDirectory, "live_window_disk0_refined_rgba32f.bytes"));
+            Dump2D(winR0, System.IO.Path.Combine(outputDirectory, "live_window_redshift0_refined_rgba32f.bytes"));
+
+            var winMaskData = new uint[windowTexels];
+            winMask.GetData(winMaskData);
+            var winMaskBytes = new byte[windowTexels * 4];
+            Buffer.BlockCopy(winMaskData, 0, winMaskBytes, 0, winMaskBytes.Length);
+            System.IO.File.WriteAllBytes(
+                System.IO.Path.Combine(outputDirectory, "live_window_mask_u32.bytes"),
+                winMaskBytes
+            );
+
+            winMask.Release();
+            winDir.Release();
+            winEvt.Release();
+            winD0.Release();
+            winD1.Release();
+            winR0.Release();
+            winR1.Release();
+
+            // Compose the document structurally. `stages` is the contract the
+            // Python gate enforces: it must validate every stage listed here,
+            // so a dump can never silently omit one and still report PASS.
+            string document = "{\n"
+                + metadata + ",\n"
+                + $"  \"windowSize\": {windowSize}, \"windowHalfAlpha\": {windowHalfAlpha:R}, \"windowRObs\": {radiusM:R},\n"
+                + "  \"stages\": [\"main\", \"refine\", \"window\", \"windowRefine\"]\n"
+                + "}\n";
+            System.IO.File.WriteAllText(
+                System.IO.Path.Combine(outputDirectory, "live_tracer_validation.json"),
+                document
+            );
+            mask.Release();
+            dir.Release();
+            evt.Release();
+            d0.Release();
+            d1.Release();
+            r0.Release();
+            r1.Release();
+            Debug.Log(
+                $"GR-BH-XR live tracer validation dump: r={radiusM}, theta={thetaDeg}, " +
+                $"rain={rainFrame}, faceSize={faceSize} -> {outputDirectory} (saved rig r={savedRadius})."
+            );
+        }
+
+        private string ConfigureValidationUniforms(Snapshot snapshot, float radiusM, float thetaDeg, bool rainFrame)
+        {
+            double theta = thetaDeg * Math.PI / 180.0;
+            double phiKs = PhiShiftSafe(radiusM);
+            double sinT = Math.Sin(theta);
+            double[] pos =
+            {
+                (radiusM * Math.Cos(phiKs) - spin * Math.Sin(phiKs)) * sinT,
+                (radiusM * Math.Sin(phiKs) + spin * Math.Cos(phiKs)) * sinT,
+                radiusM * Math.Cos(theta),
+            };
+            double[,] g = KsMetric(pos);
+            double[] uVec = rainFrame ? RainVelocity(pos, g) : StaticVelocity(g);
+            double[][] legs = TetradLegs(pos, g, uVec);
+
+            tracerCompute.SetFloat("_MassM", mass);
+            tracerCompute.SetFloat("_SpinA", spin);
+            tracerCompute.SetFloat("_StepSize", stepSize);
+            tracerCompute.SetFloat("_MaxStep", maxStep);
+            tracerCompute.SetFloat("_StepRRef", stepRRef);
+            tracerCompute.SetInt("_MaxSteps", maxSteps);
+            tracerCompute.SetFloat("_MaxLambda", maxLambda);
+            tracerCompute.SetFloat("_REscape", rEscape);
+            float rPlus = mass + Mathf.Sqrt(Mathf.Max(mass * mass - spin * spin, 0.0f));
+            float rMinus = mass - Mathf.Sqrt(Mathf.Max(mass * mass - spin * spin, 0.0f));
+            float timeOrientation = rainFrame ? -1.0f : 1.0f;
+            float captureR = rainFrame ? rMinus + 0.05f : rPlus + 0.05f;
+            float hugMinR = rainFrame && radiusM > rPlus ? rPlus + 0.05f : 0.0f;
+            float hugLambda = rainFrame && radiusM < rPlus ? 0.6f * maxLambda : 0.0f;
+            float diskRIn = (float)IscoRadius();
+            // Was a bare 30.0f, which disagreed with the runtime path
+            // (30 M, line 745) and with the runtime disk LUT whenever the
+            // mass slider left M = 1. The dump must trace the same disk the
+            // runtime traces or the cross-check compares two geometries.
+            float diskROut = 30.0f * mass;
+            tracerCompute.SetFloat("_TimeOrientation", timeOrientation);
+            tracerCompute.SetFloat("_CaptureR", captureR);
+            tracerCompute.SetFloat("_HugMinR", hugMinR);
+            tracerCompute.SetFloat("_HugLambda", hugLambda);
+            tracerCompute.SetFloat("_DiskRIn", diskRIn);
+            tracerCompute.SetFloat("_DiskROut", diskROut);
+            tracerCompute.SetInt("_FaceSize", faceSize);
+            tracerCompute.SetVector("_ObserverPosition", new Vector4((float)pos[0], (float)pos[1], (float)pos[2], 0.0f));
+            tracerCompute.SetVector("_TetradTime", ToVector(uVec));
+            tracerCompute.SetVector("_TetradR", ToVector(legs[0]));
+            tracerCompute.SetVector("_TetradTheta", ToVector(legs[1]));
+            tracerCompute.SetVector("_TetradPhi", ToVector(legs[2]));
+            for (int row = 0; row < 4; row += 1)
+            {
+                tracerCompute.SetVector(
+                    $"_ObsMetricRow{row}",
+                    new Vector4((float)g[row, 0], (float)g[row, 1], (float)g[row, 2], (float)g[row, 3])
+                );
+            }
+            // Identity Unity basis for validation (BH frame dirs dumped raw)
+            // and identity face order (the runtime path re-sorts per pass).
+            tracerCompute.SetVector("_BasisRightBh", new Vector4(1, 0, 0, 0));
+            tracerCompute.SetVector("_BasisUpBh", new Vector4(0, 1, 0, 0));
+            tracerCompute.SetVector("_BasisForwardBh", new Vector4(0, 0, 1, 0));
+            int identityOrder = 0;
+            for (int i = 0; i < 6; i += 1)
+            {
+                identityOrder |= i << (3 * i);
+            }
+            tracerCompute.SetInt("_FaceOrderPacked", identityOrder);
+
+            // Metadata BODY only - no braces. `ValidationDump` composes the
+            // object so per-stage keys are appended structurally instead of
+            // being spliced into a finished document with a string Replace.
+            // Every constant the Python cross-check needs is published here:
+            // when a value is hardcoded on both sides independently, the gate
+            // stops testing agreement and starts assuming it.
+            string Row(double[] v) => $"[{v[0]:R},{v[1]:R},{v[2]:R},{v[3]:R}]";
+            return $"  \"faceSize\": {faceSize},\n"
+                + $"  \"mass\": {mass:R}, \"spin\": {spin:R},\n"
+                + $"  \"radiusM\": {radiusM:R}, \"thetaDeg\": {thetaDeg:R}, \"rainFrame\": {(rainFrame ? "true" : "false")},\n"
+                + $"  \"position\": [{pos[0]:R},{pos[1]:R},{pos[2]:R}],\n"
+                + $"  \"tetradTime\": {Row(uVec)},\n"
+                + $"  \"tetradR\": {Row(legs[0])},\n"
+                + $"  \"tetradTheta\": {Row(legs[1])},\n"
+                + $"  \"tetradPhi\": {Row(legs[2])},\n"
+                + $"  \"stepSize\": {stepSize:R}, \"maxSteps\": {maxSteps}, \"maxLambda\": {maxLambda:R}, \"rEscape\": {rEscape:R},\n"
+                + $"  \"maxStep\": {maxStep:R}, \"stepRRef\": {stepRRef:R}, \"adaptiveStep\": true,\n"
+                + $"  \"timeOrientation\": {timeOrientation:R},\n"
+                + $"  \"captureR\": {captureR:R}, \"hugMinR\": {hugMinR:R}, \"hugLambda\": {hugLambda:R},\n"
+                + $"  \"diskRIn\": {diskRIn:R}, \"diskROut\": {diskROut:R}, \"diskMaxOrder\": 2,\n"
+                + "  \"refineSubrayGrid\": 3, \"refineSubrayOffsetScale\": 0.3333333333333333,\n"
+                + "  \"maskBits\": {\"escape\": 1, \"disk0\": 2, \"disk1\": 4}";
+        }
+
+        private void Dump2D(RenderTexture source, string path)
+        {
+            var request = UnityEngine.Rendering.AsyncGPUReadback.Request(source, 0);
+            request.WaitForCompletion();
+            if (request.hasError)
+            {
+                throw new InvalidOperationException($"Readback failed for {path}.");
+            }
+            System.IO.File.WriteAllBytes(path, request.GetData<byte>(0).ToArray());
+        }
+
+        private void DumpArray(RenderTexture source, string path)
+        {
+            int width = source.width;
+            int height = source.height;
+            int sliceBytes = width * height * 16;
+            var data = new byte[sliceBytes * 6];
+            var request = UnityEngine.Rendering.AsyncGPUReadback.Request(source, 0);
+            request.WaitForCompletion();
+            if (request.hasError)
+            {
+                throw new InvalidOperationException($"Readback failed for {path}.");
+            }
+            for (int slice = 0; slice < 6; slice += 1)
+            {
+                byte[] managed = request.GetData<byte>(slice).ToArray();
+                Buffer.BlockCopy(managed, 0, data, slice * sliceBytes, Math.Min(managed.Length, sliceBytes));
+            }
+            System.IO.File.WriteAllBytes(path, data);
+        }
+
+        private void ResolveReferences()
+        {
+            if (observerRig == null)
+            {
+                observerRig = FindAnyObjectByType<BlackHoleObserverRigControls>();
+            }
+            if (roamKeyframes == null)
+            {
+                roamKeyframes = FindAnyObjectByType<BlackHoleRoamKeyframes>();
+            }
+            if (targetMaterial == null)
+            {
+                var shell = FindAnyObjectByType<BlackHoleXrSkyShell>();
+                if (shell != null)
+                {
+                    var shellRenderer = shell.GetComponent<Renderer>();
+                    if (shellRenderer != null)
+                    {
+                        targetMaterial = shellRenderer.sharedMaterial;
+                    }
+                }
+            }
+        }
+    }
+}

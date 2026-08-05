@@ -1,0 +1,799 @@
+// GR-BH-XR live tracer: real-time Kerr geodesic integration in Unity.
+//
+// HLSL port of the audited Cartesian Kerr-Schild WGSL tracer
+// (src/gr_bh_xr/gpu/trace_ks.py). Each dispatched thread integrates one
+// full-sky cubemap texel from the CURRENT observer position and tetrad
+// (static or rain frame, passed as uniforms), records the first two
+// equatorial disk crossings, classifies escape / capture / past-horizon
+// darkness, and writes the same texture contract the display shader
+// consumes. Amortized over a few frames this keeps the transfer map solved
+// at the live observer position; validated texel-wise against the Python
+// wgpu tracer by the LiveTracerValidation gate.
+
+#pragma kernel TraceTexels
+#pragma kernel RefineTexels
+#pragma kernel TraceWindow
+#pragma kernel RefineWindow
+
+// ---------------------------------------------------------------------------
+// Uniforms
+// ---------------------------------------------------------------------------
+float _MassM;
+float _SpinA;
+float _StepSize;          // base affine step
+float _MaxStep;           // adaptive step cap
+float _StepRRef;          // adaptive step reference radius
+int _MaxSteps;
+float _MaxLambda;
+float _REscape;
+float _CaptureR;
+float _DiskRIn;
+float _DiskROut;
+float _TimeOrientation;   // +1 future (exterior emit convention), -1 past (descent/interior)
+float _HugMinR;           // exterior horizon-hug threshold (r_plus + 0.05); <=0 disables
+float _HugLambda;         // interior horizon-hug affine threshold; <=0 disables
+int _FaceSize;
+int _TexelBase;           // first global texel index of this dispatch
+int _TexelCount;
+// View-priority face permutation packed 3 bits per slot (slot -> cube face,
+// gaze-aligned first). A plain int avoids HLSL cbuffer array padding traps.
+int _FaceOrderPacked;
+
+float4 _ObserverPosition; // KS Cartesian (x, y, z, unused)
+// Contravariant KS tetrad at the observer (rows: e_time, e_r, e_theta, e_phi).
+float4 _TetradTime;
+float4 _TetradR;
+float4 _TetradTheta;
+float4 _TetradPhi;
+// Covariant KS metric at the observer (for lowering the launch vector).
+float4 _ObsMetricRow0;
+float4 _ObsMetricRow1;
+float4 _ObsMetricRow2;
+float4 _ObsMetricRow3;
+// BH-Cartesian -> Unity map basis (rows: right, up, forward in BH coords).
+float4 _BasisRightBh;
+float4 _BasisUpBh;
+float4 _BasisForwardBh;
+
+// Outputs: cube faces as 2D array slices (RenderTexture dimension Cube).
+RWTexture2DArray<float4> _OutEscapeDir;   // xyz premultiplied dir, w escape coverage
+RWTexture2DArray<float4> _OutEvent;       // audit color
+RWTexture2DArray<float4> _OutDisk0;       // r, sin phi, cos phi, coverage
+RWTexture2DArray<float4> _OutDisk1;
+RWTexture2DArray<float4> _OutRedshift0;   // g in x (premultiplied by coverage)
+RWTexture2DArray<float4> _OutRedshift1;
+
+// Per-texel event mask written by the main pass and read by the refine pass
+// (structured buffer: typed UAV loads of texture formats are an optional
+// D3D11 capability, buffers are not). Spatial indexing face-major:
+// face * faceSize^2 + py * faceSize + px. Bits: 1 escape, 2 disk order 0
+// valid, 4 disk order 1 valid.
+RWStructuredBuffer<uint> _EventMask;
+
+// High-resolution angular window centered on the hole (+z of the map
+// basis). Texels map to the display shader's gnomonic screen coordinates
+// alpha = R x/z, beta = -R y/z with symmetric bounds +-_WindowHalfAlpha,
+// so the strong-field region (shadow, photon ring, inner disk) is sampled
+// at near-headset angular density while the full-sky cube covers the rest.
+int _WindowSize;
+float _WindowHalfAlpha;   // impact-parameter half bound: r_obs * tan(half angle)
+float _WindowRObs;        // observer radius used by the gnomonic map
+RWTexture2D<float4> _OutWinEscapeDir;
+RWTexture2D<float4> _OutWinEvent;
+RWTexture2D<float4> _OutWinDisk0;
+RWTexture2D<float4> _OutWinDisk1;
+RWTexture2D<float4> _OutWinRedshift0;
+RWTexture2D<float4> _OutWinRedshift1;
+RWStructuredBuffer<uint> _WinEventMask;
+
+// ---------------------------------------------------------------------------
+// Kerr-Schild metric pieces (ported 1:1 from the audited WGSL)
+// ---------------------------------------------------------------------------
+struct StateKS
+{
+    float t, x, y, z;
+    float pt, px, py, pz;
+};
+
+struct MetricKS
+{
+    float r, h, lx, ly, lz;
+};
+
+bool IsBad(float v)
+{
+    return isnan(v) || abs(v) > 1.0e30;
+}
+
+float QDer(float value, float deriv, float denom, float denomDeriv)
+{
+    return (deriv * denom - value * denomDeriv) / (denom * denom);
+}
+
+float KsRadius(float x, float y, float z)
+{
+    float a = _SpinA;
+    float a2 = a * a;
+    float rho2 = x * x + y * y + z * z;
+    if (a2 <= 1.0e-20)
+    {
+        return sqrt(max(rho2, 0.0));
+    }
+    float q = rho2 - a2;
+    float root = sqrt(max(q * q + 4.0 * a2 * z * z, 0.0));
+    float r2 = 0.5 * (q + root);
+    if (q < 0.0)
+    {
+        r2 = (2.0 * a2 * z * z) / max(root - q, 1.0e-20);
+    }
+    return sqrt(max(r2, 0.0));
+}
+
+MetricKS MetricAt(float x, float y, float z)
+{
+    float m = _MassM;
+    float a = _SpinA;
+    float a2 = a * a;
+    float r = KsRadius(x, y, z);
+    float r2 = r * r;
+    float den = max(r2 + a2, 1.0e-20);
+    float hden = max(r2 * r2 + a2 * z * z, 1.0e-20);
+    MetricKS k;
+    k.r = r;
+    k.h = m * r * r2 / hden;
+    k.lx = (r * x + a * y) / den;
+    k.ly = (r * y - a * x) / den;
+    k.lz = z / max(r, 1.0e-20);
+    return k;
+}
+
+float4 InvMetricTimesP(MetricKS k, float4 p)
+{
+    float lt = -1.0;
+    float dotLP = lt * p.x + k.lx * p.y + k.ly * p.z + k.lz * p.w;
+    float scale = -2.0 * k.h * dotLP;
+    return float4(
+        -p.x + scale * lt,
+        p.y + scale * k.lx,
+        p.z + scale * k.ly,
+        p.w + scale * k.lz
+    );
+}
+
+float HDerivative(float r, float z, float dr, float dz)
+{
+    float m = _MassM;
+    float a2 = _SpinA * _SpinA;
+    float r2 = r * r;
+    float hden = max(r2 * r2 + a2 * z * z, 1.0e-20);
+    float hdenDer = 4.0 * r * r2 * dr + 2.0 * a2 * z * dz;
+    float numerator = m * r2 * r;
+    float numeratorDer = 3.0 * m * r2 * dr;
+    return (numeratorDer * hden - numerator * hdenDer) / (hden * hden);
+}
+
+float3 LDerivative(int axis, float x, float y, float z, float r, float dr)
+{
+    float a = _SpinA;
+    float a2 = a * a;
+    float dx = axis == 0 ? 1.0 : 0.0;
+    float dy = axis == 1 ? 1.0 : 0.0;
+    float dz = axis == 2 ? 1.0 : 0.0;
+    float den = max(r * r + a2, 1.0e-20);
+    float denDer = 2.0 * r * dr;
+    float lxNum = r * x + a * y;
+    float lxNumDer = dr * x + r * dx + a * dy;
+    float lyNum = r * y - a * x;
+    float lyNumDer = dr * y + r * dy - a * dx;
+    return float3(
+        QDer(lxNum, lxNumDer, den, denDer),
+        QDer(lyNum, lyNumDer, den, denDer),
+        (dz * r - z * dr) / max(r * r, 1.0e-20)
+    );
+}
+
+float PDgP(float4 p, MetricKS k, float dh, float3 dl)
+{
+    float4 l = float4(-1.0, k.lx, k.ly, k.lz);
+    float4 dl4 = float4(0.0, dl.x, dl.y, dl.z);
+    float lp = dot(l, p);
+    float dlp = dot(dl4, p);
+    return -2.0 * dh * lp * lp - 4.0 * k.h * dlp * lp;
+}
+
+StateKS Rhs(StateKS s)
+{
+    float a2 = _SpinA * _SpinA;
+    MetricKS k = MetricAt(s.x, s.y, s.z);
+    float4 p = float4(s.pt, s.px, s.py, s.pz);
+    float4 u = InvMetricTimesP(k, p);
+    float r = max(k.r, 1.0e-20);
+    float r2 = r * r;
+    float rho2 = s.x * s.x + s.y * s.y + s.z * s.z;
+    float radiusDen = max(2.0 * r2 - rho2 + a2, 1.0e-20);
+    float drx = s.x * r / radiusDen;
+    float dry = s.y * r / radiusDen;
+    float drz = s.z * (r2 + a2) / (r * radiusDen);
+    float dhx = HDerivative(r, s.z, drx, 0.0);
+    float dhy = HDerivative(r, s.z, dry, 0.0);
+    float dhz = HDerivative(r, s.z, drz, 1.0);
+    float3 dlx = LDerivative(0, s.x, s.y, s.z, r, drx);
+    float3 dly = LDerivative(1, s.x, s.y, s.z, r, dry);
+    float3 dlz = LDerivative(2, s.x, s.y, s.z, r, drz);
+    StateKS d;
+    d.t = u.x;
+    d.x = u.y;
+    d.y = u.z;
+    d.z = u.w;
+    d.pt = 0.0;
+    d.px = -0.5 * PDgP(p, k, dhx, dlx);
+    d.py = -0.5 * PDgP(p, k, dhy, dly);
+    d.pz = -0.5 * PDgP(p, k, dhz, dlz);
+    return d;
+}
+
+StateKS AddScaled(StateKS s, StateKS k, float h)
+{
+    StateKS o;
+    o.t = s.t + h * k.t;
+    o.x = s.x + h * k.x;
+    o.y = s.y + h * k.y;
+    o.z = s.z + h * k.z;
+    o.pt = s.pt + h * k.pt;
+    o.px = s.px + h * k.px;
+    o.py = s.py + h * k.py;
+    o.pz = s.pz + h * k.pz;
+    return o;
+}
+
+StateKS Rk4Step(StateKS s, float h)
+{
+    StateKS k1 = Rhs(s);
+    StateKS k2 = Rhs(AddScaled(s, k1, 0.5 * h));
+    StateKS k3 = Rhs(AddScaled(s, k2, 0.5 * h));
+    StateKS k4 = Rhs(AddScaled(s, k3, h));
+    StateKS o;
+    o.t = s.t + h * (k1.t + 2.0 * k2.t + 2.0 * k3.t + k4.t) / 6.0;
+    o.x = s.x + h * (k1.x + 2.0 * k2.x + 2.0 * k3.x + k4.x) / 6.0;
+    o.y = s.y + h * (k1.y + 2.0 * k2.y + 2.0 * k3.y + k4.y) / 6.0;
+    o.z = s.z + h * (k1.z + 2.0 * k2.z + 2.0 * k3.z + k4.z) / 6.0;
+    o.pt = s.pt;
+    o.px = s.px + h * (k1.px + 2.0 * k2.px + 2.0 * k3.px + k4.px) / 6.0;
+    o.py = s.py + h * (k1.py + 2.0 * k2.py + 2.0 * k3.py + k4.py) / 6.0;
+    o.pz = s.pz + h * (k1.pz + 2.0 * k2.pz + 2.0 * k3.pz + k4.pz) / 6.0;
+    return o;
+}
+
+bool StateIsBad(StateKS s)
+{
+    return IsBad(s.t) || IsBad(s.x) || IsBad(s.y) || IsBad(s.z)
+        || IsBad(s.pt) || IsBad(s.px) || IsBad(s.py) || IsBad(s.pz);
+}
+
+float AdaptiveStep(StateKS s, float lambdaUsed)
+{
+    float h = _StepSize;
+    float r = KsRadius(s.x, s.y, s.z);
+    h = clamp(_StepSize * max(1.0, r / max(_StepRRef, 1.0e-6)), _StepSize, _MaxStep);
+    return min(h, max(_MaxLambda - lambdaUsed, 0.0));
+}
+
+// ---------------------------------------------------------------------------
+// Disk redshift and chart shifts (chart-independent formulas of r, p_t, p_phi)
+// ---------------------------------------------------------------------------
+float DiskOmega(float r)
+{
+    float m = _MassM;
+    float a = _SpinA;
+    float orbitSign = a < 0.0 ? -1.0 : 1.0;
+    float sqrtM = sqrt(m);
+    return orbitSign * sqrtM / (pow(r, 1.5) + orbitSign * a * sqrtM);
+}
+
+float DiskRedshift(float r, float pt, float pph)
+{
+    float m = _MassM;
+    float a = _SpinA;
+    float a2 = a * a;
+    float sig = r * r;
+    float dlt = r * r - 2.0 * m * r + a2;
+    float rp = r * r + a2;
+    float shell = rp * rp - a2 * dlt;
+    float gttInv = -shell / (sig * dlt);
+    float gtphiInv = -2.0 * m * a * r / (sig * dlt);
+    float gphiphiInv = (dlt - a2) / (sig * dlt);
+    float detInv = gttInv * gphiphiInv - gtphiInv * gtphiInv;
+    float gTt = gphiphiInv / detInv;
+    float gTphi = -gtphiInv / detInv;
+    float gPhiphi = gttInv / detInv;
+    float omega = DiskOmega(r);
+    float norm = -(gTt + 2.0 * omega * gTphi + omega * omega * gPhiphi);
+    if (norm <= 0.0 || IsBad(norm))
+    {
+        return -1.0;
+    }
+    float uT = 1.0 / sqrt(norm);
+    float energy = -pt;
+    float denom = uT * (energy - omega * pph);
+    if (denom <= 0.0 || IsBad(denom))
+    {
+        return -1.0;
+    }
+    return energy / denom;
+}
+
+float HorizonRPlus()
+{
+    return _MassM + sqrt(max(_MassM * _MassM - _SpinA * _SpinA, 0.0));
+}
+
+float PhiShift(float r)
+{
+    float rp = HorizonRPlus();
+    float rm = _MassM - sqrt(max(_MassM * _MassM - _SpinA * _SpinA, 0.0));
+    float dr = max(rp - rm, 1.0e-6);
+    return _SpinA / dr * log(abs((r - rp) / max(abs(r - rm), 1.0e-12)));
+}
+
+// ---------------------------------------------------------------------------
+// Cubemap face directions (Unity convention, identical to the Python
+// _face_directions_from_uv)
+// ---------------------------------------------------------------------------
+float3 FaceDirection(int face, float u, float v)
+{
+    if (face == 0) return normalize(float3(1.0, -v, -u));    // +X
+    if (face == 1) return normalize(float3(-1.0, -v, u));    // -X
+    if (face == 2) return normalize(float3(u, 1.0, v));      // +Y
+    if (face == 3) return normalize(float3(u, -1.0, -v));    // -Y
+    if (face == 4) return normalize(float3(u, -v, 1.0));     // +Z
+    return normalize(float3(-u, -v, -1.0));                  // -Z
+}
+
+// ---------------------------------------------------------------------------
+// Shared per-ray trace (launcher + integration + classification), used by the
+// full-texel kernel and the limb-refine subray kernel.
+// ---------------------------------------------------------------------------
+struct TraceOutputs
+{
+    bool escaped;
+    float3 unityDir;   // valid when escaped
+    float4 disk0;      // r, sin phi, cos phi, valid(0/1)
+    float4 red0;       // g in x, premultiplied by disk0.w
+    float4 disk1;
+    float4 red1;
+};
+
+TraceOutputs TraceDirection(float3 d)
+{
+    // Launcher: n mapping matches the audited static full-sky convention
+    // (+z toward the hole -> n_r = -d.z etc.). _TimeOrientation -1 traces the
+    // history ray q = -u + n.e (interior-capable past view).
+    float nR = -d.z;
+    float nTheta = -d.y;
+    float nPhi = -d.x;
+    // Future orientation: emit q = +u + n.e (audited exterior convention).
+    // Past orientation: history ray q = -u + n.e (interior-capable view).
+    float4 q = _TimeOrientation * _TetradTime
+        + nR * _TetradR + nTheta * _TetradTheta + nPhi * _TetradPhi;
+    float4 p;
+    p.x = dot(_ObsMetricRow0, q);
+    p.y = dot(_ObsMetricRow1, q);
+    p.z = dot(_ObsMetricRow2, q);
+    p.w = dot(_ObsMetricRow3, q);
+
+    StateKS s;
+    s.t = 0.0;
+    s.x = _ObserverPosition.x;
+    s.y = _ObserverPosition.y;
+    s.z = _ObserverPosition.z;
+    s.pt = p.x;
+    s.px = p.y;
+    s.py = p.z;
+    s.pz = p.w;
+
+    int eventCode = -1;           // -1 running, 0 capture/dark, 1 escape
+    float lambdaUsed = 0.0;
+    float minR = KsRadius(s.x, s.y, s.z);
+    float diskR0 = -1.0, diskPhi0 = -1.0, diskG0 = -1.0;
+    float diskR1 = -1.0, diskPhi1 = -1.0, diskG1 = -1.0;
+    int diskOrder = 0;
+
+    [loop]
+    for (int i = 0; i < _MaxSteps; i += 1)
+    {
+        float dh = AdaptiveStep(s, lambdaUsed);
+        if (dh <= 0.0 || lambdaUsed >= _MaxLambda)
+        {
+            break;
+        }
+        float prevZ = s.z;
+        float prevX = s.x;
+        float prevY = s.y;
+        float prevT = s.t;
+        s = Rk4Step(s, dh);
+        lambdaUsed += dh;
+        if (StateIsBad(s))
+        {
+            eventCode = 0;
+            break;
+        }
+        float r = KsRadius(s.x, s.y, s.z);
+        minR = min(minR, r);
+        if (_DiskROut > 0.0)
+        {
+            bool crosses = (prevZ < -1.0e-9 && s.z >= 0.0) || (prevZ > 1.0e-9 && s.z <= 0.0);
+            if (crosses)
+            {
+                float frac = clamp(abs(prevZ) / max(abs(prevZ - s.z), 1.0e-12), 0.0, 1.0);
+                float xc = prevX + frac * (s.x - prevX);
+                float yc = prevY + frac * (s.y - prevY);
+                float rc = KsRadius(xc, yc, 0.0);
+                if (diskOrder < 2 && rc >= _DiskRIn && rc <= _DiskROut)
+                {
+                    float phiKs = atan2(yc * rc - _SpinA * xc, rc * xc + _SpinA * yc);
+                    float phc = phiKs - PhiShift(rc);
+                    float pph = xc * s.py - yc * s.px;
+                    float gc = DiskRedshift(rc, _TimeOrientation * s.pt, _TimeOrientation * pph);
+                    if (diskOrder == 0)
+                    {
+                        diskR0 = rc; diskPhi0 = phc; diskG0 = gc;
+                    }
+                    else
+                    {
+                        diskR1 = rc; diskPhi1 = phc; diskG1 = gc;
+                    }
+                }
+                if (crosses) { diskOrder += 1; }
+            }
+        }
+        if (r <= _CaptureR)
+        {
+            eventCode = 0;
+            break;
+        }
+        if (r >= _REscape)
+        {
+            eventCode = 1;
+            break;
+        }
+    }
+
+    // Past-horizon darkness (see the descent generator): budget exhaustion,
+    // exterior horizon hugs, interior extreme affine lengths.
+    if (eventCode < 0)
+    {
+        eventCode = 0;
+    }
+    if (eventCode == 1 && _HugMinR > 0.0 && minR < _HugMinR)
+    {
+        eventCode = 0;
+    }
+    if (eventCode == 1 && _HugLambda > 0.0 && lambdaUsed > _HugLambda)
+    {
+        eventCode = 0;
+    }
+
+    TraceOutputs o;
+    o.escaped = eventCode == 1;
+    o.unityDir = float3(0.0, 0.0, 0.0);
+    if (o.escaped)
+    {
+        // Asymptotic direction: raised KS momentum plus the analytic
+        // z-rotation to the BH Cartesian frame, then the BH -> Unity basis
+        // map. The same rotation is gated on the Python side by
+        // `gr_bh_xr.gpu.validate_descent_frames` (physics worktree), which
+        // measures max 3.251e-4 deg / median 2.180e-4 deg against the exact
+        // per-ray chart conversion at r_escape = 200M and carries a 0.0026 deg
+        // regression tripwire. That producer is not present on this branch;
+        // this port reuses the rotation, it does not re-derive the bound.
+        MetricKS k = MetricAt(s.x, s.y, s.z);
+        float4 uVec = InvMetricTimesP(k, float4(s.pt, s.px, s.py, s.pz));
+        float3 spatial = normalize(float3(uVec.y, uVec.z, uVec.w));
+        float rEnd = KsRadius(s.x, s.y, s.z);
+        float delta = atan2(_SpinA, rEnd) + PhiShift(rEnd);
+        float cosD = cos(-delta);
+        float sinD = sin(-delta);
+        float3 bh = float3(
+            cosD * spatial.x - sinD * spatial.y,
+            sinD * spatial.x + cosD * spatial.y,
+            spatial.z
+        );
+        o.unityDir = normalize(float3(
+            dot(bh, _BasisRightBh.xyz),
+            dot(bh, _BasisUpBh.xyz),
+            dot(bh, _BasisForwardBh.xyz)
+        ));
+    }
+    bool disk0Valid = diskR0 > 0.0 && diskG0 > 0.0;
+    bool disk1Valid = diskR1 > 0.0 && diskG1 > 0.0;
+    o.disk0 = disk0Valid
+        ? float4(diskR0, sin(diskPhi0), cos(diskPhi0), 1.0)
+        : float4(0.0, 0.0, 0.0, 0.0);
+    o.red0 = disk0Valid ? float4(diskG0, 0.0, 0.0, 0.0) : float4(0.0, 0.0, 0.0, 0.0);
+    o.disk1 = disk1Valid
+        ? float4(diskR1, sin(diskPhi1), cos(diskPhi1), 1.0)
+        : float4(0.0, 0.0, 0.0, 0.0);
+    o.red1 = disk1Valid ? float4(diskG1, 0.0, 0.0, 0.0) : float4(0.0, 0.0, 0.0, 0.0);
+    return o;
+}
+
+uint MaskOf(TraceOutputs o)
+{
+    return (o.escaped ? 1u : 0u)
+        | (o.disk0.w > 0.5 ? 2u : 0u)
+        | (o.disk1.w > 0.5 ? 4u : 0u);
+}
+
+[numthreads(64, 1, 1)]
+void TraceTexels(uint3 id : SV_DispatchThreadID)
+{
+    int texel = _TexelBase + (int)id.x;
+    if ((int)id.x >= _TexelCount)
+    {
+        return;
+    }
+    int pixelsPerFace = _FaceSize * _FaceSize;
+    int totalTexels = pixelsPerFace * 6;
+    if (texel >= totalTexels)
+    {
+        return;
+    }
+    int slot = texel / pixelsPerFace;
+    int face = (_FaceOrderPacked >> (slot * 3)) & 7;
+    int inFace = texel - slot * pixelsPerFace;
+    int py = inFace / _FaceSize;
+    int px = inFace - py * _FaceSize;
+    float u = 2.0 * ((px + 0.5) / _FaceSize) - 1.0;
+    float v = 2.0 * ((py + 0.5) / _FaceSize) - 1.0;
+    TraceOutputs o = TraceDirection(FaceDirection(face, u, v));
+
+    uint3 coord = uint3((uint)px, (uint)py, (uint)face);
+    if (o.escaped)
+    {
+        _OutEscapeDir[coord] = float4(o.unityDir, 1.0);
+        _OutEvent[coord] = float4(0.19, 0.52, 1.0, 1.0);
+    }
+    else
+    {
+        _OutEscapeDir[coord] = float4(0.0, 0.0, 0.0, 0.0);
+        _OutEvent[coord] = float4(0.0, 0.0, 0.0, 1.0);
+    }
+    _OutDisk0[coord] = o.disk0;
+    _OutRedshift0[coord] = o.red0;
+    _OutDisk1[coord] = o.disk1;
+    _OutRedshift1[coord] = o.red1;
+    _EventMask[face * pixelsPerFace + py * _FaceSize + px] = MaskOf(o);
+}
+
+// ---------------------------------------------------------------------------
+// Limb refine: texels whose event mask differs from an in-face neighbor sit
+// on a discontinuity (shadow limb, disk-image edge). Retrace them with a 3x3
+// subray grid and store FRACTIONAL coverage with coverage-premultiplied
+// values - the exact texel-area average the display's coverage blend expects.
+// The subray grid includes the texel center, so a refined texel strictly
+// refines the main-pass answer. Runs after all main batches of the pass
+// (the mask is complete); only reads the mask, so there is no write race.
+// ---------------------------------------------------------------------------
+[numthreads(64, 1, 1)]
+void RefineTexels(uint3 id : SV_DispatchThreadID)
+{
+    int texel = _TexelBase + (int)id.x;
+    if ((int)id.x >= _TexelCount)
+    {
+        return;
+    }
+    int pixelsPerFace = _FaceSize * _FaceSize;
+    if (texel >= pixelsPerFace * 6)
+    {
+        return;
+    }
+    // Spatial order (no view-priority permutation): face-major like the mask.
+    int face = texel / pixelsPerFace;
+    int inFace = texel - face * pixelsPerFace;
+    int py = inFace / _FaceSize;
+    int px = inFace - py * _FaceSize;
+
+    uint ownMask = _EventMask[texel];
+    bool limb = false;
+    if (px > 0) { limb = limb || _EventMask[texel - 1] != ownMask; }
+    if (px < _FaceSize - 1) { limb = limb || _EventMask[texel + 1] != ownMask; }
+    if (py > 0) { limb = limb || _EventMask[texel - _FaceSize] != ownMask; }
+    if (py < _FaceSize - 1) { limb = limb || _EventMask[texel + _FaceSize] != ownMask; }
+    if (!limb)
+    {
+        return;
+    }
+
+    float escCount = 0.0;
+    float3 dirSum = float3(0.0, 0.0, 0.0);
+    float3 dirs[9];
+    int dirCount = 0;
+    float4 disk0Sum = float4(0.0, 0.0, 0.0, 0.0);
+    float4 red0Sum = float4(0.0, 0.0, 0.0, 0.0);
+    float4 disk1Sum = float4(0.0, 0.0, 0.0, 0.0);
+    float4 red1Sum = float4(0.0, 0.0, 0.0, 0.0);
+    [loop]
+    for (int sub = 0; sub < 9; sub += 1)
+    {
+        float ox = ((sub % 3) - 1) / 3.0;
+        float oy = ((sub / 3) - 1) / 3.0;
+        float u = 2.0 * ((px + 0.5 + ox) / _FaceSize) - 1.0;
+        float v = 2.0 * ((py + 0.5 + oy) / _FaceSize) - 1.0;
+        TraceOutputs o = TraceDirection(FaceDirection(face, u, v));
+        if (o.escaped)
+        {
+            escCount += 1.0;
+            dirSum += o.unityDir;
+            dirs[dirCount] = o.unityDir;
+            dirCount += 1;
+        }
+        disk0Sum += o.disk0;
+        red0Sum += o.red0;
+        disk1Sum += o.disk1;
+        red1Sum += o.red1;
+    }
+
+    float inv = 1.0 / 9.0;
+    float coverage = escCount * inv;
+    // Representative escape direction: the genuine subray closest to the
+    // (circular) mean - never a synthetic average, which near the photon
+    // ring could point somewhere no traced ray goes (matches the offline
+    // generator's _representative_direction).
+    float3 rep = float3(0.0, 0.0, 0.0);
+    if (dirCount > 0)
+    {
+        float3 mean = normalize(dirSum);
+        float best = -2.0;
+        for (int j = 0; j < dirCount; j += 1)
+        {
+            float align = dot(dirs[j], mean);
+            if (align > best)
+            {
+                best = align;
+                rep = dirs[j];
+            }
+        }
+    }
+
+    uint3 coord = uint3((uint)px, (uint)py, (uint)face);
+    _OutEscapeDir[coord] = float4(rep * coverage, coverage);
+    _OutDisk0[coord] = disk0Sum * inv;
+    _OutRedshift0[coord] = red0Sum * inv;
+    _OutDisk1[coord] = disk1Sum * inv;
+    _OutRedshift1[coord] = red1Sum * inv;
+}
+
+// ---------------------------------------------------------------------------
+// Angular-window kernels: identical physics (shared TraceDirection), only the
+// texel -> direction map differs. Inverse of the display shader's window
+// lookup: alpha = R x/z, beta = -R y/z, uv = ((a - aMin)/range,
+// (bMax - b)/range) with symmetric bounds.
+// ---------------------------------------------------------------------------
+float3 WindowDirection(int px, int py)
+{
+    float u = (px + 0.5) / (float)_WindowSize;
+    float v = (py + 0.5) / (float)_WindowSize;
+    float alpha = (2.0 * u - 1.0) * _WindowHalfAlpha;
+    float beta = (1.0 - 2.0 * v) * _WindowHalfAlpha;
+    float rObs = max(_WindowRObs, 1.0e-6);
+    return normalize(float3(alpha / rObs, -beta / rObs, 1.0));
+}
+
+[numthreads(64, 1, 1)]
+void TraceWindow(uint3 id : SV_DispatchThreadID)
+{
+    int texel = _TexelBase + (int)id.x;
+    if ((int)id.x >= _TexelCount)
+    {
+        return;
+    }
+    if (texel >= _WindowSize * _WindowSize)
+    {
+        return;
+    }
+    int py = texel / _WindowSize;
+    int px = texel - py * _WindowSize;
+    TraceOutputs o = TraceDirection(WindowDirection(px, py));
+
+    uint2 coord = uint2((uint)px, (uint)py);
+    if (o.escaped)
+    {
+        _OutWinEscapeDir[coord] = float4(o.unityDir, 1.0);
+        _OutWinEvent[coord] = float4(0.19, 0.52, 1.0, 1.0);
+    }
+    else
+    {
+        _OutWinEscapeDir[coord] = float4(0.0, 0.0, 0.0, 0.0);
+        _OutWinEvent[coord] = float4(0.0, 0.0, 0.0, 1.0);
+    }
+    _OutWinDisk0[coord] = o.disk0;
+    _OutWinRedshift0[coord] = o.red0;
+    _OutWinDisk1[coord] = o.disk1;
+    _OutWinRedshift1[coord] = o.red1;
+    _WinEventMask[texel] = MaskOf(o);
+}
+
+[numthreads(64, 1, 1)]
+void RefineWindow(uint3 id : SV_DispatchThreadID)
+{
+    int texel = _TexelBase + (int)id.x;
+    if ((int)id.x >= _TexelCount)
+    {
+        return;
+    }
+    if (texel >= _WindowSize * _WindowSize)
+    {
+        return;
+    }
+    int py = texel / _WindowSize;
+    int px = texel - py * _WindowSize;
+
+    uint ownMask = _WinEventMask[texel];
+    bool limb = false;
+    if (px > 0) { limb = limb || _WinEventMask[texel - 1] != ownMask; }
+    if (px < _WindowSize - 1) { limb = limb || _WinEventMask[texel + 1] != ownMask; }
+    if (py > 0) { limb = limb || _WinEventMask[texel - _WindowSize] != ownMask; }
+    if (py < _WindowSize - 1) { limb = limb || _WinEventMask[texel + _WindowSize] != ownMask; }
+    if (!limb)
+    {
+        return;
+    }
+
+    float escCount = 0.0;
+    float3 dirSum = float3(0.0, 0.0, 0.0);
+    float3 dirs[9];
+    int dirCount = 0;
+    float4 disk0Sum = float4(0.0, 0.0, 0.0, 0.0);
+    float4 red0Sum = float4(0.0, 0.0, 0.0, 0.0);
+    float4 disk1Sum = float4(0.0, 0.0, 0.0, 0.0);
+    float4 red1Sum = float4(0.0, 0.0, 0.0, 0.0);
+    float rObs = max(_WindowRObs, 1.0e-6);
+    [loop]
+    for (int sub = 0; sub < 9; sub += 1)
+    {
+        float ox = ((sub % 3) - 1) / 3.0;
+        float oy = ((sub / 3) - 1) / 3.0;
+        float u = (px + 0.5 + ox) / (float)_WindowSize;
+        float v = (py + 0.5 + oy) / (float)_WindowSize;
+        float alpha = (2.0 * u - 1.0) * _WindowHalfAlpha;
+        float beta = (1.0 - 2.0 * v) * _WindowHalfAlpha;
+        float3 d = normalize(float3(alpha / rObs, -beta / rObs, 1.0));
+        TraceOutputs o = TraceDirection(d);
+        if (o.escaped)
+        {
+            escCount += 1.0;
+            dirSum += o.unityDir;
+            dirs[dirCount] = o.unityDir;
+            dirCount += 1;
+        }
+        disk0Sum += o.disk0;
+        red0Sum += o.red0;
+        disk1Sum += o.disk1;
+        red1Sum += o.red1;
+    }
+
+    float inv = 1.0 / 9.0;
+    float coverage = escCount * inv;
+    float3 rep = float3(0.0, 0.0, 0.0);
+    if (dirCount > 0)
+    {
+        float3 mean = normalize(dirSum);
+        float best = -2.0;
+        for (int j = 0; j < dirCount; j += 1)
+        {
+            float align = dot(dirs[j], mean);
+            if (align > best)
+            {
+                best = align;
+                rep = dirs[j];
+            }
+        }
+    }
+
+    uint2 coord = uint2((uint)px, (uint)py);
+    _OutWinEscapeDir[coord] = float4(rep * coverage, coverage);
+    _OutWinDisk0[coord] = disk0Sum * inv;
+    _OutWinRedshift0[coord] = red0Sum * inv;
+    _OutWinDisk1[coord] = disk1Sum * inv;
+    _OutWinRedshift1[coord] = red1Sum * inv;
+}

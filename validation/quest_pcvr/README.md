@@ -285,6 +285,72 @@ it stays bright at the inner edge, while the Page-Thorne LUT path partially
 hides them by making the zero-torque ISCO edge dimmer. Formal Quest screenshots
 should use v2 coverage assets, not legacy binary-validity disk cubes.
 
+## Unity Live Tracer Gate (Task 9)
+
+`BlackHoleLiveTracer.compute` is not a texture lookup. It integrates
+Cartesian-Kerr-Schild null geodesics for the current observer tetrad and records
+escape direction, event mask, disk crossings, redshift, and refinement
+coverage. `BlackHoleLiveTracer.cs` distributes one complete map over multiple
+display frames and hard-swaps only a completed pass.
+
+`ValidationDump` writes **two** dumps, one per observer state, into
+subdirectories of the capture directory. Neither the editor menu
+(`GR-BH-XR/Gate/Live Tracer Validation Dump`) nor the batch entry point takes a
+`--dump-dir`; the Unity-side flag is `-grbhxrCaptureDir` and it defaults to
+`F:/学习和研究/GR-BH-XR/outputs/task5/unity_gate`. Each dump is then compared
+separately:
+
+```powershell
+$dump = 'F:\学习和研究\GR-BH-XR\outputs\task9\live_tracer_validation'
+& $unity -batchmode -quit -projectPath $proj `
+  -executeMethod GRBHXR.EditorTools.GRBHXRGateAutomation.BatchLiveTracerValidationDump `
+  -grbhxrCaptureDir $dump
+
+$env:PYTHONPATH='src'
+python validation\quest_pcvr\scripts\compare_live_tracer.py --dump-dir "$dump\live_static_r14_t60" --samples 4096
+python validation\quest_pcvr\scripts\compare_live_tracer.py --dump-dir "$dump\live_rain_r2p35_t60"  --samples 4096
+```
+
+The dump must come from the runtime resource path (Tex2DArray staging and packed
+face order), not an editor-only substitute.
+
+The comparison is fail-closed on stage coverage. `live_tracer_validation.json`
+declares `"stages": ["main", "refine", "window", "windowRefine"]`, and the
+script refuses to report PASS unless every declared stage was actually
+validated and every required stage is present. A deliberately reduced dump must
+name what it dropped with `--allow-missing-stage`, which is echoed into the
+summary so a reduced run cannot be mistaken for a full one. Empty comparison
+populations (no escaped texel, no disk crossing, an empty limb set) are errors
+rather than skipped thresholds.
+
+Every constant the two implementations must agree on is read from the dump
+metadata: `captureR`, `hugMinR`, `hugLambda`, `diskRIn`, `diskROut`,
+`timeOrientation`, `maxStep`, `stepRRef`, `adaptiveStep`, `refineSubrayGrid`,
+`refineSubrayOffsetScale`, and `maskBits`. The script asserts that the Python
+capture radius it derives equals Unity's `captureR` to `1e-6`. This closes a
+real gap: the two capture surfaces previously differed by `0.35 M` in the
+static case (`1.1359 M` against `1.4859 M`) while the gate still reported
+`eventAgreement = 1.0`, because escaping rays never approach either surface.
+The dumped observer tetrad is also checked for orthonormality against an
+independently computed metric, since both sides build every launch state from
+it and a wrong tetrad would otherwise cancel out.
+
+This validates live tracing at the sampled states. It does not claim f64
+photon-shell accuracy, and it does not claim one complete full-resolution
+update per 72/90 Hz display frame. The dump runs at `faceSize = 128` and
+`windowSize = 256` in `ARGBFloat`, while the runtime ladder is 96-512 per cube
+face and 512-2048 for the window with `ARGBHalf` disk/redshift storage: the
+gate validates the kernel, not the runtime resolution ladder or the fp16
+display path.
+
+**Cross-worktree dependency:** `compare_live_tracer.py` imports
+`gr_bh_xr.gpu.generate_descent_keyframes._batch_escape_directions` and uses the
+Kerr-Schild disk-crossing extensions to `gr_bh_xr.gpu.trace_ks`
+(`disk_r_in`/`disk_r_out`/`time_orientation`, the `disk_r_m`/`disk_g_m` result
+keys, and packed-array input). Those are owned by the Task 7-8 physics
+worktree. On a branch without them the import fails loudly; it does not degrade
+to a partial check.
+
 ## PCVR Sky-Shell First-Run Scene
 
 The Quest first-run scene should use the full-sky transfer map on a camera-

@@ -152,6 +152,201 @@ namespace GRBHXR.EditorTools
             AssetDatabase.Refresh();
         }
 
+        [MenuItem("GR-BH-XR/Gate/Capture Roam Radii Gate")]
+        public static void CaptureRoamRadiiGate()
+        {
+            var options = GateOptions.FromCommandLine();
+            options.UseAngularWindow = true;
+            options.UseSkyShell = true;
+            options.DiskVisualMode = true;
+            ConfigurePreview(options, GateSkyboxKind.Nasa);
+
+            var roamKeyframes = UnityEngine.Object.FindAnyObjectByType<BlackHoleRoamKeyframes>();
+            if (roamKeyframes == null)
+            {
+                throw new MissingReferenceException("BlackHoleRoamKeyframes not configured in scene.");
+            }
+            var camera = Camera.main;
+            if (camera == null)
+            {
+                throw new MissingReferenceException("Main Camera not found.");
+            }
+            // Desktop roam captures use a wide frustum: near keyframes fill
+            // most of the sky and the r_obs=100 hybrid patch FOV would crop them.
+            camera.fieldOfView = 90.0f;
+
+            var material = AssetDatabase.LoadAssetAtPath<Material>(options.MaterialPath);
+            if (material == null)
+            {
+                throw new MissingReferenceException($"Material not found: {options.MaterialPath}");
+            }
+            // SaveScene inside ConfigurePreview reimports the dirtied material
+            // asset, which drops every runtime-created texture binding
+            // (serialized as fileID: 0). Rebind the lens-map textures and disk
+            // LUTs afterwards, exactly like the other capture gates.
+            ApplyActiveLensMapsToMaterial(material);
+
+            // Display exposure only. Near keyframes see mostly the outer disk,
+            // where the normalized Page-Thorne flux is a few percent of peak;
+            // absolute luminosity still needs accretion-rate and mass
+            // normalization, so the display gain is a free parameter.
+            material.SetFloat("_DiskBrightness", 6.0f);
+            Debug.Log("GR-BH-XR roam gate: _DiskBrightness=6.0 (display exposure for outer-disk flux).");
+
+            var rig = UnityEngine.Object.FindAnyObjectByType<BlackHoleObserverRigControls>();
+            var shell = UnityEngine.Object.FindAnyObjectByType<BlackHoleXrSkyShell>();
+            var stops = new (float radius, float theta, float azimuth, string label)[]
+            {
+                (100.0f, 60.0f, 0.0f, "r100p0_t60_az000"),
+                (12.9f, 60.0f, 0.0f, "r012p9_t60_az000"),
+                (12.9f, 90.0f, 0.0f, "r012p9_t90_az000"),
+                (12.9f, 30.0f, 0.0f, "r012p9_t30_az000"),
+                (12.9f, 60.0f, 90.0f, "r012p9_t60_az090"),
+                (5.2f, 60.0f, 0.0f, "r005p2_t60_az000"),
+                (2.5f, 90.0f, 0.0f, "r002p5_t90_az000"),
+            };
+            foreach (var stop in stops)
+            {
+                roamKeyframes.ForceBind(stop.radius, stop.theta);
+                if (rig != null)
+                {
+                    rig.SetAzimuthDegrees(stop.azimuth);
+                }
+                if (shell != null)
+                {
+                    shell.SyncNow();
+                }
+                // Keep the shadow centered: aim the camera down the live map
+                // forward axis, which theta rows and azimuth rotate in world.
+                Vector3 lensForward = material.GetVector("_LensWorldForward");
+                if (lensForward.sqrMagnitude > 1.0e-6f)
+                {
+                    camera.transform.rotation = Quaternion.LookRotation(lensForward.normalized, Vector3.up);
+                }
+                Debug.Log(
+                    $"GR-BH-XR roam gate stop {stop.label}: " +
+                    $"radialLut={(material.GetTexture("_DiskRadialLut") != null ? material.GetTexture("_DiskRadialLut").name : "NULL")}, " +
+                    $"disk0={(material.GetTexture("_DiskOrder0Cube") != null ? material.GetTexture("_DiskOrder0Cube").name : "NULL")}, " +
+                    $"useLut={material.GetFloat("_UseDiskColorLut"):F1}, " +
+                    $"visual={material.GetFloat("_DiskVisualMode"):F1}, " +
+                    $"skyBlueshift={material.GetFloat("_SkyBlueshift"):F3}, " +
+                    $"brightness={material.GetFloat("_DiskBrightness"):F1}, " +
+                    $"forward={lensForward}"
+                );
+                Capture(
+                    options,
+                    $"unity_gate_roam_{stop.label}_square_1024.png",
+                    1024,
+                    1024,
+                    refreshLensMaps: false
+                );
+            }
+
+            // Descent stops: rain-frame keyframes traced past-directed in the
+            // Kerr-Schild chart, including positions inside the outer horizon
+            // (the falling observer still sees the outside universe there).
+            var descentStops = new (float radius, string label)[]
+            {
+                (6.0f, "d006p0"),
+                (2.35f, "d002p3"),
+                (1.20f, "d001p2_inside_horizon"),
+                (0.75f, "d000p7_inside_horizon"),
+            };
+            bool descentCaptured = false;
+            foreach (var stop in descentStops)
+            {
+                try
+                {
+                    roamKeyframes.ForceBindDescent(stop.radius, 60.0f);
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning($"GR-BH-XR descent capture skipped ({stop.label}): {exception.Message}");
+                    break;
+                }
+                descentCaptured = true;
+                if (rig != null)
+                {
+                    rig.SetAzimuthDegrees(0.0f);
+                }
+                if (shell != null)
+                {
+                    shell.SyncNow();
+                }
+                Vector3 descentForward = material.GetVector("_LensWorldForward");
+                if (descentForward.sqrMagnitude > 1.0e-6f)
+                {
+                    camera.transform.rotation = Quaternion.LookRotation(descentForward.normalized, Vector3.up);
+                }
+                Capture(
+                    options,
+                    $"unity_gate_roam_{stop.label}_square_1024.png",
+                    1024,
+                    1024,
+                    refreshLensMaps: false
+                );
+            }
+            if (descentCaptured)
+            {
+                roamKeyframes.ExitDescent();
+            }
+
+            // Proxy-path control image: does not read the radial LUT, so a
+            // visible proxy disk with an invisible LUT disk isolates the LUT
+            // binding as the failure point.
+            material.SetFloat("_UseDiskColorLut", 0.0f);
+            roamKeyframes.ForceBind(12.9f, 60.0f);
+            if (rig != null)
+            {
+                rig.SetAzimuthDegrees(0.0f);
+            }
+            if (shell != null)
+            {
+                shell.SyncNow();
+            }
+            Vector3 proxyForward = material.GetVector("_LensWorldForward");
+            if (proxyForward.sqrMagnitude > 1.0e-6f)
+            {
+                camera.transform.rotation = Quaternion.LookRotation(proxyForward.normalized, Vector3.up);
+            }
+            Capture(
+                options,
+                "unity_gate_roam_r012p9_t60_proxy_square_1024.png",
+                1024,
+                1024,
+                refreshLensMaps: false
+            );
+            AssetDatabase.Refresh();
+        }
+
+        public static void BatchCaptureRoamRadiiGate()
+        {
+            CaptureRoamRadiiGate();
+        }
+
+        [MenuItem("GR-BH-XR/Gate/Live Tracer Validation Dump")]
+        public static void LiveTracerValidationDump()
+        {
+            var options = GateOptions.FromCommandLine();
+            options.UseAngularWindow = true;
+            options.UseSkyShell = true;
+            ConfigurePreview(options, GateSkyboxKind.Nasa);
+            var liveTracer = UnityEngine.Object.FindAnyObjectByType<BlackHoleLiveTracer>();
+            if (liveTracer == null)
+            {
+                throw new MissingReferenceException("BlackHoleLiveTracer not configured in scene.");
+            }
+            string baseDir = options.CaptureDir;
+            liveTracer.ValidationDump(Path.Combine(baseDir, "live_static_r14_t60"), 13.981958f, 60.0f, rainFrame: false);
+            liveTracer.ValidationDump(Path.Combine(baseDir, "live_rain_r2p35_t60"), 2.349f, 60.0f, rainFrame: true);
+            AssetDatabase.Refresh();
+        }
+
+        public static void BatchLiveTracerValidationDump()
+        {
+            LiveTracerValidationDump();
+        }
+
         [MenuItem("GR-BH-XR/Gate/Configure PCVR Sky-Shell First Run")]
         public static void ConfigurePcvrSkyShellFirstRun()
         {
@@ -405,11 +600,29 @@ namespace GRBHXR.EditorTools
             camera.backgroundColor = Color.black;
             camera.nearClipPlane = 0.01f;
             camera.farClipPlane = 1000.0f;
+            var observerRig = GameObject.Find("GRBHXRObserverRig");
+            if (observerRig == null)
+            {
+                observerRig = new GameObject("GRBHXRObserverRig");
+            }
+            observerRig.transform.position = Vector3.zero;
+            observerRig.transform.rotation = Quaternion.identity;
+            observerRig.transform.localScale = Vector3.one;
             var headPoseDriver = camera.GetComponent<BlackHoleXrHeadPoseDriver>();
             if (headPoseDriver == null)
             {
                 headPoseDriver = camera.gameObject.AddComponent<BlackHoleXrHeadPoseDriver>();
             }
+            AssignSerializedObject(headPoseDriver, "trackingOrigin", observerRig.transform);
+
+            var observerRigControls = observerRig.GetComponent<BlackHoleObserverRigControls>();
+            if (observerRigControls == null)
+            {
+                observerRigControls = observerRig.AddComponent<BlackHoleObserverRigControls>();
+            }
+            AssignSerializedObject(observerRigControls, "trackingOrigin", observerRig.transform);
+            AssignSerializedObject(observerRigControls, "targetCamera", camera);
+            AssignSerializedObject(observerRigControls, "headPoseDriver", headPoseDriver);
 
             var lensAnchor = GameObject.Find("BlackHoleLensAnchor");
             if (lensAnchor == null)
@@ -453,6 +666,37 @@ namespace GRBHXR.EditorTools
                 }
                 AssignSerializedObject(xrControls, "controls", controls);
                 AssignSerializedObject(xrControls, "runtimeSettings", runtimeSettings);
+                AssignSerializedObject(xrControls, "observerRigControls", observerRigControls);
+                AssignSerializedBool(xrControls, "walkObserverOnRightStick", true);
+                AssignSerializedBool(xrControls, "turnObserverOnLeftStick", true);
+                AssignSerializedBool(xrControls, "aimLensOnRightGrip", true);
+
+                var roamKeyframes = previewObject.GetComponent<BlackHoleRoamKeyframes>();
+                if (roamKeyframes == null)
+                {
+                    roamKeyframes = previewObject.AddComponent<BlackHoleRoamKeyframes>();
+                }
+                AssignSerializedObject(roamKeyframes, "targetMaterial", material);
+                AssignSerializedObject(observerRigControls, "roamKeyframes", roamKeyframes);
+                AssignSerializedObject(observerRigControls, "lensAnchor", lensAnchor.transform);
+                AssignSerializedObject(lensMap, "observerRig", observerRigControls);
+                AssignSerializedObject(lensMap, "roamKeyframes", roamKeyframes);
+
+                var liveTracer = previewObject.GetComponent<BlackHoleLiveTracer>();
+                if (liveTracer == null)
+                {
+                    liveTracer = previewObject.AddComponent<BlackHoleLiveTracer>();
+                }
+                var tracerCompute = AssetDatabase.LoadAssetAtPath<ComputeShader>(
+                    "Packages/com.grbhxr.lensing/Runtime/BlackHoleLiveTracer.compute"
+                );
+                AssignSerializedObject(liveTracer, "tracerCompute", tracerCompute);
+                AssignSerializedObject(liveTracer, "targetMaterial", material);
+                AssignSerializedObject(liveTracer, "observerRig", observerRigControls);
+                AssignSerializedObject(liveTracer, "roamKeyframes", roamKeyframes);
+                // Real-time integration is the primary path; keyframes are the
+                // warm-up fallback only.
+                AssignSerializedBool(liveTracer, "liveTracingEnabled", true);
 
                 var settingsPanelObject = GameObject.Find("LensSettingsPanel");
                 if (settingsPanelObject == null)
@@ -467,8 +711,13 @@ namespace GRBHXR.EditorTools
                 AssignSerializedObject(settingsPanel, "targetCamera", camera);
                 AssignSerializedObject(settingsPanel, "controls", controls);
                 AssignSerializedObject(settingsPanel, "runtimeSettings", runtimeSettings);
+                AssignSerializedObject(settingsPanel, "observerRigControls", observerRigControls);
                 AssignSerializedBool(settingsPanel, "visible", options.ShowControlPanel);
                 settingsPanel.SetVisible(options.ShowControlPanel, placeInFrontOfCamera: true);
+                // Never persist an editor-generated canvas: a serialized copy
+                // loses its non-persistent Button listeners and renders as an
+                // un-closable ghost panel in the player.
+                settingsPanel.DestroyStaleCanvases();
                 AssignSerializedObject(xrControls, "settingsPanel", settingsPanel);
 
                 var panelObject = GameObject.Find("LensControlPanel");
@@ -535,7 +784,7 @@ namespace GRBHXR.EditorTools
                 throw new MissingReferenceException("Main Camera not found.");
             }
 
-            foreach (var skyShell in UnityEngine.Object.FindObjectsByType<BlackHoleXrSkyShell>())
+            foreach (var skyShell in UnityEngine.Object.FindObjectsByType<BlackHoleXrSkyShell>(FindObjectsSortMode.None))
             {
                 if (skyShell != null && skyShell.gameObject.activeInHierarchy)
                 {
@@ -545,7 +794,7 @@ namespace GRBHXR.EditorTools
 
             if (refreshLensMaps)
             {
-                foreach (var lensMap in UnityEngine.Object.FindObjectsByType<BlackHoleLensMap>())
+                foreach (var lensMap in UnityEngine.Object.FindObjectsByType<BlackHoleLensMap>(FindObjectsSortMode.None))
                 {
                     if (lensMap == null || !lensMap.gameObject.activeInHierarchy)
                     {
@@ -594,7 +843,7 @@ namespace GRBHXR.EditorTools
 
         private static void ApplyActiveLensMapsToMaterial(Material material)
         {
-            foreach (var lensMap in UnityEngine.Object.FindObjectsByType<BlackHoleLensMap>())
+            foreach (var lensMap in UnityEngine.Object.FindObjectsByType<BlackHoleLensMap>(FindObjectsSortMode.None))
             {
                 if (lensMap != null && lensMap.gameObject.activeInHierarchy)
                 {
