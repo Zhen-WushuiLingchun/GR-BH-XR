@@ -19,6 +19,90 @@ from here.
 
 ## Log
 
+### 2026-08-05 - Audited finite-observer roam keyframes
+
+- Goal: Add the Task 7 `(r_obs, theta)` roam keyframe grid, with the
+  near-horizon escape-radius fix it needs, and gate its physics claims with
+  real invariants instead of prose.
+- Changed files / components: added `src/gr_bh_xr/gpu/generate_roam_keyframes.py`,
+  `tests/test_roam_keyframes.py`, `tests/test_roam_mirror_symmetry.py`,
+  `validation/roam_keyframes/README.md`; extended `src/gr_bh_xr/gpu/trace.py`
+  and `src/gr_bh_xr/gpu/generate_transfer_cubemap.py`; bumped the full-sky
+  package schema to `v3`.
+- Academic reason: Near-horizon roaming is the first observer-motion claim in
+  the project. It must be labelled honestly (quasi-static, no aberration) and
+  its two load-bearing claims - that the shadow grows as the observer
+  approaches, and that the map respects Kerr's equatorial reflection isometry -
+  must be tested rather than asserted.
+- Physical correspondence: each keyframe is an independent finite-radius
+  static-observer full-sky transfer map. The static tetrad exists only where
+  `g_tt < 0`, so every grid point is validated against the outer ergosurface
+  `r_E = M + sqrt(M^2 - a^2 cos^2 theta)` before any GPU time is spent. The
+  static observer's background-sky blueshift `1/sqrt(-g_tt)` is recorded per
+  keyframe. Azimuthal motion is exact by axisymmetry because both launchers
+  start the ray at `phi = 0` at the observer.
+- Assumptions and conventions: quasi-static roam, not a boosted worldline. The
+  azimuthal exactness additionally assumes the disk model is axisymmetric; a
+  consumer painting a non-axisymmetric feature from `phi_m` must add the
+  observer azimuth back. Radii are geometric code lengths, `r/M` only at
+  `M = 1`.
+- Validation: `tests/test_roam_keyframes.py` and
+  `tests/test_roam_mirror_symmetry.py` (36 tests with `test_gpu_task4.py`, all
+  passing). A real face-32 grid at `a/M = 0.9` gives capture solid angle
+  `0.000620` at `100M` rising monotonically to `0.551254` (theta = 30 and 150)
+  and `0.673544` (theta = 90) at `2.5M`. Mirror symmetry measured over 10800
+  ray pairs: 0 event mismatches, 0 one-sided disk records, escape-direction p50
+  `0.00078 deg` / p99 `0.0183 deg`, `|delta r_m|` p99 `1.54e-4 M`,
+  `|delta g_m|` p99 `1.19e-5`.
+- Audit findings acted on:
+  - The `[20, 160] deg` theta envelope and its "near-polar Bardeen mapping
+    degrades" rationale were transplanted from `gr_bh_xr.gpu.preview`, which
+    evaluates the `alpha`/`beta` screen map and its `1/sin(theta_obs)` factor.
+    The roam path reaches the tracer through `initial_state_direction`, which
+    contains no such factor. A measured sweep found no cliff at either endpoint
+    (at most 1 invalid texel of 3456 across `theta = 2..178 deg`, count
+    non-monotonic in theta). The envelope is now `[30, 150] deg` - exactly the
+    tested grid - and is labelled a tested range rather than a failure
+    boundary. A test pins that the Bardeen rationale is not repeated.
+  - The shadow gate now uses a solid-angle-weighted capture fraction rather
+    than a raw texel count (cube texels do not subtend equal solid angle, and
+    the docstring claimed "solid angle" while the code counted texels), reads
+    it from the raw pre-repair classification so image repairs cannot move a
+    physics gate, and carries a `3 / sqrt(total_pixels)` tolerance because the
+    outer keyframes are quantization-limited and a strict comparison would turn
+    a multi-hour grid into a spurious failure.
+  - The ergosphere margin is `0.1 * M`, not an absolute `0.1`. With the
+    absolute value the admitted worst-case static tetrad boost silently
+    tightened from `4.58` at `M = 1` to `14.2` at `M = 10`.
+  - The WGSL disk-crossing 16x refinement from the snapshot was NOT ported. It
+    moves the `disk_order` increment inside a `crossing_found` guard, so a
+    dropped crossing silently relabels image order and a secondary (`m = 1`)
+    image is written into the primary (`m = 0`) slot with no failure code. Its
+    `0.35 rad` trigger is also unreachable for a valid trajectory: the
+    spherical-photon-orbit bound at `a/M = 0.9` gives
+    `sup |dtheta/dlambda| = 0.8753`, so a normal substep moves at most
+    `0.0438 rad`, a factor of 8 below the threshold. It fires only on
+    already-diverged states.
+  - `_fill_disk_recording_gaps` was NOT ported: it is a heuristic image filter
+    whose stated purpose is to paper over crossings the tracer lost, i.e. the
+    downstream band-aid for the refinement above.
+  - The Kerr-Schild polar-band retrace was NOT ported here: it requires the KS
+    tracer's equatorial disk-crossing outputs, which land with the Kerr-Schild
+    work. Polar-band texels are counted and flagged `repaired: false` instead of
+    being silently left unmarked. Schema is therefore `v3`, not the snapshot's
+    `v4`, which claimed a `v3` encoding that never existed in this repository.
+  - Fail-closed metadata: every post-trace stage reports `applied`, notes are
+    conditional on the stage having run, and `eventCounts` (raw) is separated
+    from `shippedEventCounts` (the bytes actually written), which the repair
+    stages can legitimately make disagree.
+- References: no new sources. The escape-radius and envelope conclusions are
+  measurements against this repository's own tracer.
+- Open issues / next steps: near-horizon keyframes carry an irreducible
+  `~0.13 deg` escape-direction error from accumulated f32 RK4 along the longer
+  path, which no escape radius removes. The polar-band retrace and the
+  `lambda_budget` rescaling by `1/E` remain open. Widening the theta envelope
+  requires a committed near-polar keyframe artifact.
+
 ### 2026-08-05 - Dimensionless disk spectrum LUT v2 (inverse Planck locus)
 
 - Goal: Give the Unity disk/sky color path a physically defined *inverse*

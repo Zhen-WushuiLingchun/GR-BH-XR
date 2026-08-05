@@ -21,7 +21,7 @@ from gr_bh_xr.types import MetricParams, TraceConfig
 
 _TRACE_CONTEXT = None
 GPU_DISK_MAX_ORDER = 2
-F32_OUTPUTS_PER_PIXEL = 10 + 4 * GPU_DISK_MAX_ORDER
+F32_OUTPUTS_PER_PIXEL = 11 + 4 * GPU_DISK_MAX_ORDER
 
 
 @dataclass(frozen=True)
@@ -44,6 +44,11 @@ class GpuTraceConfig:
     polar_substeps: int = 8
     disk_r_out: float = 30.0
     disk_max_order: int = GPU_DISK_MAX_ORDER
+    # Near-horizon observers need an escape radius decoupled from r_obs:
+    # asymptotic momentum-direction extraction at r = 2 * r_obs is only valid
+    # for large r_obs. The effective escape radius is
+    # max(2 * r_obs, r_escape_min); the default 0.0 preserves the legacy rule.
+    r_escape_min: float = 0.0
 
     def __post_init__(self) -> None:
         if self.grid < 2:
@@ -68,6 +73,8 @@ class GpuTraceConfig:
             raise ValueError("disk_r_out must be positive.")
         if not (1 <= self.disk_max_order <= GPU_DISK_MAX_ORDER):
             raise ValueError(f"disk_max_order must be in [1, {GPU_DISK_MAX_ORDER}].")
+        if self.r_escape_min < 0.0:
+            raise ValueError("r_escape_min must be non-negative.")
 
     @property
     def theta_obs(self) -> float:
@@ -75,7 +82,7 @@ class GpuTraceConfig:
 
     @property
     def r_escape(self) -> float:
-        return 2.0 * self.r_obs
+        return max(2.0 * self.r_obs, self.r_escape_min)
 
     def axes(self) -> tuple[np.ndarray, np.ndarray]:
         alpha = np.linspace(-self.alpha_max, self.alpha_max, self.grid, dtype=np.float32)
@@ -345,6 +352,10 @@ def _trace_points(config: GpuTraceConfig, points: np.ndarray, input_mode: float)
         "disk_phi_m": np.stack([out_f32[:, 11], out_f32[:, 15]], axis=1),
         "disk_t_m": np.stack([out_f32[:, 12], out_f32[:, 16]], axis=1),
         "disk_g_m": np.stack([out_f32[:, 13], out_f32[:, 17]], axis=1),
+        # Closest polar-axis approach in min(theta, pi - theta) over the whole
+        # Boyer-Lindquist trajectory; used to flag rays whose integration
+        # skimmed the chart's axis singularity.
+        "min_pole": out_f32[:, 18],
     }
 
 
@@ -368,6 +379,7 @@ def _empty_trace_result(info: dict[str, Any]) -> dict[str, Any]:
         "disk_phi_m": np.empty((0, GPU_DISK_MAX_ORDER), dtype=np.float32),
         "disk_t_m": np.empty((0, GPU_DISK_MAX_ORDER), dtype=np.float32),
         "disk_g_m": np.empty((0, GPU_DISK_MAX_ORDER), dtype=np.float32),
+        "min_pole": np.empty(0, dtype=np.float32),
     }
 
 
@@ -524,7 +536,7 @@ const FAILURE_UNCLASSIFIED_MAX_LAMBDA: i32 = 2;
 const FAILURE_SOLVER_FAILURE: i32 = 3;
 const FAILURE_AXIS_COORDINATE_SINGULARITY: i32 = 4;
 const FAILURE_POLAR_STEP_OVERSHOOT: i32 = 5;
-const F32_OUTPUTS_PER_PIXEL_WGSL: u32 = 18u;
+const F32_OUTPUTS_PER_PIXEL_WGSL: u32 = 19u;
 const EQUATOR_THETA: f32 = 1.5707963267948966;
 
 @group(0) @binding(0) var<storage, read> params: array<f32>;
@@ -987,5 +999,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     out_f32[fbase + 15u] = disk_phi1;
     out_f32[fbase + 16u] = disk_t1;
     out_f32[fbase + 17u] = disk_g1;
+    out_f32[fbase + 18u] = min_pole;
 }
 """

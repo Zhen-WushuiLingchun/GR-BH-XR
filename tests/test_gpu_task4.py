@@ -326,7 +326,7 @@ def test_gpu_full_sky_transfer_cubemap_writes_boundary_free_package(tmp_path):
         command="pytest full sky cubemap",
     )
 
-    assert summary["schema"] == "gr-bh-xr.task5.full_sky_transfer_cubemap.v2"
+    assert summary["schema"] == "gr-bh-xr.task5.full_sky_transfer_cubemap.v3"
     assert summary["faceSize"] == 4
     assert summary["totalPixels"] == 6 * 4 * 4
     assert summary["validEscapePixels"] > 0

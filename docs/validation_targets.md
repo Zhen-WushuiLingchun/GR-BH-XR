@@ -257,6 +257,62 @@ Required checks:
 - the angular-window yaw test is interpreted only as head-rotation anchoring
   for a fixed distant observer. It is not accepted as evidence for changing the
   physical Kerr observer inclination or orbiting around the black hole;
+- for the Task 7 baked path, observer translation is accepted only as roam
+  keyframe playback over an `(r_obs, theta)` grid, and only as a *quasi-static*
+  sequence: no kinematic aberration is modeled between keyframes. Details and
+  measured numbers are in `validation/roam_keyframes/README.md`. Required
+  checks:
+  - the roam manifest (`roam_keyframes_metadata.json`, schema
+    `gr-bh-xr.task7.roam_keyframes.v2`) records log-spaced radii and sorted
+    theta rows inside the envelope, with every grid point outside the
+    ergosphere at its polar angle validated *before* any GPU time is spent;
+  - the theta envelope is `[30, 150] deg`, which is exactly the grid the
+    committed tests exercise. It is recorded as a tested range, not a measured
+    failure boundary: a full-sky sweep at `r_obs = 2.5M` and `6M` finds at most
+    1 invalid texel of 3456 anywhere in `theta = 2..178 deg`, with no cliff at
+    either end. The envelope must NOT be justified by the Bardeen
+    `1/sin(theta_obs)` screen-map degeneracy - that argument applies to
+    `gr_bh_xr.gpu.preview`, which evaluates the `alpha`/`beta` screen map,
+    whereas the roam path reaches the tracer through `initial_state_direction`
+    and never evaluates it. A test pins that the rationale is not repeated;
+  - the shadow gate is on `captureSolidAngleFraction` (solid-angle weighted,
+    taken from the raw pre-repair classification), not on a raw texel count,
+    because cube texels do not subtend equal solid angle. It must grow
+    monotonically per theta row as `r_obs` decreases, within a tolerance of
+    `3 / sqrt(total_pixels)`; a strict comparison is quantization-limited at
+    the outer keyframes. Measured at `a/M = 0.9`, face 32:
+    `0.000620` at `100M` to `0.551254` (theta = 30 and 150 deg) and `0.673544`
+    (theta = 90 deg) at `2.5M`;
+  - equatorial mirror symmetry is gated as a real per-ray invariant in
+    `tests/test_roam_mirror_symmetry.py`, not as a prose claim and not as a
+    capture-fraction table comparison (the cubemap texel set is itself
+    invariant under the Unity y-flip, so aggregate counts are largely forced to
+    agree). Escape directions must satisfy `(dx, dy, dz) -> (dx, -dy, dz)`
+    between `theta` and `180 - theta`, and `r_m`, `g_m` are reflection scalars.
+    Measured over 10800 ray pairs: 0 event mismatches, 0 one-sided disk
+    records, escape direction p50 `0.00078 deg` / p99 `0.0183 deg`,
+    `|delta r_m|` p99 `1.54e-4 M`, `|delta g_m|` p99 `1.19e-5`. The p99
+    direction figure is the f32 representation floor of the `arccos(dot)`
+    metric itself (a unit f32 vector dotted with itself already yields up to
+    `0.0428 deg`), so the gate is a percentile plus a bounded-outlier fraction
+    rather than a max, whose tail is chaotic photon-ring rays;
+  - every keyframe uses an escape radius no smaller than `200M` rather than the
+    legacy `2 r_obs` rule, because momentum-direction extraction at `2 r_obs`
+    is not asymptotic for a near-horizon observer: measured `6.695 deg` mean /
+    `22.79 deg` max direction error at `r_obs = 2.5M`, falling below
+    `0.35 deg` by `r_escape = 20` and reaching its floor by `50`. The residual
+    floor (`0.13 deg` at `2.5M`, `0.007 deg` at `100M`) is accumulated f32 RK4
+    error along the longer near-horizon path and is NOT removable by any escape
+    radius;
+  - polar-band texels are REPORTED, NOT REPAIRED (`polarBand.repaired: false`).
+    The chart-regular fix is a Cartesian Kerr-Schild retrace, which requires
+    the KS tracer's equatorial disk-crossing outputs and therefore lands with
+    the Kerr-Schild work;
+  - the manifest separates `eventCounts` (raw, pre-repair) from
+    `shippedEventCounts` (the bytes actually written), because the repair
+    stages rewrite event codes and the two can legitimately disagree. Every
+    post-trace stage carries `stages.*.applied` so a stage that is configured
+    off cannot be advertised by an unconditional note;
 - the validation report states that this Unity path renders a precomputed
   transfer map in real time; it does not perform per-frame geodesic integration;
 - the skybox/background asset resolution is recorded separately from lens-map
