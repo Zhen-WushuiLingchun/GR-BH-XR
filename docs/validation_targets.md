@@ -909,8 +909,9 @@ Baseline build/performance gate (passed on 2026-08-06):
 - the repaired pre-audit visual path measures 200 median FPS at 1080p and
   76 median FPS at exact 4K on the recorded RTX 5080 Laptop configuration.
 
-Physics replacement gate (Kerr and neutral exterior Kerr-Newman passed;
-polarization/disk/maximal extension remain open):
+Physics replacement gate (Kerr, neutral exterior Kerr-Newman, Kerr disk
+transfer, and geometric polarization transport passed; polarized emission,
+maximal extension, and native XR remain open):
 
 - visual and audit modes share one GLSL geodesic core;
 - audit schema `gr-bh-xr.npgs.audit.v1` records event/failure codes, escape
@@ -921,7 +922,9 @@ polarization/disk/maximal extension remain open):
 - the independent CPU f64 Kerr-Newman oracle must pass Kerr and
   Reissner-Nordstrom limits, horizons, nullness, metric derivatives, and
   conserved quantities before any nonzero-charge runtime claim;
-- Walker-Penrose/Stokes claims remain blocked until their independent gates;
+- camera-basis and Walker-Penrose geometric transport require native raw-v3
+  evidence plus direct f64 parallel transport; Stokes/emission claims remain
+  blocked until their separate polarized-transfer gates;
 - fast-path performance after audit-core extraction regresses by no more than
   five percent from the same-machine baseline.
 
@@ -980,8 +983,28 @@ Native Kerr-Newman neutral-ray gate (passed on 2026-08-06):
   capture `H` is reported separately and is not a horizon-crossing gate.
 
 This gate accepts neutral sub-extremal exterior Kerr-Newman ray geometry only.
-Charged-particle motion, polarization, disk/jet emission, Cauchy-horizon
-continuation, and maximal extension remain fail-closed.
+Charged-particle motion, polarized emission/transfer, disk/jet emission,
+Cauchy-horizon continuation, and maximal extension remain fail-closed.
+
+Native camera-polarization geometry gate (passed on 2026-08-06):
+
+- raw v3 emits the two metric-orthonormal camera-screen covectors, their Gram
+  diagnostics, and complete Walker-Penrose values;
+- compare every native f32 camera scalar to an independent f64 BL expression,
+  requiring median relative error `<5e-6` and max `<1e-4`;
+- directly integrate both screen vectors with
+  `df^mu/dlambda=-Gamma^mu_(nu rho)k^nu f^rho`, requiring maximum
+  Walker-Penrose relative drift `<1e-7`, norm drift `<1e-8`, and
+  transversality `<1e-8`;
+- the smoke gate measured native/f64 median/p99/max
+  `1.46e-7/1.05e-6/6.82e-6` and direct-transport maxima `3.61e-8`,
+  `2.56e-10`, and `5.50e-11`, respectively;
+- retain the rejected Cartesian shortcut as negative evidence: its relative
+  drift reaches `0.324`, so it cannot support scientific claims.
+
+This gate does not validate NPGS's magnetic-field proxy, polarized emissivity,
+Faraday coefficients, Stokes integration, or final polarized images. See
+`validation/npgs_polarization/README.md`.
 
 Native XR gate (open):
 

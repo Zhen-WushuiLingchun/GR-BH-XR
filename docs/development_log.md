@@ -19,6 +19,37 @@ from here.
 
 ## Log
 
+### 2026-08-06 - NPGS camera polarization and Walker-Penrose gate
+
+- Goal: Reuse NPGS's native polarization path while independently determining
+  whether its camera basis and Walker-Penrose scalar satisfy the physical
+  transport definition.
+- Changed files / components: native audit raw v3 adds camera basis/WP evidence;
+  the shared GLSL path now performs complete Gram-Schmidt and evaluates the
+  full BL Walker-Penrose scalar from the active ingoing/outgoing KS chart. A
+  minimal Python f64 oracle integrates the parallel-transport equation and a
+  fail-closed validator persists JSON/HDF5 evidence. The NPGS shader compiler
+  now hashes recursive include contents so shared-physics edits cannot leave
+  checked-in SPIR-V stale after a clean checkout.
+- Academic reason: the former Cartesian shortcut was fast but nonconserved, so
+  visual plausibility could not establish polarization transport correctness.
+- Physical correspondence: the oracle transports `f^mu` with
+  `df^mu/dlambda=-Gamma^mu_(nu rho)k^nu f^rho`; the scalar uses
+  `K=(A-iB)(r-i a cos(theta))`. NPGS remains the renderer and the CPU code is
+  only an independent definition-level check.
+- Validation: all 1089 camera bases were valid. Norm/orthogonality maxima were
+  `2.38e-7/5.12e-8`; 2178 native-vs-f64 scalar comparisons gave median/p99/max
+  `1.46e-7/1.05e-6/6.82e-6`. Sixteen direct f64 transports gave maximum
+  `abs(H)=1.17e-10`, norm drift `2.56e-10`, transversality `5.50e-11`, and
+  Walker-Penrose relative drift `3.61e-8`. The rejected shortcut drifted up to
+  `0.324`. The complete repository suite passed `254` tests; a repeated native
+  Release build reported all 20 shader outputs current and zero build errors.
+- References: `li2026kerrNewmanPolarizedTransfer`; ipole and RAPTOR II remain
+  later polarized-transfer benchmarks.
+- Open issues / next steps: validate emission, absorption, Faraday terms, and
+  Stokes output separately before making a polarized-GRRT image claim; proceed
+  to native OpenXR and MR only on the accepted geometry path.
+
 ### 2026-08-06 - NPGS native Kerr disk-transfer gate
 
 - Goal: Reuse NPGS's shared native `TraceRay` path for disk transfer while

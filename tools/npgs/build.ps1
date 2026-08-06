@@ -26,6 +26,8 @@ $VcpkgRoot = Split-Path -Parent $VcpkgExe
 $ManifestRoot = Join-Path $RepoRoot "runtime\NPGS\NPGS"
 $VcpkgInstalledDir = Join-Path $ManifestRoot "vcpkg_installed"
 $Solution = Join-Path $RepoRoot "runtime\NPGS\NPGS.sln"
+$ShaderCompiler = Join-Path $ManifestRoot "Tools\ShaderCompiler\CompileShaders.py"
+$Python = Join-Path $RepoRoot ".venv\Scripts\python.exe"
 
 $env:VULKAN_SDK = $VulkanSdk
 $env:VCPKG_ROOT = $VcpkgRoot
@@ -34,6 +36,12 @@ if (-not $SkipDependencyInstall) {
     & $VcpkgExe install --triplet x64-windows --x-manifest-root=$ManifestRoot
     if ($LASTEXITCODE -ne 0) { throw "vcpkg dependency installation failed." }
 }
+
+if (-not (Test-Path -LiteralPath $Python)) {
+    throw "Workspace Python was not found at $Python. Run the project bootstrap first."
+}
+& $Python $ShaderCompiler
+if ($LASTEXITCODE -ne 0) { throw "NPGS shader compilation failed." }
 
 & $MSBuild $Solution /m /t:Build `
     "/p:Configuration=$Configuration" `

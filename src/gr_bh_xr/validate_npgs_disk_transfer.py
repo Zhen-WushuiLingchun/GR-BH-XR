@@ -15,7 +15,7 @@ import numpy as np
 
 from .disk import keplerian_omega, keplerian_u_t
 from .geodesic_ks import ks_state_to_bl_state, trace_state_ks
-from .npgs_audit import DISK_ORDERS, RAW_SCHEMA_V2, load_native_audit
+from .npgs_audit import DISK_ORDERS, RAW_SCHEMA_V2, RAW_SCHEMA_V3, load_native_audit
 from .types import MetricParams, TraceConfig
 from .validate_npgs_kerr import _sample_indices, native_initial_state_to_python_ks
 
@@ -78,7 +78,7 @@ def validate_npgs_disk_transfer(
     capture = load_native_audit(raw_path, metadata_path=metadata_path)
     metadata = capture.metadata
     parameters = metadata["parameters"]
-    if metadata["schema"] != RAW_SCHEMA_V2 or capture.initial_ingoing_x is None:
+    if metadata["schema"] not in (RAW_SCHEMA_V2, RAW_SCHEMA_V3) or capture.initial_ingoing_x is None:
         raise ValueError("NPGS disk validation requires raw-v2 canonical launch states.")
     if not bool(metadata["claims"]["disk_transfer_slots_valid"]):
         raise ValueError("The native capture does not claim valid disk-transfer slots.")

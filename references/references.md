@@ -502,11 +502,13 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 - Relevant equations / assumptions / methods: Eq. (2.1)-(2.2) defines the
   Boyer-Lindquist Kerr-Newman metric through `Sigma` and
   `Delta=r^2-2Mr+a^2+Q^2`; later sections treat polarized transfer.
-- Project use: Primary metric source for the independent f64 Kerr-Newman audit
-  oracle and the nonzero-charge NPGS event/direction gate.
-- Limitations / open questions: The accepted 2026-08-06 gate covers neutral
-  exterior rays only. Polarization, charged particles, emission physics, and
-  maximal extension remain independently blocked.
+- Project use: Primary metric and direct parallel-transport source for the
+  independent f64 Kerr-Newman audit oracle, the nonzero-charge NPGS
+  event/direction gate, and the camera-basis/Walker-Penrose geometry gate.
+- Limitations / open questions: The accepted 2026-08-06 gates cover neutral
+  exterior rays and geometric polarization transport only. Charged particles,
+  polarized emission/Stokes transfer, Faraday effects, and maximal extension
+  remain independently blocked.
 
 ### Zhihu Kerr-Newman GLSL Article
 

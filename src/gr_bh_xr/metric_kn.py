@@ -250,6 +250,21 @@ def ks_inverse_metric_derivatives(
     return derivatives[0], derivatives[1], derivatives[2]
 
 
+def ks_metric_derivatives(
+    params: KerrNewmanParams, xyz: FloatArray
+) -> tuple[FloatArray, FloatArray, FloatArray]:
+    """Return analytic spatial derivatives of the covariant KS metric.
+
+    Differentiating ``g g^-1 = I`` gives ``dg = -g (dg^-1) g``.  Reusing the
+    independently tested inverse-metric derivatives avoids a second symbolic
+    Kerr-Newman implementation while retaining an analytic Christoffel path.
+    """
+
+    metric = ks_metric(params, xyz)
+    inverse_derivatives = ks_inverse_metric_derivatives(params, xyz)
+    return tuple(-metric @ derivative @ metric for derivative in inverse_derivatives)
+
+
 def ks_inverse_metric_derivatives_finite_difference(
     params: KerrNewmanParams, xyz: FloatArray
 ) -> tuple[FloatArray, FloatArray, FloatArray]:

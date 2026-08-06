@@ -18,9 +18,10 @@ import numpy as np
 
 RAW_SCHEMA_V1 = "gr-bh-xr.npgs.audit.raw.v1"
 RAW_SCHEMA_V2 = "gr-bh-xr.npgs.audit.raw.v2"
-RAW_SCHEMA = RAW_SCHEMA_V2
+RAW_SCHEMA_V3 = "gr-bh-xr.npgs.audit.raw.v3"
+RAW_SCHEMA = RAW_SCHEMA_V3
 SCHEMA = "gr-bh-xr.npgs.audit.v1"
-RECORD_FLOAT_COUNTS = {RAW_SCHEMA_V1: 32, RAW_SCHEMA_V2: 48}
+RECORD_FLOAT_COUNTS = {RAW_SCHEMA_V1: 32, RAW_SCHEMA_V2: 48, RAW_SCHEMA_V3: 64}
 DISK_ORDERS = 2
 
 
@@ -58,6 +59,10 @@ class NpgsAuditCapture:
     initial_ingoing_p_cov: np.ndarray | None
     final_ingoing_x: np.ndarray | None
     final_ingoing_p_cov: np.ndarray | None
+    camera_fx_cov_native: np.ndarray | None
+    camera_fy_cov_native: np.ndarray | None
+    camera_walker_penrose: np.ndarray | None
+    camera_basis_diagnostics: np.ndarray | None
 
 
 def load_native_audit(
@@ -163,10 +168,15 @@ def load_native_audit(
     for values in (disk_r, disk_sin_phi, disk_cos_phi, disk_g, disk_delta_t):
         values[~disk_validity] = np.nan
 
-    initial_ingoing_x = records[..., 32:36].copy() if raw_schema == RAW_SCHEMA_V2 else None
-    initial_ingoing_p_cov = records[..., 36:40].copy() if raw_schema == RAW_SCHEMA_V2 else None
-    final_ingoing_x = records[..., 40:44].copy() if raw_schema == RAW_SCHEMA_V2 else None
-    final_ingoing_p_cov = records[..., 44:48].copy() if raw_schema == RAW_SCHEMA_V2 else None
+    has_canonical_state = raw_schema in (RAW_SCHEMA_V2, RAW_SCHEMA_V3)
+    initial_ingoing_x = records[..., 32:36].copy() if has_canonical_state else None
+    initial_ingoing_p_cov = records[..., 36:40].copy() if has_canonical_state else None
+    final_ingoing_x = records[..., 40:44].copy() if has_canonical_state else None
+    final_ingoing_p_cov = records[..., 44:48].copy() if has_canonical_state else None
+    camera_fx_cov_native = records[..., 48:52].copy() if raw_schema == RAW_SCHEMA_V3 else None
+    camera_fy_cov_native = records[..., 52:56].copy() if raw_schema == RAW_SCHEMA_V3 else None
+    camera_walker_penrose = records[..., 56:60].copy() if raw_schema == RAW_SCHEMA_V3 else None
+    camera_basis_diagnostics = records[..., 60:64].copy() if raw_schema == RAW_SCHEMA_V3 else None
 
     capture = NpgsAuditCapture(
         raw_path=raw_path,
@@ -199,6 +209,10 @@ def load_native_audit(
         initial_ingoing_p_cov=initial_ingoing_p_cov,
         final_ingoing_x=final_ingoing_x,
         final_ingoing_p_cov=final_ingoing_p_cov,
+        camera_fx_cov_native=camera_fx_cov_native,
+        camera_fy_cov_native=camera_fy_cov_native,
+        camera_walker_penrose=camera_walker_penrose,
+        camera_basis_diagnostics=camera_basis_diagnostics,
     )
     _validate_native_summary(capture)
     return capture
@@ -307,6 +321,10 @@ def _write_hdf5(
             "initial_ingoing_p_cov_native": capture.initial_ingoing_p_cov,
             "final_ingoing_x_native": capture.final_ingoing_x,
             "final_ingoing_p_cov_native": capture.final_ingoing_p_cov,
+            "camera_fx_cov_native": capture.camera_fx_cov_native,
+            "camera_fy_cov_native": capture.camera_fy_cov_native,
+            "camera_walker_penrose": capture.camera_walker_penrose,
+            "camera_basis_diagnostics": capture.camera_basis_diagnostics,
         }
         for name, values in state_datasets.items():
             if values is not None:
@@ -341,6 +359,7 @@ def _build_summary(
             for order in range(DISK_ORDERS)
         ],
         "canonical_state_present": capture.initial_ingoing_x is not None,
+        "camera_polarization_evidence_present": capture.camera_fx_cov_native is not None,
         "max_steps": int(np.max(capture.steps)),
         "max_raw_hamiltonian_abs": float(np.max(capture.h_max_raw_abs)),
         "max_projected_hamiltonian_abs": float(np.max(capture.h_max_projected_abs)),
@@ -378,16 +397,19 @@ def _validate_metadata(metadata: Mapping[str, Any]) -> None:
         raise ValueError("Native audit event mapping is missing 'escape'.")
     if "disk_transfer_slots_valid" not in metadata["claims"]:
         raise ValueError("Native audit claims omit disk_transfer_slots_valid.")
-    if raw_schema == RAW_SCHEMA_V2:
+    if raw_schema in (RAW_SCHEMA_V2, RAW_SCHEMA_V3):
         contract = metadata.get("canonical_state_contract")
         if not isinstance(contract, Mapping):
-            raise ValueError("Native audit v2 metadata is missing canonical_state_contract.")
+            raise ValueError("Native audit canonical-state metadata is missing canonical_state_contract.")
         if contract.get("chart") != "ingoing Cartesian Kerr-Schild":
-            raise ValueError("Native audit v2 canonical states must use ingoing Cartesian Kerr-Schild.")
+            raise ValueError("Native audit canonical states must use ingoing Cartesian Kerr-Schild.")
         if contract.get("component_order") != ["x", "y", "z", "t"]:
-            raise ValueError("Native audit v2 canonical state component order is not (x,y,z,t).")
+            raise ValueError("Native audit canonical state component order is not (x,y,z,t).")
         if contract.get("momentum_variance") != "covariant":
-            raise ValueError("Native audit v2 momentum must be covariant.")
+            raise ValueError("Native audit momentum must be covariant.")
+    if raw_schema == RAW_SCHEMA_V3:
+        if metadata["claims"].get("camera_polarization_evidence_emitted") is not True:
+            raise ValueError("Native audit v3 must declare camera polarization evidence emission.")
 
 
 def _validate_native_summary(capture: NpgsAuditCapture) -> None:

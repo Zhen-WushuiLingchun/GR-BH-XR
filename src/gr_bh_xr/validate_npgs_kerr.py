@@ -16,7 +16,7 @@ import numpy as np
 from .geodesic import trace_state
 from .geodesic_ks import ks_state_to_bl_state, trace_state_ks
 from .metric_ks import ks_hamiltonian, ks_inverse_metric, ks_radius
-from .npgs_audit import RAW_SCHEMA_V2, load_native_audit
+from .npgs_audit import RAW_SCHEMA_V2, RAW_SCHEMA_V3, load_native_audit
 from .types import MetricParams, RayState, TraceConfig
 
 
@@ -175,7 +175,7 @@ def validate_npgs_kerr_capture(
 
     capture = load_native_audit(raw_path, metadata_path=metadata_path)
     metadata = capture.metadata
-    if metadata["schema"] != RAW_SCHEMA_V2 or capture.initial_ingoing_x is None:
+    if metadata["schema"] not in (RAW_SCHEMA_V2, RAW_SCHEMA_V3) or capture.initial_ingoing_x is None:
         raise ValueError("The Q=0 cross-check requires native audit raw schema v2 canonical states.")
     parameters = metadata["parameters"]
     charge = float(parameters["charge_Q_over_M"])

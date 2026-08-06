@@ -8,6 +8,7 @@ import pytest
 from gr_bh_xr.npgs_audit import (
     RAW_SCHEMA_V1,
     RAW_SCHEMA_V2,
+    RAW_SCHEMA_V3,
     SCHEMA,
     convert_native_audit,
     load_native_audit,
@@ -122,6 +123,23 @@ def _write_v2_disk_capture(tmp_path: Path) -> tuple[Path, Path]:
     return raw, metadata_path
 
 
+def _write_v3_capture(tmp_path: Path) -> tuple[Path, Path]:
+    raw, metadata_path = _write_v2_capture(tmp_path)
+    v2 = np.fromfile(raw, dtype="<f4").reshape(2, 2, 48)
+    records = np.zeros((2, 2, 64), dtype="<f4")
+    records[..., :48] = v2
+    records[..., 48:52] = [1.0, 0.0, 0.0, 0.0]
+    records[..., 52:56] = [0.0, 1.0, 0.0, 0.0]
+    records[..., 56:60] = [2.0, 3.0, 5.0, 7.0]
+    records[..., 60:64] = [1.0, 1.0, 0.0, 1.0]
+    records.tofile(raw)
+    metadata = json.loads(metadata_path.read_text(encoding="utf8"))
+    metadata.update(schema=RAW_SCHEMA_V3, record_float_count=64, record_bytes=256)
+    metadata["claims"]["camera_polarization_evidence_emitted"] = True
+    metadata_path.write_text(json.dumps(metadata), encoding="utf8")
+    return raw, metadata_path
+
+
 def test_load_native_audit_validates_and_converts_native_units(tmp_path: Path) -> None:
     raw, metadata = _write_capture(tmp_path)
     capture = load_native_audit(raw, metadata_path=metadata)
@@ -147,6 +165,25 @@ def test_load_native_audit_v2_preserves_exact_canonical_states(tmp_path: Path) -
     np.testing.assert_allclose(capture.final_ingoing_x, np.broadcast_to([5, 6, 7, 8], (2, 2, 4)))
     np.testing.assert_allclose(
         capture.final_ingoing_p_cov, np.broadcast_to([0.4, 0.5, 0.6, -1.0], (2, 2, 4))
+    )
+
+
+def test_load_native_audit_v3_preserves_camera_polarization_evidence(tmp_path: Path) -> None:
+    raw, metadata = _write_v3_capture(tmp_path)
+    capture = load_native_audit(raw, metadata_path=metadata)
+
+    assert capture.records.shape == (2, 2, 64)
+    np.testing.assert_allclose(
+        capture.camera_fx_cov_native, np.broadcast_to([1, 0, 0, 0], (2, 2, 4))
+    )
+    np.testing.assert_allclose(
+        capture.camera_fy_cov_native, np.broadcast_to([0, 1, 0, 0], (2, 2, 4))
+    )
+    np.testing.assert_allclose(
+        capture.camera_walker_penrose, np.broadcast_to([2, 3, 5, 7], (2, 2, 4))
+    )
+    np.testing.assert_allclose(
+        capture.camera_basis_diagnostics, np.broadcast_to([1, 1, 0, 1], (2, 2, 4))
     )
 
 
