@@ -60,6 +60,15 @@ BASIS_PROBE_DISCRIMINATION_FACTOR = 4.0
 # PASS.
 MIN_CHART_SIGN_SAMPLES = 256
 
+# Observer-frame agreement floors. The Unity side computes in `double` and
+# publishes round-trippable text, and the constructions are algebraically
+# identical, so the only spread is last-bit arithmetic ordering. Deliberately
+# tight: the failure this catches is a systematic 4.7-11.7 deg leg rotation,
+# not a rounding tail. Position is relative to the observer radius; legs are
+# dimensionless tetrad components.
+FRAME_POSITION_TOLERANCE_REL = 1.0e-9
+FRAME_LEG_TOLERANCE = 1.0e-9
+
 
 def horizon_radii(params: MetricParams) -> tuple[float, float]:
     root = math.sqrt(max(params.M * params.M - params.a * params.a, 0.0))
@@ -223,6 +232,233 @@ def check_observer_basis_probes(params: MetricParams, probes: list) -> dict:
     }
 
 
+def check_observer_frame_against_accepted(
+    params: MetricParams,
+    *,
+    position: np.ndarray,
+    tetrad: dict,
+    rain: bool,
+    radius_m: float,
+    theta_deg: float,
+) -> dict:
+    """Compare the dumped frame against the ACCEPTED construction, before tracing.
+
+    This is the gate's independence. Every launch state on both sides is built
+    from the dumped tetrad, so a wrong tetrad cancels out of every downstream
+    agreement number: `dirMedianDeg`, `eventAgreement`, the disk medians, all
+    of it. The orthonormality check that used to stand alone here cannot see
+    the problem either - the Gram matrix is invariant under the whole Lorentz
+    group, so an outgoing-branch four-velocity, a flipped leg, or a rotation in
+    the theta-phi plane all give `max|g(e_a,e_b) - eta_ab| = 4e-16`. The
+    Boyer-Lindquist-sine polar leg that commit 7f9660a removed rotated
+    `e_theta` by 11.7 deg at r = 1.4423 M and 4.71 deg at the gate's own rain
+    station while passing the Gram check by ten orders of magnitude.
+
+    So: recompute the frame from `gr_bh_xr.observers` and compare directly.
+    """
+
+    from gr_bh_xr.metric_ks import (
+        bl_to_ks_cartesian,
+        ks_metric,
+        ks_radius,
+        ks_radius_gradient,
+    )
+    from gr_bh_xr.observers import analytic_kerr_rain_velocity_ks, kerr_rain_tetrad_ks
+
+    summary: dict = {"rainFrame": rain}
+
+    # Unity stores all runtime metric and station controls as `float`, then
+    # promotes them to `double` for the frame construction. Its JSON `R`
+    # formatting is round-trippable back to float, not necessarily to the
+    # original binary value as a Python float64 (for example 0.9f). Recreate
+    # that promotion exactly before applying a 1e-9 frame gate.
+    runtime_params = MetricParams(
+        M=float(np.float32(params.M)),
+        a=float(np.float32(params.a)),
+    )
+    runtime_radius = float(np.float32(radius_m))
+    runtime_theta_deg = float(np.float32(theta_deg))
+    summary["runtimeInputs"] = {
+        "massM": runtime_params.M,
+        "spinA": runtime_params.a,
+        "radiusM": runtime_radius,
+        "thetaDeg": runtime_theta_deg,
+    }
+
+    # 1. The POSITION itself. The dump publishes (radiusM, thetaDeg) and a KS
+    #    Cartesian position; nothing checked that they described the same
+    #    point, so a chart mistake in the position construction was invisible.
+    theta = math.radians(runtime_theta_deg)
+    phi_ks = bl_to_ks_phi_shift(runtime_params, runtime_radius)
+    expected_position = np.asarray(
+        bl_to_ks_cartesian(runtime_radius, theta, phi_ks, runtime_params.a), dtype=np.float64
+    )
+    summary["positionErrorM"] = float(np.max(np.abs(position - expected_position)))
+    summary["radiusErrorM"] = float(abs(ks_radius(runtime_params, position) - runtime_radius))
+
+    g_obs = np.asarray(ks_metric(runtime_params, position), dtype=np.float64)
+    grad_r = np.asarray(ks_radius_gradient(runtime_params, position), dtype=np.float64)
+    summary["drDtau"] = float(np.dot(grad_r, tetrad["tetradTime"][1:4]))
+
+    if rain:
+        # 2a. RAIN: the accepted construction is directly comparable, leg for
+        #     leg. Gram-Schmidt order (u, e_phi, e_theta, e_r) and the
+        #     sin(theta) = rho / r polar candidate make the frame unique, so
+        #     this is an equality test, not a tolerance-shaped opinion.
+        accepted = kerr_rain_tetrad_ks(runtime_params, position)
+        references = {
+            "tetradTime": accepted.e_time,
+            "tetradR": accepted.e_r,
+            "tetradTheta": accepted.e_theta,
+            "tetradPhi": accepted.e_phi,
+        }
+        per_leg = {
+            name: float(np.max(np.abs(tetrad[name] - reference)))
+            for name, reference in references.items()
+        }
+        summary["legMaxAbsDiff"] = per_leg
+        summary["worstLeg"] = max(per_leg, key=per_leg.get)
+        summary["worstLegAbsDiff"] = per_leg[summary["worstLeg"]]
+
+        # 2b. The four-velocity against the INDEPENDENT closed form. The
+        #     tetrad above and the Unity port solve the SAME constraint system,
+        #     so a shared branch mistake would agree with itself; the Doran
+        #     expressions do not.
+        analytic = np.asarray(
+            analytic_kerr_rain_velocity_ks(runtime_params, runtime_radius, theta), dtype=np.float64
+        )
+        # The closed form is written at phi_KS = 0; the dump sits at
+        # phi_ks = shift(r_obs). Rotate it into place about the spin axis.
+        cos_p, sin_p = math.cos(phi_ks), math.sin(phi_ks)
+        analytic_rotated = np.array(
+            [
+                analytic[0],
+                cos_p * analytic[1] - sin_p * analytic[2],
+                sin_p * analytic[1] + cos_p * analytic[2],
+                analytic[3],
+            ],
+            dtype=np.float64,
+        )
+        summary["velocityVsClosedFormMaxAbsDiff"] = float(
+            np.max(np.abs(tetrad["tetradTime"] - analytic_rotated))
+        )
+    else:
+        # 2c. STATIC: construct the same physically declared KS convention
+        #     independently: normalized stationary Killing vector, then axial,
+        #     increasing-polar-angle and increasing-radius candidates in that
+        #     Gram-Schmidt order. Comparing only a Gram matrix or the shared
+        #     r-theta plane would leave a continuous SO(2) rotation invisible.
+        g_tt = float(g_obs[0, 0])
+        if g_tt >= 0.0:
+            raise ValueError("Static observer frame is unavailable inside the ergoregion.")
+
+        def project_and_normalize(candidate: np.ndarray, against: list[np.ndarray]) -> np.ndarray:
+            vector = np.asarray(candidate, dtype=np.float64).copy()
+            for basis_vector in against:
+                norm_sq = float(basis_vector @ g_obs @ basis_vector)
+                vector -= (float(vector @ g_obs @ basis_vector) / norm_sq) * basis_vector
+            length_sq = float(vector @ g_obs @ vector)
+            if length_sq <= 0.0:
+                raise ValueError("Static tetrad candidate degenerated during orthonormalization.")
+            return vector / math.sqrt(length_sq)
+
+        x_pos, y_pos, z_pos = map(float, position)
+        rho = math.hypot(x_pos, y_pos)
+        cos_theta = z_pos / runtime_radius
+        sin_theta = rho / runtime_radius
+        e_time = np.array([1.0 / math.sqrt(-g_tt), 0.0, 0.0, 0.0], dtype=np.float64)
+        phi_candidate = np.array([0.0, -y_pos, x_pos, 0.0], dtype=np.float64)
+        theta_candidate = np.array(
+            [
+                0.0,
+                x_pos * cos_theta / sin_theta,
+                y_pos * cos_theta / sin_theta,
+                -runtime_radius * sin_theta,
+            ],
+            dtype=np.float64,
+        )
+        radial_candidate = np.array([0.0, *grad_r], dtype=np.float64)
+        e_phi = project_and_normalize(phi_candidate, [e_time])
+        e_theta = project_and_normalize(theta_candidate, [e_time, e_phi])
+        e_r = project_and_normalize(radial_candidate, [e_time, e_phi, e_theta])
+        references = {
+            "tetradTime": e_time,
+            "tetradR": e_r,
+            "tetradTheta": e_theta,
+            "tetradPhi": e_phi,
+        }
+        per_leg = {
+            name: float(np.max(np.abs(tetrad[name] - reference)))
+            for name, reference in references.items()
+        }
+        summary["legMaxAbsDiff"] = per_leg
+        summary["worstLeg"] = max(per_leg, key=per_leg.get)
+        summary["worstLegAbsDiff"] = per_leg[summary["worstLeg"]]
+
+    # 3. Orientation, which no Gram matrix can see. The accepted convention is
+    #    `e_r` along increasing KS radius, `e_theta` along increasing polar
+    #    angle, `e_phi` along the axial Killing direction.
+    axial = np.array([-position[1], position[0], 0.0], dtype=np.float64)
+    summary["orientation"] = {
+        "eRAlongGradR": float(np.dot(grad_r, tetrad["tetradR"][1:4])),
+        "eThetaSouthward": float(
+            -tetrad["tetradTheta"][3] * math.sin(theta)
+            + math.cos(theta)
+            * (
+                tetrad["tetradTheta"][1] * math.cos(phi_ks)
+                + tetrad["tetradTheta"][2] * math.sin(phi_ks)
+            )
+        ),
+        "ePhiPrograde": float(np.dot(axial, tetrad["tetradPhi"][1:4])),
+    }
+    return summary
+
+
+def enforce_observer_frame_gate(frame: dict) -> None:
+    """Fail closed when a dumped observer frame is not the accepted frame."""
+
+    runtime_radius = float(frame["runtimeInputs"]["radiusM"])
+    position_tolerance = FRAME_POSITION_TOLERANCE_REL * max(runtime_radius, 1.0)
+    if frame["positionErrorM"] > position_tolerance:
+        raise SystemExit(
+            f"dumped position disagrees with the accepted BL->KS mapping by "
+            f"{frame['positionErrorM']:.3e} (tolerance {position_tolerance:.3e})."
+        )
+    if frame["radiusErrorM"] > position_tolerance:
+        raise SystemExit(
+            f"dumped position has KS radius error {frame['radiusErrorM']:.3e} "
+            f"(tolerance {position_tolerance:.3e})."
+        )
+    if frame["worstLegAbsDiff"] > FRAME_LEG_TOLERANCE:
+        raise SystemExit(
+            f"dumped {frame['worstLeg']} disagrees with the accepted construction by "
+            f"{frame['worstLegAbsDiff']:.3e} (tolerance {FRAME_LEG_TOLERANCE:.1e}); every "
+            "launch state on both sides is built from this frame, so no agreement "
+            f"figure from this dump would be meaningful. Per-leg: {frame['legMaxAbsDiff']}"
+        )
+    if frame["rainFrame"] and frame["velocityVsClosedFormMaxAbsDiff"] > FRAME_LEG_TOLERANCE:
+        raise SystemExit(
+            "dumped four-velocity disagrees with the independent Doran closed form by "
+            f"{frame['velocityVsClosedFormMaxAbsDiff']:.3e}; the rain branch is wrong."
+        )
+    if frame["rainFrame"] and frame["drDtau"] >= 0.0:
+        raise SystemExit(
+            f"dumped rain four-velocity is OUTGOING (dr/dtau = {frame['drDtau']:.6f}); "
+            "the normalization picked the wrong root. Both roots are exactly unit "
+            "timelike, so the Gram check cannot see this."
+        )
+    orientation = frame["orientation"]
+    if not (
+        orientation["eRAlongGradR"] > 0.0
+        and orientation["eThetaSouthward"] > 0.0
+        and orientation["ePhiPrograde"] > 0.0
+    ):
+        raise SystemExit(
+            f"dumped tetrad legs are mis-oriented: {orientation}. Leg flips leave the "
+            "Gram matrix at machine zero, so orientation has to be tested separately."
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dump-dir", type=Path, required=True)
@@ -242,7 +478,12 @@ def main() -> None:
 
     meta = json.loads((args.dump_dir / "live_tracer_validation.json").read_text(encoding="utf8"))
     face = int(meta["faceSize"])
-    params = MetricParams(M=float(meta["mass"]), a=float(meta["spin"]))
+    # Unity serializes float fields with round-trip text. Recreate those exact
+    # binary32 metric values before evaluating an equality-grade frame gate.
+    params = MetricParams(
+        M=float(np.float32(meta["mass"])),
+        a=float(np.float32(meta["spin"])),
+    )
     position = np.asarray(meta["position"], dtype=np.float64)
     tetrad = {
         key: np.asarray(meta[key], dtype=np.float64)
@@ -265,6 +506,23 @@ def main() -> None:
             "the structured stage contract and cannot be accepted."
         )
     validated_stages: set[str] = set()
+
+    # ------------------------------------------------------------------
+    # OBSERVER FRAME, BEFORE ANY TRACING. Both sides build every launch
+    # state from the dumped tetrad, so this is the only place a wrong frame
+    # can be seen at all; downstream it cancels exactly. Fail here rather
+    # than spend a trace producing a confident agreement number about the
+    # wrong observer.
+    # ------------------------------------------------------------------
+    frame = check_observer_frame_against_accepted(
+        params,
+        position=position,
+        tetrad=tetrad,
+        rain=rain,
+        radius_m=float(meta["radiusM"]),
+        theta_deg=float(meta["thetaDeg"]),
+    )
+    enforce_observer_frame_gate(frame)
 
     unity_dir = np.fromfile(
         args.dump_dir / "live_escape_dir_rgba32f.bytes", dtype=np.float32
@@ -353,10 +611,10 @@ def main() -> None:
         # any observer inside r_+ + 0.05 M.
         return escaped_mask & (result_dict["h_max_abs"] <= hamiltonian_max)
 
-    # The dumped tetrad is otherwise taken entirely on faith: every launch
-    # state on both sides is built from it, so a wrong tetrad cancels out and
-    # the gate still reports agreement. Check it against the independently
-    # computed observer metric before using it.
+    # The accepted frame construction was checked above. Retain the Gram check
+    # as a separate invariant over the exact metric used to launch the sampled
+    # rays; it catches serialization or metric-evaluation corruption even when
+    # individual components remain close.
     tetrad_legs = [
         tetrad["tetradTime"],
         tetrad["tetradR"],
@@ -405,6 +663,7 @@ def main() -> None:
         "diskSamples": int(disk_both.sum()),
         "diskRMedian": float(np.median(dr)) if disk_both.any() else None,
         "diskGMedian": float(np.median(dg)) if disk_both.any() else None,
+        "observerFrame": frame,
         "tetradGramError": gram_error,
         "captureR": unity_capture_r,
         "declaredStages": declared_stages,

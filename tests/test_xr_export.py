@@ -1817,6 +1817,170 @@ def _load_compare_live_tracer_module():
     return module
 
 
+def test_live_tracer_observer_frame_gate_accepts_the_independent_rain_frame():
+    """A correct rain frame passes before any common-mode ray comparison."""
+
+    from gr_bh_xr.geodesic_ks import bl_to_ks_phi_shift
+    from gr_bh_xr.metric_ks import bl_to_ks_cartesian
+    from gr_bh_xr.observers import kerr_rain_tetrad_ks
+
+    compare = _load_compare_live_tracer_module()
+    params = MetricParams(M=float(np.float32(1.0)), a=float(np.float32(0.9)))
+    radius = float(np.float32(2.349))
+    theta_deg = float(np.float32(60.0))
+    theta = math.radians(theta_deg)
+    phi_ks = bl_to_ks_phi_shift(params, radius)
+    position = np.asarray(
+        bl_to_ks_cartesian(radius, theta, phi_ks, params.a), dtype=np.float64
+    )
+    accepted = kerr_rain_tetrad_ks(params, position)
+    tetrad = {
+        "tetradTime": accepted.e_time.copy(),
+        "tetradR": accepted.e_r.copy(),
+        "tetradTheta": accepted.e_theta.copy(),
+        "tetradPhi": accepted.e_phi.copy(),
+    }
+
+    frame = compare.check_observer_frame_against_accepted(
+        params,
+        position=position,
+        tetrad=tetrad,
+        rain=True,
+        radius_m=radius,
+        theta_deg=theta_deg,
+    )
+    compare.enforce_observer_frame_gate(frame)
+    assert frame["positionErrorM"] < 1.0e-14
+    assert frame["worstLegAbsDiff"] < 1.0e-14
+    assert frame["velocityVsClosedFormMaxAbsDiff"] < 1.0e-14
+    assert frame["drDtau"] < 0.0
+    assert all(value > 0.0 for value in frame["orientation"].values())
+
+
+def test_live_tracer_observer_frame_gate_rejects_a_polar_leg_flip():
+    """Gram invariance cannot make a flipped e_theta pass the orientation gate."""
+
+    from gr_bh_xr.geodesic_ks import bl_to_ks_phi_shift
+    from gr_bh_xr.metric_ks import bl_to_ks_cartesian
+    from gr_bh_xr.observers import kerr_rain_tetrad_ks
+
+    compare = _load_compare_live_tracer_module()
+    params = MetricParams(M=1.0, a=float(np.float32(0.9)))
+    radius = float(np.float32(2.349))
+    theta_deg = 60.0
+    theta = math.radians(theta_deg)
+    phi_ks = bl_to_ks_phi_shift(params, radius)
+    position = np.asarray(
+        bl_to_ks_cartesian(radius, theta, phi_ks, params.a), dtype=np.float64
+    )
+    accepted = kerr_rain_tetrad_ks(params, position)
+    tetrad = {
+        "tetradTime": accepted.e_time.copy(),
+        "tetradR": accepted.e_r.copy(),
+        "tetradTheta": -accepted.e_theta.copy(),
+        "tetradPhi": accepted.e_phi.copy(),
+    }
+    flipped = compare.check_observer_frame_against_accepted(
+        params,
+        position=position,
+        tetrad=tetrad,
+        rain=True,
+        radius_m=radius,
+        theta_deg=theta_deg,
+    )
+    assert flipped["orientation"]["eThetaSouthward"] < 0.0
+    with pytest.raises(SystemExit, match="tetradTheta disagrees"):
+        compare.enforce_observer_frame_gate(flipped)
+
+    # Exercise the orientation clause itself independently of the component
+    # equality clause. A future refactor must not drop eThetaSouthward merely
+    # because direct leg comparison currently catches the same physical error.
+    accepted_frame = compare.check_observer_frame_against_accepted(
+        params,
+        position=position,
+        tetrad={
+            "tetradTime": accepted.e_time.copy(),
+            "tetradR": accepted.e_r.copy(),
+            "tetradTheta": accepted.e_theta.copy(),
+            "tetradPhi": accepted.e_phi.copy(),
+        },
+        rain=True,
+        radius_m=radius,
+        theta_deg=theta_deg,
+    )
+    accepted_frame["orientation"] = dict(accepted_frame["orientation"])
+    accepted_frame["orientation"]["eThetaSouthward"] = -1.0
+    with pytest.raises(SystemExit, match="mis-oriented"):
+        compare.enforce_observer_frame_gate(accepted_frame)
+
+
+def test_live_tracer_observer_frame_gate_checks_all_static_spatial_legs():
+    """The static gate fixes the full KS leg convention, not only its 2-plane."""
+
+    from gr_bh_xr.geodesic_ks import bl_to_ks_phi_shift
+    from gr_bh_xr.metric_ks import (
+        bl_to_ks_cartesian,
+        ks_metric,
+        ks_radius_gradient,
+    )
+
+    compare = _load_compare_live_tracer_module()
+    params = MetricParams(M=1.0, a=float(np.float32(0.9)))
+    radius = float(np.float32(14.0))
+    theta_deg = 60.0
+    theta = math.radians(theta_deg)
+    phi_ks = bl_to_ks_phi_shift(params, radius)
+    position = np.asarray(
+        bl_to_ks_cartesian(radius, theta, phi_ks, params.a), dtype=np.float64
+    )
+    metric = np.asarray(ks_metric(params, position), dtype=np.float64)
+    grad_r = np.asarray(ks_radius_gradient(params, position), dtype=np.float64)
+
+    def project(candidate, against):
+        vector = np.asarray(candidate, dtype=np.float64).copy()
+        for basis in against:
+            vector -= float(vector @ metric @ basis) / float(basis @ metric @ basis) * basis
+        return vector / math.sqrt(float(vector @ metric @ vector))
+
+    x_pos, y_pos, z_pos = position
+    rho = math.hypot(x_pos, y_pos)
+    e_time = np.array([1.0 / math.sqrt(-metric[0, 0]), 0.0, 0.0, 0.0])
+    e_phi = project(np.array([0.0, -y_pos, x_pos, 0.0]), [e_time])
+    e_theta = project(
+        np.array(
+            [
+                0.0,
+                x_pos * (z_pos / radius) / (rho / radius),
+                y_pos * (z_pos / radius) / (rho / radius),
+                -radius * (rho / radius),
+            ]
+        ),
+        [e_time, e_phi],
+    )
+    e_r = project(np.array([0.0, *grad_r]), [e_time, e_phi, e_theta])
+    frame = compare.check_observer_frame_against_accepted(
+        params,
+        position=position,
+        tetrad={
+            "tetradTime": e_time,
+            "tetradR": e_r,
+            "tetradTheta": e_theta,
+            "tetradPhi": e_phi,
+        },
+        rain=False,
+        radius_m=radius,
+        theta_deg=theta_deg,
+    )
+    compare.enforce_observer_frame_gate(frame)
+    assert set(frame["legMaxAbsDiff"]) == {
+        "tetradTime",
+        "tetradR",
+        "tetradTheta",
+        "tetradPhi",
+    }
+    assert frame["worstLegAbsDiff"] < 1.0e-14
+
+
 def test_observer_basis_role_needs_the_opposite_sign_to_the_momentum_role():
     """The two escape-direction roles are independent and carry opposite signs.
 

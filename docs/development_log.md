@@ -19,6 +19,34 @@ from here.
 
 ## Log
 
+### 2026-08-05 - Independent Unity live-tracer observer-frame gate
+
+- Goal: Close a common-mode hole in the Task 9 Unity/Python comparison: both
+  tracers launched from the dumped tetrad, so a wrong observer frame could
+  cancel out and still produce perfect downstream agreement.
+- Changed files / components: extended
+  `validation/quest_pcvr/scripts/compare_live_tracer.py`,
+  `tests/test_xr_export.py`, `validation/quest_pcvr/README.md`, and
+  `docs/validation_targets.md`.
+- Academic reason: A physics-auditable renderer must validate the observer who
+  defines the local sky, not only the rays launched from a shared unverified
+  frame.
+- Physical correspondence: reconstructs the runtime binary32 Kerr parameters,
+  finite observer station, full KS static/rain tetrad convention, independent
+  Doran rain four-velocity, ingoing branch, and radial/polar/azimuthal leg
+  orientation before any GPU cross-check is allowed to run.
+- Assumptions and conventions: Unity stores metric/station controls as
+  binary32 but promotes them to double for frame construction; the comparator
+  reproduces that promotion before applying `1e-9` equality thresholds.
+- Validation: behavior tests accept the independent rain reference, reject a
+  flipped polar leg even though its Gram matrix is unchanged, and verify the
+  complete static spatial convention rather than only its two-plane. The
+  comparison JSON now persists the `observerFrame` evidence.
+- References: `doran2000newKerrForm`; no new source added.
+- Open issues / next steps: existing v6 validation dumps predate the corrected
+  frame/stage metadata and are intentionally rejected. A fresh formal Unity
+  dump is required before claiming the complete Task 9 device-side gate.
+
 ### 2026-08-05 - Audited horizon-crossing descent keyframes
 
 - Goal: Add the Task 8 rain-frame descent keyframe path with a committed,

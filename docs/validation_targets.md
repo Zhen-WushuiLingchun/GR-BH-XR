@@ -872,6 +872,25 @@ observer position and not of the frame; disk edges carry no sub-texel coverage;
 and `disk_phi_m` from the KS tracer is wrapped-then-offset rather than the
 unwrapped integrated azimuth the Boyer-Lindquist tracer stores.
 
+Task 9 Unity live-tracer observer-frame gate:
+
+- The Unity validation dump and the Python GPU comparator share the dumped
+  observer frame when constructing launch states. Event and direction agreement
+  therefore cannot validate that frame; a common frame error cancels exactly.
+- Before tracing, `compare_live_tracer.py` must independently reconstruct the
+  runtime binary32 metric/station inputs, BL-to-KS observer position, and the
+  accepted static or rain KS tetrad. Position and every tetrad leg are compared
+  at `1e-9` relative/absolute scale.
+- Rain dumps additionally require agreement with the independent Doran
+  four-velocity, `dr/dtau < 0`, and future-pointing branch selection.
+- All dumps require positive orientation for increasing radius, increasing
+  polar angle, and prograde azimuth. Gram orthonormality remains a separate
+  invariant but is never sufficient by itself because leg flips and spatial
+  rotations preserve it.
+- The comparison summary must persist the complete `observerFrame` evidence;
+  a dump that predates this metadata/gate contract cannot support a Task 9
+  scientific pass.
+
 ## Phase 6 Simplified GRRT
 
 Required checks:

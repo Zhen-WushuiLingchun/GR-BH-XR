@@ -364,9 +364,17 @@ capture radius it derives equals Unity's `captureR` to `1e-6`. This closes a
 real gap: the two capture surfaces previously differed by `0.35 M` in the
 static case (`1.1359 M` against `1.4859 M`) while the gate still reported
 `eventAgreement = 1.0`, because escaping rays never approach either surface.
-The dumped observer tetrad is also checked for orthonormality against an
-independently computed metric, since both sides build every launch state from
-it and a wrong tetrad would otherwise cancel out.
+The dumped observer frame is gated **before** any ray is traced. This is
+load-bearing: both implementations build every launch state from the same dump,
+so a wrong position or tetrad would otherwise cancel out of event, direction,
+and disk agreement. The comparator reconstructs Unity's binary32 metric and
+station inputs exactly, then checks the BL-to-KS position, all four legs against
+the accepted KS convention, the rain four-velocity against the independent
+Doran closed form, the ingoing sign `dr/dtau < 0`, and the signs of all three
+spatial legs. A separate Gram-matrix check remains, but orthonormality alone is
+not accepted: a flipped leg, wrong rain root, or an arbitrary spatial rotation
+can preserve the Gram matrix exactly. The full `observerFrame` evidence is
+included in the printed JSON summary.
 
 This validates live tracing at the sampled states. It does not claim f64
 photon-shell accuracy, and it does not claim one complete full-resolution
