@@ -179,19 +179,20 @@ runtime settings. The current Unity disk cubemap does not yet carry a separate
 light-travel-time delay; the Python/HDF5 transfer buffers remain the audit
 source for `Delta t_m`.
 
-The package does not perform real-time geodesic integration. It renders a
-precomputed transfer map in real time:
+The baked playback path does not perform real-time geodesic integration. It
+renders a precomputed transfer map in real time:
 
 ```text
 view ray or screen coordinate -> precomputed escape direction -> cubemap sample
 ```
 
-This is valid only for the baked observer/metric configuration. It is not a
-general solution for changing spin, changing inclination, moving the observer,
-BBH, multi-black-hole systems, or gravitational-wave lensing. Those cases need
-runtime GPU tracing, progressive/tiled transfer-map updates, a sequence of
-time-indexed transfer maps, or a validated surrogate model. A yawed camera in
-the angular-window gate tests head-rotation anchoring for a distant fixed
+This baked path is valid only for the baked observer/metric configuration. It
+is not a general solution for changing spin, changing inclination, moving the
+observer, BBH, multi-black-hole systems, or gravitational-wave lensing. Task 9
+adds runtime single-Kerr GPU tracing for changing observer state, but converges
+a map over multiple display frames; time-dependent metrics still require
+time-indexed maps, adaptive tracing, or a validated surrogate. A yawed camera
+in the angular-window gate tests head-rotation anchoring for a distant fixed
 black-hole window; it does not simulate orbiting around the black hole.
 
 The background cubemap has its own resolution budget. A 4096-wide all-sky map

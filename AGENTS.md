@@ -33,6 +33,8 @@ work are later-stage extensions.
   `references/`.
 - `docs/`: Development logs and technical notes explaining academic motivation,
   physical correspondence, assumptions, validation, and unresolved issues.
+- `docs/current_status.md`: Canonical current implementation status and the
+  crosswalk between dated-plan and execution-log task numbers.
 - `docs/plans/`: Dated implementation plans.
 - `docs/physical_scope.md`: Current scope, claims, deferred work, and
   approximation labels.

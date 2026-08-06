@@ -19,6 +19,31 @@ from here.
 
 ## Log
 
+### 2026-08-06 - Task 9/10 baseline freeze and native NPGS migration decision
+
+- Goal: Publish the complete Unity live-tracing/MR baseline before beginning a
+  GPL-compatible native NPGS migration, and create one canonical status source
+  that cannot confuse historical task numbering with current capabilities.
+- Changed files / components: restored the missing stable Unity `.meta` file,
+  added `docs/current_status.md`, linked it from the repository documentation,
+  and corrected the stale baked-only statement in the Unity package README.
+- Academic reason: A third-party renderer can only replace this project after
+  independent equation and buffer-level gates. The existing CPU reference and
+  audit paths must remain available during migration.
+- Physical correspondence: No equations changed. The status document separates
+  baked transfer lookup, batched live Kerr-Schild integration, worldline
+  playback, unaccepted MR, and the proposed Kerr-Newman runtime.
+- Assumptions and conventions: The reviewed public NPGS baseline is
+  `a039e6417b28d53cbd413ee8f6d64543e755aa3e`; its Kerr-Newman and polarization
+  claims remain candidates until independently validated. BBH/GW showcase media
+  is not treated as available source code.
+- Validation: Full repository suite `214 passed`; `git diff --check`; complete
+  Unity asset `.meta` coverage.
+- References: Existing NPGS entry and code review in `references/`.
+- Open issues / next steps: Create the NPGS fork and pinned submodule, reproduce
+  its unmodified desktop build, then add a separate audit path before native
+  OpenXR work.
+
 ### 2026-08-06 - Version-locked URP 17 asset repair
 
 - Goal: Make the formal Unity project openable, compilable and buildable under

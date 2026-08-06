@@ -15,9 +15,13 @@ See `AGENTS.md` for repository workflow rules.
   these record design lessons but do not vendor source code.
 - `references/references.md`: required index for all kept references.
 - `docs/`: development logs and academic or physics-facing notes.
+- `docs/current_status.md`: canonical runtime status and task-number crosswalk.
 - `docs/plans/`: dated implementation plans.
 - `docs/physical_scope.md`: current physics scope and claim boundaries.
 - `docs/equations.md`: equations and conventions that implementation must
   follow.
 - `docs/validation_targets.md`: validation gates for renderer stages.
 - `paper_draft/`: local-only manuscript drafts, ignored by Git.
+
+The current renderer status, accepted claim boundaries, and native NPGS
+migration gates are maintained in `docs/current_status.md`.
