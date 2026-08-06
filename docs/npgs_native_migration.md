@@ -107,6 +107,38 @@ future audit-path regression limit, Kerr correctness, OpenXR performance, or
 Quest acceptance. Full evidence and commands are in
 `validation/npgs_native_baseline/README.md`.
 
+## Native Audit Transport
+
+Fork commit `6631537fdbb9b23a89c5268065ae6a2405a4db7a` adds an opt-in
+offscreen audit capture without changing the normal visual SPIR-V. Both the
+visual and audit fragment shaders call the same `TraceRay` implementation. The
+native process writes one 128-byte little-endian float32 record per pixel plus
+a JSON sidecar; `python -m gr_bh_xr.npgs_audit` validates and converts those
+files to final schema `gr-bh-xr.npgs.audit.v1`.
+
+The converter fails closed on a mismatched schema or byte length, non-finite
+records, unknown or non-integral event/failure codes, inconsistent escape flags,
+non-unit escaped directions, or a disagreement between the binary and native
+summary. It preserves the raw 32-field record in HDF5 and writes normalized
+`M=1` datasets. NPGS native distance/time values are divided by
+`M_internal=0.5`; dimensionless Hamiltonian, correction, redshift, direction,
+and conserved-quantity fields are not rescaled. Reserved disk slots become NaN
+unless their explicit validity flag is set.
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.npgs_audit `
+  --raw outputs/npgs/audit_kerr_a09_i60_33.bin `
+  --out-h5 outputs/npgs/audit_kerr_a09_i60_33.h5 `
+  --out-json outputs/npgs/audit_kerr_a09_i60_33.json `
+  --npgs-root runtime/NPGS
+```
+
+The final artifact records official-upstream, fork, and compiled-audit-shader
+revisions together with adapter/driver and every physical launch parameter.
+This is a transport and provenance gate only; accepting Kerr physics still
+requires the independent CPU-f64 comparison below.
+
 ## Migration Gates
 
 1. Reproduce the unmodified NPGS desktop build and record same-machine timing.

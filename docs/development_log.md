@@ -19,6 +19,35 @@ from here.
 
 ## Log
 
+### 2026-08-06 - Native NPGS audit capture and versioned artifact conversion
+
+- Goal: Make NPGS emit inspectable physics records while preserving its visual
+  fast path, then convert the native binary into the repository's versioned
+  HDF5/JSON evidence format.
+- Changed files / components: the fork now has an opt-in offscreen audit pass,
+  native readback and metadata CLI, deterministic descriptor-set ordering, and
+  a corrected reflected-storage-buffer binding path. GR-BH-XR adds
+  `gr_bh_xr.npgs_audit` with fail-closed parsing, unit conversion, provenance,
+  HDF5 persistence, and synthetic corruption tests.
+- Academic reason: an RGB renderer cannot replace the accepted solver. Event,
+  failure, escape direction, minimum radius, step count, raw/projected
+  Hamiltonian, correction magnitude, and conserved-quantity drift must be
+  available to an independent reference validator.
+- Physical correspondence: native NPGS uses `R_s=1`, hence
+  `M_internal=0.5`; exported radius and coordinate-time fields are converted to
+  `M` units. Hamiltonian projection is explicitly recorded as an algorithmic
+  correction and is not presented as raw RK accuracy. Disk slots remain
+  reserved and invalid in this revision.
+- Validation: Release build and `spirv-val` passed. Native smoke captures gave
+  Schwarzschild `29 capture / 260 escape` at 17x17 and Kerr `a=0.9, i=60 deg`
+  `104 capture / 985 escape` at 33x33, with zero invalid/non-finite records.
+  The latter converted successfully with maximum escape-direction norm error
+  `1.00e-7`. Same-condition visual A/B measured 183 vs 181 FPS at 1080p and 69
+  vs 68 FPS at 4K, below the five-percent regression gate.
+- Open issues / next steps: run the Kerr `Q_charge=0` event/direction comparison
+  against the Python f64 Kerr-Schild reference. Nonzero charge and polarization
+  remain blocked on independent reference modules.
+
 ### 2026-08-06 - Complete NPGS upstream sync and exact native performance zero point
 
 - Goal: Complete the full current public NPGS repository before integration,

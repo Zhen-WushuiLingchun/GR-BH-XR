@@ -923,6 +923,24 @@ Physics replacement gate (open):
 - fast-path performance after audit-core extraction regresses by no more than
   five percent from the same-machine baseline.
 
+Native audit transport gate (passed on 2026-08-06):
+
+- the native offscreen pass emits exactly 32 finite little-endian float32
+  fields per pixel and a sidecar that agrees with the binary event counts;
+- the Python converter rejects malformed byte lengths, unknown codes,
+  inconsistent escape validity, and non-unit escape directions;
+- final HDF5 schema `gr-bh-xr.npgs.audit.v1` preserves the raw record, exposes
+  normalized `M=1` fields, and records official-upstream, fork, compiled shader,
+  GPU, driver, observer, and integrator provenance;
+- the default visual path remains byte-identical at the SPIR-V level, and an
+  interleaved parent/current timing check measured `183 -> 181 FPS` at 1080p
+  and `69 -> 68 FPS` at 4K, both below the five-percent regression limit.
+
+This gate does not accept the NPGS Hamiltonian projection as physical accuracy.
+Raw pre-projection `abs(H)`, post-projection `abs(H)`, and relative momentum
+correction remain separate datasets. The `Q_charge=0` CPU-f64 comparison is
+still required before the physics replacement gate can close.
+
 Native XR gate (open):
 
 - OpenXR owns Vulkan instance/device requirements through
