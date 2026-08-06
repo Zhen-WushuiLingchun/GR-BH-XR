@@ -538,8 +538,18 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
   and many physics-facing UI controls.
 - Relevant equations / assumptions / methods: Shader-side Kerr/Kerr-Newman
   parameters, observer modes, disk/jet styling, shadow culling, debug toggles.
-- Project use: GPU parameter layout and debug-control inspiration.
-- Limitations / open questions: GPL-3.0; do not vendor or copy code.
+- Project use: History-preserving GPL fork and pinned native-runtime submodule,
+  while the GR-BH-XR Python solvers remain independent validation authorities.
+- Reviewed commits: initial `40acedaebf31743ef44dad428117d39b8f22f324`;
+  migration baseline `a039e6417b28d53cbd413ee8f6d64543e755aa3e`.
+- Public-ref refresh: 2026-08-06. Official `master`, tag, and prerelease
+  `v-114514-test` resolve to the migration baseline. Closed draft PR #1 contains
+  Windows CI/dependency wiring only and was not merged into the integration
+  branch.
+- Limitations / open questions: The repository is engineering evidence, not a
+  peer-reviewed benchmark. Kerr-Newman, polarization, maximal extension, jets,
+  and volumetric effects require independent gates. No public BBH/GW branch was
+  available at the migration refresh.
 
 ### Bruneton Black-Hole Shader Repository
 

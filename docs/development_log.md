@@ -19,6 +19,36 @@ from here.
 
 ## Log
 
+### 2026-08-06 - Complete NPGS upstream sync and exact native performance zero point
+
+- Goal: Complete the full current public NPGS repository before integration,
+  make its source build reproducibly, and establish a resolution-authenticated
+  fast-path baseline before adding audit outputs.
+- Changed files / components: created the GPL fork/submodule boundary, local
+  bootstrap/doctor/build/benchmark scripts, generated and validated the shader
+  runtime assets missing from upstream, made shader startup fail closed, and
+  added deterministic native launch plus exact-framebuffer benchmark modes.
+- Source audit: official `master`, tag/prerelease `v-114514-test` all resolve
+  to `a039e6417b28d53cbd413ee8f6d64543e755aa3e`. Closed draft PR #1 contains
+  Windows CI/dependency wiring only. No public BBH/GW branch or release source
+  beyond that commit was found. The local history is non-shallow and
+  `git fsck --full --strict` passed.
+- Physical correspondence: no NPGS physics feature is accepted by this step.
+  The measured path is the existing visual prepass/composite/TAA path with
+  default `M=0.5 (Rs=1)`, `a/M=0.998`, zero charge, static observer mode, and
+  polarization disabled.
+- Validation: Release build succeeded; all six required SPIR-V files passed
+  `spirv-val --target-env vulkan1.4`; missing shader assets now exit cleanly
+  instead of dereferencing an empty stage list. Exact framebuffer checks
+  rejected a DPI/work-area-clamped false 4K run, then measured 200 median FPS
+  at 1920 x 1080 and 76 median FPS at 3840 x 2160 after the borderless hidden
+  surface fix. The complete GR-BH-XR suite passed `220` tests.
+- Evidence: `validation/npgs_native_baseline/README.md` and ignored
+  `outputs/npgs/baseline_*.json`.
+- Open issues / next steps: add the shared visual/audit GLSL core and
+  `gr-bh-xr.npgs.audit.v1`, force `Q_charge=0` for the first CPU comparison,
+  and do not begin native OpenXR claims before the Kerr gate passes.
+
 ### 2026-08-06 - Task 9/10 baseline freeze and native NPGS migration decision
 
 - Goal: Publish the complete Unity live-tracing/MR baseline before beginning a

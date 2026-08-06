@@ -891,6 +891,49 @@ Task 9 Unity live-tracer observer-frame gate:
   a dump that predates this metadata/gate contract cannot support a Task 9
   scientific pass.
 
+## Native NPGS Migration
+
+Native runtime gates are tracked separately from the accepted Python and Unity
+reference paths. Passing a visual screenshot or frame-rate target does not pass
+a physics gate.
+
+Baseline build/performance gate (passed on 2026-08-06):
+
+- the local submodule is a complete, non-shallow history descended from
+  official `a039e6417b28d53cbd413ee8f6d64543e755aa3e`;
+- official public branches, tags, releases, and PR refs were refreshed and
+  recorded before fork development;
+- Release build and Vulkan startup pass from the documented bootstrap;
+- missing shader assets fail closed;
+- benchmark runs reject framebuffer dimensions that differ from the request;
+- the repaired pre-audit visual path measures 200 median FPS at 1080p and
+  76 median FPS at exact 4K on the recorded RTX 5080 Laptop configuration.
+
+Physics replacement gate (open):
+
+- visual and audit modes share one GLSL geodesic core;
+- audit schema `gr-bh-xr.npgs.audit.v1` records event/failure codes, escape
+  direction, minimum radius, steps, Hamiltonian and Killing/Carter drift, and
+  the first two disk-transfer orders;
+- `Q_charge=0` passes existing stable-region Kerr event and direction gates;
+- nonzero charge is blocked until an independent CPU f64 Kerr-Newman reference
+  passes Kerr and Reissner-Nordstrom limits, horizons, nullness, and conserved
+  quantities;
+- Walker-Penrose/Stokes claims remain blocked until their independent gates;
+- fast-path performance after audit-core extraction regresses by no more than
+  five percent from the same-machine baseline.
+
+Native XR gate (open):
+
+- OpenXR owns Vulkan instance/device requirements through
+  `XR_KHR_vulkan_enable2`;
+- stereo swapchains, predicted poses, reference spaces, per-eye origins,
+  world-lock, controls, and the draggable settings panel pass desktop and Quest
+  evidence gates;
+- stable 72 Hz is required on Quest PCVR and 90 Hz remains the target.
+
+See `validation/npgs_native_baseline/README.md`.
+
 ## Phase 6 Simplified GRRT
 
 Required checks:

@@ -1,0 +1,4 @@
+[submodule "runtime/NPGS"]
+	path = runtime/NPGS
+	url = https://github.com/Zhen-WushuiLingchun/NPGS.git
+	branch = codex/npgs-integration

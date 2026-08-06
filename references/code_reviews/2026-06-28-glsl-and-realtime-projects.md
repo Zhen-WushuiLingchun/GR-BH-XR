@@ -39,7 +39,10 @@ must still come from equations, invariant checks, and peer-reviewed benchmarks.
 ## NPGS
 
 - Repository: https://github.com/baopinshui/NPGS
-- Reviewed commit: `40acedaebf31743ef44dad428117d39b8f22f324`
+- Initial reviewed commit: `40acedaebf31743ef44dad428117d39b8f22f324`
+- Migration review commit: `a039e6417b28d53cbd413ee8f6d64543e755aa3e`
+- Initial integration-fork baseline:
+  `d39c7d78d34273c683bf558fdff3364b5a547d28`
 - BibTeX key: `baopinshui2026npgscode`
 - License observed: GPL-3.0.
 - Language / dependencies: C++ Visual Studio project, Vulkan/OpenGL-adjacent
@@ -55,9 +58,21 @@ must still come from equations, invariant checks, and peer-reviewed benchmarks.
 - Useful engineering lessons: a real-time renderer benefits from a structured
   uniform block for physics-facing parameters, separate prepass/composite
   stages, and explicit debug modes. These map well to GR-BH-XR audit buffers.
+- Current project use: the user selected a GPL-compatible native fork as the
+  future runtime. The fork retains upstream history and is pinned as the
+  `runtime/NPGS` submodule; GR-BH-XR does not copy the shader into Unity.
+- Public-ref refresh on 2026-08-06: `master`, tag and prerelease
+  `v-114514-test` all resolve to `a039e64`. The only PR ref is closed draft
+  PR #1 for Windows CI/dependency wiring. No public BBH/GW source was found.
+- Reproducibility finding: the upstream source snapshot lacked SPIR-V assets
+  named by its current pipelines and could reach unsafe empty-stage access.
+  The fork baseline restores generated validated assets and fail-closed startup
+  before any audit or physics modification.
 - Physics boundary: this is a GPL real-time project and not a peer-reviewed
-  benchmark. It should not be copied, vendored, or used to justify physics
-  claims without independent equation checks.
+  benchmark. Its fast path, Kerr-Newman extension, Walker-Penrose polarization,
+  inner-horizon topology, jets, and volumetric effects remain candidates until
+  they pass independent equation and buffer-level checks. No public BBH/GW
+  source branch was present at the migration review date.
 
 ## Bruneton Black-Hole Shader
 
@@ -106,5 +121,6 @@ must still come from equations, invariant checks, and peer-reviewed benchmarks.
   final color too early.
 - Treat real-time shader papers/projects as acceleration and UX references.
   Treat RAPTOR/AART/grtrans/ipole/HARM-family papers as validation references.
-- Do not copy GPL shader code from NPGS into this repository. If comparison is
-  needed later, use clean benchmark outputs and documented parameter cases.
+- Keep NPGS in its history-preserving GPL fork/submodule. Do not splice its
+  shader into the proprietary Unity runtime. Validate the native fork against
+  GR-BH-XR's independent CPU and audit-buffer baselines.

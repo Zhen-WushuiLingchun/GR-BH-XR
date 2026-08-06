@@ -22,6 +22,28 @@ See `AGENTS.md` for repository workflow rules.
   follow.
 - `docs/validation_targets.md`: validation gates for renderer stages.
 - `paper_draft/`: local-only manuscript drafts, ignored by Git.
+- `runtime/NPGS/`: pinned native NPGS fork submodule; see
+  `docs/npgs_native_migration.md` before updating it.
 
 The current renderer status, accepted claim boundaries, and native NPGS
 migration gates are maintained in `docs/current_status.md`.
+
+## Native Build
+
+Clone with submodules, then use the fail-closed local bootstrap:
+
+```powershell
+git clone --recurse-submodules https://github.com/Zhen-WushuiLingchun/GR-BH-XR.git
+.\tools\npgs\bootstrap.ps1 -BootstrapVcpkg
+.\tools\npgs\build.ps1 -Configuration Release
+```
+
+The bootstrap fetches the complete fork and official NPGS history but does not
+silently merge a new upstream revision. A changed official SHA must be reviewed
+and recorded before the doctor gate is updated.
+
+## License
+
+GR-BH-XR and the integrated native NPGS distribution are licensed under
+GPL-3.0-only. Original NPGS authorship and third-party notices are retained in
+the submodule and `THIRD_PARTY_NOTICES.md`.

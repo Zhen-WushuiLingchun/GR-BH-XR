@@ -12,6 +12,7 @@ desktop.ini
 # Local agent/tool state
 .agents/
 .codex/
+.tools/
 
 # Local environment and secrets
 .env
@@ -49,6 +50,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+*.egg-info/
 venv/
 .ipynb_checkpoints/
 
