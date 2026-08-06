@@ -283,6 +283,116 @@ This package is a static texture bridge:
   size, and PC-to-Quest latency are validation tasks, not claims made by this
   package.
 
+## URP Asset Version Lock And Repair
+
+The formal Unity project is locked to Unity `6000.0.76f1` with URP `17.0.4`.
+Opening it with a newer editor rewrites the render pipeline assets to a schema
+this editor cannot read back down. That already happened once: Unity `6000.5` /
+URP `17.5.0` wrote `m_AssetVersion: 10` into
+`Assets/Settings/UniversalRenderPipelineGlobalSettings.asset` and
+`k_AssetVersion: 13` into both `*_RPAsset.asset` files, where URP 17.0.4 expects
+`8` and `12`.
+
+This does not surface as a load error. URP's migration code is a ladder of
+`if (version < N)` branches with no else, so a higher serialized version is a
+silent no-op: the assets load, nothing throws, and `IsAtLastVersion()` stays
+false forever. The damage only appears at build time, where URP's own
+`URPBuildDataValidator` raises `BuildFailedException`. The global settings asset
+additionally carried nine `[SerializeReference]` entries for types that do not
+exist in URP 17.0.4 at all, two of them naming assemblies
+(`Unity.UnifiedRayTracing.Runtime`, `Unity.PathTracing.Runtime`) that Unity
+6000.0.76f1 does not ship.
+
+`Editor/GRBHXRUrpAssetRepair.cs` handles this. It never edits a serialized
+version field, in YAML or through `SerializedProperty`. It builds a pristine
+asset with the public factory for the installed URP
+(`RenderPipelineGlobalSettingsUtils.Create` and
+`UniversalRenderPipelineAsset.Create`), carries the project's settings across it
+without carrying the version and identity fields, and then copies that pristine
+object over the existing asset with
+`EditorUtility.CopySerialized`. The corrected version arrives as a property of a
+correctly constructed object. Because the existing asset object is rewritten in
+place, its GUID and path survive and the `GraphicsSettings` /
+`QualitySettings` registrations are untouched.
+
+The global settings container needs an extra migration step. The repair first
+creates a data-source clone from the damaged asset. Unity drops the unavailable
+17.5-only managed-reference types from that clone while retaining the 26 types
+that exist in URP 17.0.4. Those compatible settings are copied into the pristine
+17.0.4 object by managed-reference type with `EditorJsonUtility`, including
+scalar fields and project object references. Every copied setting is serialized
+again and compared byte-for-byte before the registered asset is overwritten.
+This gate was added after an earlier implementation silently reset
+`URPShaderStrippingSetting.m_StripUnusedPostProcessingVariants`; that rejected
+run is retained as audit evidence and is not an accepted repair.
+
+`UniversalRenderPipelineGlobalSettings` and its `Ensure()` overload are
+`internal` in URP 17.0.4, so neither is callable from this assembly; the public
+`RenderPipelineGlobalSettingsUtils.Create(Type, path)` overload is used instead,
+with the concrete type taken from the loaded asset rather than by reflection.
+The expected version is discovered by constructing one throwaway instance and
+reading its version field, so no version number is hardcoded.
+
+Three entry points, all under `GR-BH-XR/URP Asset Repair/`:
+
+```powershell
+$unity = 'D:\unity\Hub\Editor\6000.0.76f1\Editor\Unity.exe'
+$proj = 'F:\UnityProjects\GRBHXR_PCVR_Gate\GRBHXR_PCVR_Gate'
+
+# Report only. Does not modify any render pipeline asset.
+& $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRUrpAssetRepair.BatchAuditUrpAssets
+
+# Fail closed. Exit code 1 when the assets do not match the installed editor.
+& $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRUrpAssetRepair.BatchPreflightUrpAssets
+
+# The only entry point that writes. Explicit operator action.
+& $unity -batchmode -quit -projectPath $proj -executeMethod GRBHXR.EditorTools.GRBHXRUrpAssetRepair.BatchRepairUrpAssets
+```
+
+Unity.exe is a GUI-subsystem process on Windows, so `&` returns before the run
+finishes. Use `Start-Process -Wait -PassThru` when the exit code matters.
+
+`GRBHXRQuestPcvrSetup.BuildWindowsOpenXrPlayer` calls the preflight as its first
+statement, before `ConfigureOpenXrLoader` saves XR settings assets, before the
+scene is overwritten, and before the `PlayerSettings` writes. Setup and build
+never repair anything; an incompatible project fails with the asset paths, the
+serialized and expected versions, the missing serialized reference types, and
+the exact repair command to run.
+
+Each run writes a machine-readable report and pre-repair copies of every asset
+it touches under `<project>/Logs/GRBHXR/urp_asset_repair/`. `Logs/` is not
+imported by the Unity asset database and is covered by this repository's
+`[Ll]ogs/` ignore rule. Override with `-grbhxrUrpRepairReportDir <path>`.
+All incompatible assets are backed up before the first write. Any exception
+restores every backup, reimports the assets synchronously, and emits a schema-v2
+failure report with `rollbackPerformed`. The validation-only
+`-grbhxrUrpRepairTestFailAfterAssets N` argument deliberately fails after `N`
+repairs so this rollback path can be exercised under the locked editor; do not
+use it for a normal repair. Post-repair compatibility, pipeline registrations,
+and deletion of URP's transient construction asset are inside that transaction:
+failure of any of those checks also rolls back the render-pipeline assets.
+
+Two behaviours worth knowing:
+
+- Constructing any URP global settings object makes URP 17.0.4 unconditionally
+  write `Assets/DefaultVolumeProfile.asset`, replacing whatever is there and
+  issuing a new GUID. Every entry point brackets its work: it refuses to run if
+  that path is already occupied, and removes the transient asset afterwards.
+- `m_RuntimeSettings` is empty in the authored asset by design. URP clears it on
+  every editor serialize and only fills it when `BuildPipeline.isBuildingPlayer`.
+
+Known limitation: the preflight checks the default render pipeline asset and
+every quality level. It does not expand the `IncludeAdditionalRPAssets`
+label/scene inclusion set, which is disabled in this project. If that is ever
+enabled, an asset reachable only through it would be caught by URP's own build
+validator with a less specific message rather than by this preflight.
+
+**A repaired, compiling project is not a validated one.** Everything above shows
+that the project opens, compiles, and passes URP's version contract under
+`6000.0.76f1`. It says nothing about headset behaviour, and nothing at all about
+MR passthrough RGB. Device-side claims still require the Quest validation
+protocol and remain ungated by this work.
+
 ## Editor Gate Automation
 
 The package includes editor-only batch helpers under `Editor/` so Unity desktop

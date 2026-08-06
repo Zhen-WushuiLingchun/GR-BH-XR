@@ -19,6 +19,88 @@ from here.
 
 ## Log
 
+### 2026-08-06 - Version-locked URP 17 asset repair
+
+- Goal: Make the formal Unity project openable, compilable and buildable under
+  its locked Unity `6000.0.76f1` / URP `17.0.4` toolchain after some render
+  pipeline assets were serialized by a newer editor, without hand-editing any
+  serialized version field.
+- Changed files / components: added
+  `xr/unity_frontend/Editor/GRBHXRUrpAssetRepair.cs`; added URP/core references
+  to `xr/unity_frontend/Editor/GRBHXR.Editor.asmdef`; added a fail-closed
+  preflight call as the first statement of
+  `GRBHXRQuestPcvrSetup.BuildWindowsOpenXrPlayer`; added two source-contract
+  tests and a `_csharp_code_only` helper to `tests/test_xr_export.py`; updated
+  `xr/unity_frontend/README.md` and `validation/quest_pcvr/README.md`.
+- Academic reason: None directly. This is build-tooling integrity work. Its only
+  physics-facing role is negative: it keeps a corrupted render pipeline from
+  being mistaken for a rendering result, and it keeps the editor version lock
+  enforceable so future gate captures are reproducible.
+- Physical correspondence: None. No equation, constant, coordinate convention,
+  unit, or renderer output is touched by this change.
+- Assumptions and conventions: The contamination was diagnosed as Unity `6000.5`
+  / URP `17.5.0`, not URP 18. Evidence: `Library.6000.5.backup_20260718`
+  contains URP `17.5.0`, whose `k_LastVersion` constants are `10` (global
+  settings), `13` (RP asset) and `3` (renderer data), matching the observed
+  `m_AssetVersion: 10` and `k_AssetVersion: 13`. The two renderer data assets
+  were still at `2`, which is current for 17.0.4, and were reused by reference.
+  `UniversalRenderPipelineGlobalSettings` and its `Ensure()` overload are
+  `internal` in URP 17.0.4, so the public
+  `RenderPipelineGlobalSettingsUtils.Create(Type, path)` overload is used with
+  the concrete type taken from the loaded asset. No version number is
+  hardcoded: the expected version is read from a freshly constructed instance.
+  Repair rewrites the existing asset object in place via
+  `EditorUtility.CopySerialized` from a pristine object, so GUIDs, asset paths,
+  and the `GraphicsSettings` / `QualitySettings` registrations are preserved.
+  Compatible graphics settings inside the managed-reference container are first
+  sanitized through a data-source clone, copied by stable type into the pristine
+  object, and serialized again for exact comparison. All incompatible assets are
+  backed up before the first write; an exception restores and reimports every
+  backup.
+- Validation: Unity `6000.0.76f1` batch runs against the formal project, full
+  logs and machine-readable reports preserved under
+  `outputs/claude_agents/2026-08-05-mr-device-gate/urp17-repair/`. The initial
+  repair implementation was **rejected** after an independent diff showed that
+  it reset the valid
+  `URPShaderStrippingSetting.m_StripUnusedPostProcessingVariants` value from `1`
+  to `0`; its report did not disclose that loss. The corrected schema-v2 repair
+  was rerun from the untouched pre-repair copies. It preserved and serialized
+  identically all 26 URP-17.0.4-compatible managed settings, including the
+  stripping flag and default volume-profile reference; removed only the nine
+  unavailable 17.5-only types; preserved all renderer-data slots and default
+  renderer indices; retained all asset GUIDs and registrations; and produced
+  `m_AssetVersion` 10 -> 8 plus both RP asset versions 13 -> 12. A deliberate
+  failure after the first repaired asset exited `1`, emitted
+  `rollbackPerformed: true`, and restored all three originals byte-for-byte at
+  versions 10/13/13 before the final successful repair. The final preflight
+  exited `0`. Post-write version compatibility, registration equality, and
+  transient cleanup are inside the transaction, so any late gate failure also
+  restores the backed-up render-pipeline assets. The audit/preflight paths may
+  create and then delete URP's
+  hard-coded transient `Assets/DefaultVolumeProfile.asset`; acceptance requires
+  successful deletion, so they do not leave a project asset behind. The final
+  transaction implementation was rerun under
+  `urp17-repair/transaction-v5/`: injected repair exit `1` with rollback to
+  `10/13/13`, normal repair exit `0` at `8/12/12` with the stripping flag still
+  `1`, final preflight exit `0`, and the repository suite reported `171 passed`.
+- References: URP 17.0.4 and SRP core 17.0.4 package sources in the formal
+  project's `Library/PackageCache`, read directly rather than from documentation.
+  Key sites: `Runtime/UniversalRenderPipelineGlobalSettings.cs:22,31,239`,
+  `Runtime/Data/UniversalRenderPipelineAsset.cs:449,678`,
+  `core Runtime/RenderPipeline/RenderPipelineGlobalSettingsUtils.cs:35`,
+  `core Runtime/RenderPipeline/RenderPipelineGraphicsSettingsContainer.cs:38-45`,
+  `Editor/BuildProcessors/URPBuildDataValidator.cs`.
+- Open issues / next steps: `validation/quest_pcvr/scripts/quest_pcvr_preflight.ps1`
+  still defaults to Unity `6000.5.2f1`, which is how this corruption arose;
+  changing it also changes a pinned assertion in `tests/test_xr_export.py` and
+  was left out of this focused commit. The preflight does not expand the
+  `IncludeAdditionalRPAssets` label/scene inclusion set (currently disabled).
+  `Assets/Settings/DefaultVolumeProfile.asset` still carries nine orphaned
+  `VolumeComponent` sub-objects leaked from `Unity.RenderPipelines.Core.Editor.Tests`;
+  unrelated to versioning, harmless at runtime, not addressed here. A repaired,
+  compiling project is explicitly not a device-validated one: no headset run and
+  no MR passthrough RGB claim follows from this change.
+
 ### 2026-08-05 - Independent Unity live-tracer observer-frame gate
 
 - Goal: Close a common-mode hole in the Task 9 Unity/Python comparison: both

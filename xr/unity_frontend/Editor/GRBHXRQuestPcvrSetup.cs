@@ -82,6 +82,14 @@ namespace GRBHXR.EditorTools
         [MenuItem("GR-BH-XR/Quest PCVR/Build Windows OpenXR Player")]
         public static void BuildWindowsOpenXrPlayer()
         {
+            // Fail closed before anything mutates the project. ConfigureOpenXrLoader
+            // saves XR settings assets, ConfigurePcvrSkyShellFirstRun overwrites the
+            // saved scene, and the PlayerSettings writes below are persistent, so a
+            // render pipeline asset check placed any later would leave the project
+            // modified by a build that cannot succeed. This never repairs; repair is
+            // an explicit, separate operator action.
+            GRBHXRUrpAssetRepair.AssertProjectUrpAssetsCompatible();
+
             ConfigureOpenXrLoader();
             GRBHXRGateAutomation.ConfigurePcvrSkyShellFirstRun();
 
