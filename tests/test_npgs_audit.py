@@ -100,6 +100,28 @@ def _write_v2_capture(tmp_path: Path) -> tuple[Path, Path]:
     return raw, metadata_path
 
 
+def _write_v2_disk_capture(tmp_path: Path) -> tuple[Path, Path]:
+    raw, metadata_path = _write_v2_capture(tmp_path)
+    records = np.fromfile(raw, dtype="<f4").reshape(2, 2, 48)
+    records[0, 0, 16:24] = [4.0, 0.6, 0.8, 0.75, 6.0, 0.0, 1.0, 0.0]
+    records.tofile(raw)
+    metadata = json.loads(metadata_path.read_text(encoding="utf8"))
+    metadata["parameters"].update(
+        disk_inner_radius_M=6.0,
+        disk_outer_radius_M=30.0,
+    )
+    metadata["claims"].update(
+        disk_transfer_slots_valid=True,
+        disk_phi_coordinate="Boyer-Lindquist",
+        disk_delta_t_coordinate="Boyer-Lindquist observer-minus-emitter time",
+        disk_redshift_definition=(
+            "nu_observer_local / nu_emitter; observer-local launch frequency normalized to 1"
+        ),
+    )
+    metadata_path.write_text(json.dumps(metadata), encoding="utf8")
+    return raw, metadata_path
+
+
 def test_load_native_audit_validates_and_converts_native_units(tmp_path: Path) -> None:
     raw, metadata = _write_capture(tmp_path)
     capture = load_native_audit(raw, metadata_path=metadata)
@@ -126,6 +148,29 @@ def test_load_native_audit_v2_preserves_exact_canonical_states(tmp_path: Path) -
     np.testing.assert_allclose(
         capture.final_ingoing_p_cov, np.broadcast_to([0.4, 0.5, 0.6, -1.0], (2, 2, 4))
     )
+
+
+def test_load_native_audit_validates_native_disk_transfer_contract(tmp_path: Path) -> None:
+    raw, metadata = _write_v2_disk_capture(tmp_path)
+
+    capture = load_native_audit(raw, metadata_path=metadata)
+
+    assert capture.disk_validity[0, 0, 0]
+    assert capture.disk_order[0, 0, 0] == 0
+    np.testing.assert_allclose(capture.disk_r_m[0, 0, 0], 8.0)
+    np.testing.assert_allclose(capture.disk_delta_t_m[0, 0, 0], 12.0)
+    np.testing.assert_allclose(capture.disk_g_m[0, 0, 0], 0.75)
+    assert np.isnan(capture.disk_r_m[1, 0, 0])
+
+
+def test_load_native_audit_rejects_malformed_valid_disk_phase(tmp_path: Path) -> None:
+    raw, metadata = _write_v2_disk_capture(tmp_path)
+    records = np.fromfile(raw, dtype="<f4").reshape(2, 2, 48)
+    records[0, 0, 17:19] = [0.2, 0.2]
+    records.tofile(raw)
+
+    with pytest.raises(ValueError, match="phases are not unit normalized"):
+        load_native_audit(raw, metadata_path=metadata)
 
 
 def test_convert_native_audit_writes_final_hdf5_and_json(tmp_path: Path) -> None:

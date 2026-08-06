@@ -22,6 +22,7 @@ def test_npgs_build_tools_fail_closed_and_stay_local() -> None:
     doctor = (ROOT / "tools" / "npgs" / "doctor.ps1").read_text(encoding="utf8")
     build = (ROOT / "tools" / "npgs" / "build.ps1").read_text(encoding="utf8")
     benchmark = (ROOT / "tools" / "npgs" / "benchmark.ps1").read_text(encoding="utf8")
+    audit = (ROOT / "tools" / "npgs" / "audit.ps1").read_text(encoding="utf8")
     common = (ROOT / "tools" / "npgs" / "common.ps1").read_text(encoding="utf8")
 
     assert ".tools/" in ignore
@@ -45,6 +46,9 @@ def test_npgs_build_tools_fail_closed_and_stay_local() -> None:
     assert "upstreamSha" in benchmark
     assert "forkSha" in benchmark
     assert "verifiedExact = $true" in benchmark
+    assert '"GRBHXR\\audit"' in audit
+    assert "NPGS exited without producing both" in audit
+    assert "Native audit byte length mismatch" in audit
     assert "framebufferWidthEstimate" not in benchmark
     assert "native-build-root" in common
     assert 'LinkType -ne "Junction"' in common
@@ -76,6 +80,23 @@ def test_npgs_native_benchmark_mode_reports_internal_metrics() -> None:
     assert "glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE)" in application
     assert '"NPGS_BENCHMARK_FRAMEBUFFER "' in application
     assert '"NPGS_BENCHMARK_FPS "' in application
+
+
+def test_npgs_disk_audit_uses_killing_constants_for_redshift() -> None:
+    shader = (
+        ROOT
+        / "runtime"
+        / "NPGS"
+        / "NPGS"
+        / "Sources"
+        / "Engine"
+        / "Shaders"
+        / "BlackHole_common.glsl"
+    ).read_text(encoding="utf8")
+
+    assert "AuditAngularMomentumY(\n        gAudit.InitialIngoingX, gAudit.InitialIngoingP)" in shader
+    assert "float killingEnergy = -gAudit.InitialIngoingP.w;" in shader
+    assert "float angularMomentum = hitX.z * hitP.x - hitX.x * hitP.z;" not in shader
 
 
 def test_repository_includes_gpl_v3_text() -> None:

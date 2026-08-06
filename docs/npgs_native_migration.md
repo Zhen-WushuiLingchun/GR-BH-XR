@@ -225,6 +225,32 @@ sub-extremal, exterior Kerr-Newman ray geometry. It does not validate charged
 particles, Walker-Penrose polarization, disk/jet emission, Cauchy-horizon
 continuation, or maximal extension.
 
+## Native Kerr Disk Transfer
+
+NPGS now records the first two true equatorial crossings from the same shared
+`TraceRay` invocation used by its visual path. The native runtime remains the
+implementation; Python f64 only replays a deterministic subset of the exact
+serialized launch states.
+
+For `a/M=0.9`, `Q=0`, `i=60 deg`, `r_obs=100M`, quality 2, 65x65, the native
+capture produced `60 capture / 4165 escape / 0 invalid` and disk-valid counts
+`[1439,41]`. A 318-ray replay, including all `m=1` slots, found zero
+crossing-presence, validity, flag, or order mismatches. Maximum errors were
+`0.0199722M` for `r_m`, `3.4780e-4 rad` for `phi_m`, `0.0207713M` for
+`Delta t_m`, and `2.0221e-4` for `g_m`, all within preregistered limits.
+
+The gate corrected one genuine definition error. `E` and spin-axis `L` are
+Killing invariants and must come from the exact initial canonical state.
+Computing `L` from separately interpolated crossing position and momentum does
+not preserve the bilinear invariant and biased inner-disk redshift. No
+tolerance was relaxed.
+
+The native `g_m` is `nu_observer_local/nu_emitter`, with local camera launch
+frequency normalized to one. It is intentionally not the asymptotic-observer
+helper. See `validation/npgs_disk_transfer/README.md` for commands, the
+Unicode-safe capture wrapper, thresholds, and the single-chart CPU
+horizon-guard boundary.
+
 ## Migration Gates
 
 1. Reproduce the unmodified NPGS desktop build and record same-machine timing.
@@ -235,8 +261,11 @@ continuation, or maximal extension.
 4. Add an independent CPU Kerr-Newman reference before accepting nonzero charge.
    **Neutral exterior ray geometry passed on 2026-08-06; polarization and
    maximal extension remain open.**
-5. Add native OpenXR/Vulkan rendering and pass desktop plus Quest PCVR gates.
-6. Only then archive the Unity frontend outside the default branch.
+5. Validate native disk semantics before consuming them in the replacement
+   runtime. **Kerr `Q=0` first/second crossings passed on 2026-08-06; charged
+   disk and Page-Thorne emission remain open.**
+6. Add native OpenXR/Vulkan rendering and pass desktop plus Quest PCVR gates.
+7. Only then archive the Unity frontend outside the default branch.
 
 ## Licensing Boundary
 

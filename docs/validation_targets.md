@@ -995,6 +995,28 @@ Native XR gate (open):
 See `validation/npgs_native_baseline/README.md` and
 `validation/npgs_kerr_newman/README.md`.
 
+Native Kerr disk-transfer gate (passed on 2026-08-06):
+
+- use the NPGS shared native ray path at quality `>=2`, `Q=0`, and preserve the
+  first two true equatorial crossing orders independently of annulus validity;
+- compare exact native launch-state replays against CPU f64 for `r_m`, BL
+  `phi_m`, BL `Delta t_m`, finite-observer `g_m`, crossing presence, validity,
+  flags, and order;
+- require zero CPU replay failures and zero presence/validity/flag/order
+  mismatches;
+- require max errors `<0.03M` in radius, `<5e-4 rad` in azimuth, `<0.03M` in
+  delay, and `<5e-4` in redshift;
+- the formal 318-ray gate measured `0.0199722M`, `3.4780e-4 rad`, `0.0207713M`,
+  and `2.0221e-4`, respectively, with valid counts `[142,41]` on both sides;
+- evaluate Killing `E/L` from the exact initial state. Separately interpolated
+  crossing `x,p` are forbidden for redshift because they do not preserve the
+  bilinear angular-momentum invariant;
+- distinguish the native finite-observer redshift from the asymptotic-observer
+  helper and retain the CPU single-chart horizon guard as a documented
+  diagnostic boundary.
+
+See `validation/npgs_disk_transfer/README.md`.
+
 ## Phase 6 Simplified GRRT
 
 Required checks:

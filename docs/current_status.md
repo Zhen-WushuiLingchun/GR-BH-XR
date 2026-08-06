@@ -16,12 +16,12 @@ evidence. Neither should be used alone to infer the current runtime.
 | Unity Task 9 live tracer | Live single-Kerr integration | Cartesian Kerr-Schild rays are integrated in Unity compute in bounded batches. A completed map is hard-swapped after several display frames; this is not a newly converged full-resolution per-eye solution every headset frame. |
 | Unity Tasks 7-8 roam/descent | Worldline-keyframe playback | Uses audited finite-observer and rain-frame keyframes. Playback is distinct from unrestricted six-degree-of-freedom tracing. |
 | Unity Task 10 MR | Experimental, unaccepted | Camera/depth integration code exists, but calibrated RGB delivery and registration have not been demonstrated on the device. Enumeration, compilation, or depth acquisition alone is not acceptance. |
-| Native NPGS fork | Accepted for neutral exterior Kerr and sub-extremal Kerr-Newman rays at quality 2; broader migration candidate | Complete official history is pinned through the GPL fork. Exact native launch states pass independent CPU f64 event/direction gates for Kerr, a generic charged geometry, and the Reissner-Nordstrom limit. Polarization, disk parity, maximal extension, OpenXR, and MR remain independently blocked. |
+| Native NPGS fork | Accepted for neutral exterior Kerr/Kerr-Newman rays and Kerr `Q=0` disk transfer at quality 2; broader migration candidate | Complete official history is pinned through the GPL fork. Exact native launch states pass independent CPU f64 event/direction gates for Kerr, a generic charged geometry, the Reissner-Nordstrom limit, and the first two Kerr disk crossings. Polarization, charged-disk physics, maximal extension, OpenXR, and MR remain independently blocked. |
 
-The repository suite passed `243` tests on 2026-08-06 after the Task 9/10
+The repository suite passed `250` tests on 2026-08-06 after the Task 9/10
 baseline was fast-forwarded to `main`, complete Unity `.meta` coverage was
-restored, and the native NPGS raw-v2 Kerr plus Kerr-Newman exact-state gates
-were added.
+restored, and the native NPGS raw-v2 Kerr, Kerr-Newman, and Kerr disk-transfer
+gates were added.
 
 ## NPGS Native Migration
 
@@ -29,7 +29,7 @@ The selected future runtime is a native fork of NPGS rather than a Unity port
 of its GPL shader. The public upstream baseline reviewed for this decision is
 `baopinshui/NPGS@a039e6417b28d53cbd413ee8f6d64543e755aa3e`.
 The current pinned integration revision is
-`Zhen-WushuiLingchun/NPGS@20acb4a0c25d1b6899625d9ceda6d8e97b93a906`.
+`Zhen-WushuiLingchun/NPGS@6a128e1bcf69bcdcc2c3c84c59a8111a3bc6bf97`.
 The complete public ref set was refreshed on 2026-08-06; no public BBH/GW
 source was found.
 
@@ -42,8 +42,10 @@ renderer is checked. NPGS becomes the default runtime only after:
    (**passed at native quality 2 on 2026-08-06**);
 2. Kerr-Newman behavior has an independent CPU/reference validation path
    (**neutral exterior rays passed on 2026-08-06**);
-3. its fast path has a reproducible same-hardware performance baseline;
-4. native OpenXR passes stereo, world-lock, control, and headset frame-time
+3. native Kerr disk transfer matches the CPU reference
+   (**`Q=0`, first two crossings passed on 2026-08-06**);
+4. its fast path has a reproducible same-hardware performance baseline;
+5. native OpenXR passes stereo, world-lock, control, and headset frame-time
    gates.
 
 Until those gates pass, NPGS is an integration candidate and the Unity runtime
@@ -75,7 +77,8 @@ Current status should therefore be read by capability, not by number:
 - Walker-Penrose polarization validation; neutral exterior Kerr-Newman
   geodesics are accepted, but polarization, charged particles, and maximal
   extension are not.
-- NPGS disk-transfer parity and Page-Thorne integration.
+- NPGS Kerr `Q=0` disk-transfer parity has passed; charged-disk physics and
+  Page-Thorne integration remain open.
 - Native Vulkan/OpenXR PCVR integration.
 - Device proof of calibrated MR RGB delivery before any passthrough-lensing
   claim.

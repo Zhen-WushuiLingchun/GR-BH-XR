@@ -19,6 +19,42 @@ from here.
 
 ## Log
 
+### 2026-08-06 - NPGS native Kerr disk-transfer gate
+
+- Goal: Reuse NPGS's shared native `TraceRay` path for disk transfer while
+  independently checking its first two equatorial crossings against the CPU
+  f64 Kerr reference.
+- Changed files / components: the NPGS fork now exports `m=0/1` crossing
+  radius, Boyer-Lindquist azimuth/time delay, finite-observer redshift, true
+  crossing order, validity, and flags through raw-v2. GR-BH-XR adds a
+  fail-closed parser, exact-state replay validator, HDF5/JSON evidence, tests,
+  a Unicode-safe native capture wrapper, and gate documentation.
+- Academic reason: NPGS is used directly as the runtime; only a minimal
+  independent replay is retained so the renderer does not certify its own
+  transfer quantities.
+- Physical correspondence: the disk is a neutral circular Kerr emitter over
+  `[r_ISCO,30M]`. The native finite-observer definition is
+  `g=1/[u^t(E-Omega L)]` because the camera tetrad fixes local launch frequency
+  to one. Killing `E` and spin-axis `L` are evaluated from the exact initial
+  canonical state, not from separately interpolated crossing fields.
+- Validation: quality 2, `a/M=0.9`, `Q=0`, `i=60 deg`, `r_obs=100M`, 65x65
+  produced `60 capture / 4165 escape / 0 invalid`, with native disk validity
+  `[1439,41]`. The 318-ray f64 replay included every second crossing and gave
+  native/CPU/compared valid counts `[142,41]`, zero presence/validity/flag/order
+  mismatches, and max errors `0.0199722M` in radius, `3.4780e-4 rad` in azimuth,
+  `0.0207713M` in delay, and `2.0221e-4` in redshift.
+- Numerical boundary: NPGS dynamically changes KS charts. The single-chart CPU
+  oracle stops past-directed captured rays `0.01M` outside `r_+`; all compared
+  disk crossings precede that guard. The resulting CPU worst `abs(H)=2.95e-4`
+  is retained as a chart-boundary diagnostic, not used as disk acceptance.
+- Claim boundary: this closes Kerr `Q=0` disk geometry/kinematics only.
+  Charged-disk physics, Page-Thorne integration, Walker-Penrose polarization,
+  maximal extension, and OpenXR remain open.
+- References: Cunningham disk transfer and the indexed NPGS revision; see
+  `validation/npgs_disk_transfer/README.md`.
+- Open issues / next steps: independently audit NPGS's existing polarization
+  path, then begin native Vulkan/OpenXR integration.
+
 ### 2026-08-06 - Native NPGS nonzero-charge Kerr-Newman gate
 
 - Goal: Accept or reject NPGS's nonzero-charge geodesic kernel without

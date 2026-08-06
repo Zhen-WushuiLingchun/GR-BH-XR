@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -146,6 +147,18 @@ def load_native_audit(
             raise ValueError(
                 "Native metadata declares disk slots reserved, but valid disk records were emitted."
             )
+    else:
+        _validate_disk_transfer(
+            metadata,
+            disk_r=disk_r,
+            disk_sin_phi=disk_sin_phi,
+            disk_cos_phi=disk_cos_phi,
+            disk_g=disk_g,
+            disk_delta_t=disk_delta_t,
+            disk_order=disk_order,
+            disk_validity=disk_validity,
+            disk_flags=disk_flags,
+        )
 
     for values in (disk_r, disk_sin_phi, disk_cos_phi, disk_g, disk_delta_t):
         values[~disk_validity] = np.nan
@@ -394,6 +407,62 @@ def _validate_native_summary(capture: NpgsAuditCapture) -> None:
             raise ValueError(
                 f"Native sidecar summary {key!r}={summary.get(key)!r} does not match raw value {value}."
             )
+
+
+def _validate_disk_transfer(
+    metadata: Mapping[str, Any],
+    *,
+    disk_r: np.ndarray,
+    disk_sin_phi: np.ndarray,
+    disk_cos_phi: np.ndarray,
+    disk_g: np.ndarray,
+    disk_delta_t: np.ndarray,
+    disk_order: np.ndarray,
+    disk_validity: np.ndarray,
+    disk_flags: np.ndarray,
+) -> None:
+    """Fail closed on physically malformed native disk-transfer records."""
+
+    claims = metadata["claims"]
+    required_claims = {
+        "disk_phi_coordinate": "Boyer-Lindquist",
+        "disk_delta_t_coordinate": "Boyer-Lindquist observer-minus-emitter time",
+        "disk_redshift_definition": (
+            "nu_observer_local / nu_emitter; observer-local launch frequency normalized to 1"
+        ),
+    }
+    for key, expected in required_claims.items():
+        if claims.get(key) != expected:
+            raise ValueError(f"Native disk-transfer claim {key!r} is missing or inconsistent.")
+
+    parameters = metadata["parameters"]
+    r_in = float(parameters.get("disk_inner_radius_M", math.nan))
+    r_out = float(parameters.get("disk_outer_radius_M", math.nan))
+    if not (math.isfinite(r_in) and math.isfinite(r_out) and 0.0 < r_in < r_out):
+        raise ValueError("Native disk radii must satisfy 0 < r_in < r_out in M units.")
+    if np.any((disk_flags < 0) | (disk_flags > 7)):
+        raise ValueError("Native disk flags must be a three-bit mask in [0, 7].")
+
+    for order in range(DISK_ORDERS):
+        valid = disk_validity[order]
+        if not np.any(valid):
+            continue
+        if np.any(disk_order[order, valid] != order):
+            raise ValueError(f"Valid disk order {order} records do not preserve true crossing order.")
+        if np.any(disk_flags[order, valid] != 0):
+            raise ValueError(f"Valid disk order {order} records must have zero flags.")
+        if np.any((disk_r[order, valid] < r_in) | (disk_r[order, valid] > r_out)):
+            raise ValueError(f"Valid disk order {order} radii fall outside the declared annulus.")
+        phase_norm = (
+            disk_sin_phi[order, valid].astype(np.float64) ** 2
+            + disk_cos_phi[order, valid].astype(np.float64) ** 2
+        )
+        if np.max(np.abs(phase_norm - 1.0)) > 5.0e-4:
+            raise ValueError(f"Valid disk order {order} phases are not unit normalized.")
+        if np.any(disk_g[order, valid] <= 0.0):
+            raise ValueError(f"Valid disk order {order} redshifts must be positive.")
+        if np.any(disk_delta_t[order, valid] < 0.0):
+            raise ValueError(f"Valid disk order {order} delays must be non-negative.")
 
 
 def _source_revisions(npgs_root: Path | str | None) -> dict[str, str]:
