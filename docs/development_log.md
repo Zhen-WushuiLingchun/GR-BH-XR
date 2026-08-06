@@ -19,6 +19,47 @@ from here.
 
 ## Log
 
+### 2026-08-06 - NPGS exact-state Kerr replacement gate
+
+- Goal: Determine whether the native NPGS `Q_charge=0` path can replace the
+  accepted Kerr runtime without reconstructing camera initial conditions or
+  using NPGS as its own reference.
+- Changed files / components: NPGS raw audit schema v2 now records exact initial
+  and final ingoing Cartesian Kerr-Schild canonical states; the shared visual
+  kernel keeps exact Kerr geometry active through the finite escape boundary;
+  Carter diagnostics use the angular separation formula rather than the
+  cancellation-prone radial potential. GR-BH-XR adds a BL/KS dual-reference
+  cross-check and full-grid endpoint invariant persistence.
+- Academic reason: A visual match is insufficient for runtime replacement. The
+  CPU must replay the exact state consumed by the native shader and independently
+  compare event class, escaped direction, Hamiltonian, and Killing/Carter
+  diagnostics.
+- Physical correspondence: NPGS stores `(x,y,z,t)`, spin along `+y`, and traces
+  with negative affine step. The CPU uses `(t,x,y,z)`, spin along `+z`, and
+  positive affine step. The cross-check applies the proper spatial rotation
+  `(x,y,z)_N -> (x,-z,y)_P` and negates the complete covector. BL f64 supplies
+  exterior event classification; ingoing Cartesian KS f64 supplies escaped-ray
+  direction in the same regular chart.
+- Validation: native quality 2 at `a/M=0.9`, `Q=0`, `i=60 deg`, `r_obs=100M`,
+  33x33 produced `104 capture / 985 escape / 0 invalid`. On 257 deterministic
+  CPU samples, stable and all-resolved event agreement were both `1.0`; escaped
+  direction median/RMS/max errors were `1.39e-5 / 2.77e-5 / 9.51e-5 rad`.
+  Full-grid endpoint drift maxima were `0` for `E`, `6.71e-4` for `L_z`, and
+  `1.02e-3` for `Q`. Escaped endpoint `abs(H)` was at most `1.90e-7`.
+  Same-machine visual timing at fork `20acb4a` measured 189 median FPS at
+  1080p and 71 at 4K versus the pre-audit 183/69 comparison, so the five-percent
+  regression gate passes. The complete GR-BH-XR suite passed `232` tests, and
+  the raw-v2 artifact converted successfully to HDF5/JSON with its exact-state
+  and source-provenance fields intact.
+- Claim boundary: quality 1 remains a visual fast mode; quality 2 is the minimum
+  accepted audit/scientific mode. Captured endpoint covectors can be `O(1e4)` at
+  the horizon, making f32-serialized endpoint H cancellation-conditioned; that
+  value and a single `0.099` transient stepwise Carter spike remain recorded but
+  are not substituted for endpoint invariant drift.
+- Open issues / next steps: the `Q=0` Kerr replacement slice is closed. Nonzero
+  charge, Walker-Penrose polarization, native OpenXR, and disk-transfer parity
+  remain gated independently.
+
 ### 2026-08-06 - Native NPGS audit capture and versioned artifact conversion
 
 - Goal: Make NPGS emit inspectable physics records while preserving its visual

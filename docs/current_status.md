@@ -16,19 +16,20 @@ evidence. Neither should be used alone to infer the current runtime.
 | Unity Task 9 live tracer | Live single-Kerr integration | Cartesian Kerr-Schild rays are integrated in Unity compute in bounded batches. A completed map is hard-swapped after several display frames; this is not a newly converged full-resolution per-eye solution every headset frame. |
 | Unity Tasks 7-8 roam/descent | Worldline-keyframe playback | Uses audited finite-observer and rain-frame keyframes. Playback is distinct from unrestricted six-degree-of-freedom tracing. |
 | Unity Task 10 MR | Experimental, unaccepted | Camera/depth integration code exists, but calibrated RGB delivery and registration have not been demonstrated on the device. Enumeration, compilation, or depth acquisition alone is not acceptance. |
-| Native NPGS fork | Migration candidate | Complete official history is pinned through the GPL fork. The repaired visual path builds and meets the local 4K/60 zero point, but no NPGS physics output is accepted until audit buffers pass the independent Kerr/Kerr-Newman gates. |
+| Native NPGS fork | Accepted for the `Q_charge=0` Kerr slice at quality 2; broader migration candidate | Complete official history is pinned through the GPL fork. Exact native launch states pass independent CPU f64 event/direction gates. Kerr-Newman charge, polarization, disk parity, OpenXR, and MR remain independently blocked. |
 
-The repository suite passed `220` tests on 2026-08-06 after the Task 9/10
+The repository suite passed `232` tests on 2026-08-06 after the Task 9/10
 baseline was fast-forwarded to `main`, complete Unity `.meta` coverage was
-restored, and the native NPGS integration contracts were added.
+restored, and the native NPGS raw-v2 conversion and exact-state Kerr
+cross-check were added.
 
 ## NPGS Native Migration
 
 The selected future runtime is a native fork of NPGS rather than a Unity port
 of its GPL shader. The public upstream baseline reviewed for this decision is
 `baopinshui/NPGS@a039e6417b28d53cbd413ee8f6d64543e755aa3e`.
-The current pinned integration baseline is
-`Zhen-WushuiLingchun/NPGS@d39c7d78d34273c683bf558fdff3364b5a547d28`.
+The current pinned integration revision is
+`Zhen-WushuiLingchun/NPGS@20acb4a0c25d1b6899625d9ceda6d8e97b93a906`.
 The complete public ref set was refreshed on 2026-08-06; no public BBH/GW
 source was found.
 
@@ -37,7 +38,8 @@ validation. GR-BH-XR retains its Python f64 reference solvers, audit schemas,
 Page-Thorne disk model, validation gates, and Unity baseline while the native
 renderer is checked. NPGS becomes the default runtime only after:
 
-1. its `Q_charge = 0` Kerr output passes the existing CPU-reference gates;
+1. its `Q_charge = 0` Kerr output passes the existing CPU-reference gates
+   (**passed at native quality 2 on 2026-08-06**);
 2. Kerr-Newman behavior has an independent CPU/reference validation path;
 3. its fast path has a reproducible same-hardware performance baseline;
 4. native OpenXR passes stereo, world-lock, control, and headset frame-time
@@ -69,8 +71,8 @@ Current status should therefore be read by capability, not by number:
 
 ## Open Gates
 
-- NPGS audit-buffer export and `Q_charge = 0` CPU comparison.
 - Independent Kerr-Newman and Walker-Penrose validation.
+- NPGS disk-transfer parity and Page-Thorne integration.
 - Native Vulkan/OpenXR PCVR integration.
 - Device proof of calibrated MR RGB delivery before any passthrough-lensing
   claim.

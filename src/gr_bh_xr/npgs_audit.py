@@ -15,10 +15,11 @@ import h5py
 import numpy as np
 
 
-RAW_SCHEMA = "gr-bh-xr.npgs.audit.raw.v1"
+RAW_SCHEMA_V1 = "gr-bh-xr.npgs.audit.raw.v1"
+RAW_SCHEMA_V2 = "gr-bh-xr.npgs.audit.raw.v2"
+RAW_SCHEMA = RAW_SCHEMA_V2
 SCHEMA = "gr-bh-xr.npgs.audit.v1"
-RECORD_FLOAT_COUNT = 32
-RECORD_BYTES = RECORD_FLOAT_COUNT * np.dtype("<f4").itemsize
+RECORD_FLOAT_COUNTS = {RAW_SCHEMA_V1: 32, RAW_SCHEMA_V2: 48}
 DISK_ORDERS = 2
 
 
@@ -52,6 +53,10 @@ class NpgsAuditCapture:
     disk_order: np.ndarray
     disk_validity: np.ndarray
     disk_flags: np.ndarray
+    initial_ingoing_x: np.ndarray | None
+    initial_ingoing_p_cov: np.ndarray | None
+    final_ingoing_x: np.ndarray | None
+    final_ingoing_p_cov: np.ndarray | None
 
 
 def load_native_audit(
@@ -70,15 +75,18 @@ def load_native_audit(
 
     height = _positive_int(metadata, "height")
     width = _positive_int(metadata, "width")
-    expected_bytes = height * width * RECORD_BYTES
+    raw_schema = str(metadata["schema"])
+    record_float_count = RECORD_FLOAT_COUNTS[raw_schema]
+    record_bytes = record_float_count * np.dtype("<f4").itemsize
+    expected_bytes = height * width * record_bytes
     actual_bytes = raw_path.stat().st_size
     if actual_bytes != expected_bytes:
         raise ValueError(
             f"Raw audit byte length is {actual_bytes}; expected {expected_bytes} "
-            f"for {width}x{height}x{RECORD_FLOAT_COUNT} float32 values."
+            f"for {width}x{height}x{record_float_count} float32 values."
         )
 
-    records = np.fromfile(raw_path, dtype="<f4").reshape(height, width, RECORD_FLOAT_COUNT)
+    records = np.fromfile(raw_path, dtype="<f4").reshape(height, width, record_float_count)
     if not np.all(np.isfinite(records)):
         bad = np.argwhere(~np.isfinite(records))[0]
         raise ValueError(
@@ -142,6 +150,11 @@ def load_native_audit(
     for values in (disk_r, disk_sin_phi, disk_cos_phi, disk_g, disk_delta_t):
         values[~disk_validity] = np.nan
 
+    initial_ingoing_x = records[..., 32:36].copy() if raw_schema == RAW_SCHEMA_V2 else None
+    initial_ingoing_p_cov = records[..., 36:40].copy() if raw_schema == RAW_SCHEMA_V2 else None
+    final_ingoing_x = records[..., 40:44].copy() if raw_schema == RAW_SCHEMA_V2 else None
+    final_ingoing_p_cov = records[..., 44:48].copy() if raw_schema == RAW_SCHEMA_V2 else None
+
     capture = NpgsAuditCapture(
         raw_path=raw_path,
         metadata_path=metadata_path,
@@ -169,6 +182,10 @@ def load_native_audit(
         disk_order=disk_order,
         disk_validity=disk_validity,
         disk_flags=disk_flags,
+        initial_ingoing_x=initial_ingoing_x,
+        initial_ingoing_p_cov=initial_ingoing_p_cov,
+        final_ingoing_x=final_ingoing_x,
+        final_ingoing_p_cov=final_ingoing_p_cov,
     )
     _validate_native_summary(capture)
     return capture
@@ -209,7 +226,7 @@ def _write_hdf5(
     parameters = metadata["parameters"]
     with h5py.File(out_h5, "w") as handle:
         handle.attrs["schema"] = SCHEMA
-        handle.attrs["raw_schema"] = RAW_SCHEMA
+        handle.attrs["raw_schema"] = str(metadata["schema"])
         handle.attrs["source_raw_file"] = str(capture.raw_path)
         handle.attrs["source_metadata_file"] = str(capture.metadata_path)
         handle.attrs["generation_command"] = command
@@ -272,6 +289,15 @@ def _write_hdf5(
         }
         for name, values in datasets.items():
             handle.create_dataset(name, data=values, compression="gzip", shuffle=True)
+        state_datasets = {
+            "initial_ingoing_x_native": capture.initial_ingoing_x,
+            "initial_ingoing_p_cov_native": capture.initial_ingoing_p_cov,
+            "final_ingoing_x_native": capture.final_ingoing_x,
+            "final_ingoing_p_cov_native": capture.final_ingoing_p_cov,
+        }
+        for name, values in state_datasets.items():
+            if values is not None:
+                handle.create_dataset(name, data=values, compression="gzip", shuffle=True)
 
 
 def _build_summary(
@@ -301,6 +327,7 @@ def _build_summary(
             int(np.count_nonzero(capture.disk_validity[order]))
             for order in range(DISK_ORDERS)
         ],
+        "canonical_state_present": capture.initial_ingoing_x is not None,
         "max_steps": int(np.max(capture.steps)),
         "max_raw_hamiltonian_abs": float(np.max(capture.h_max_raw_abs)),
         "max_projected_hamiltonian_abs": float(np.max(capture.h_max_projected_abs)),
@@ -320,14 +347,17 @@ def _build_summary(
 
 
 def _validate_metadata(metadata: Mapping[str, Any]) -> None:
-    if metadata.get("schema") != RAW_SCHEMA:
+    raw_schema = metadata.get("schema")
+    if raw_schema not in RECORD_FLOAT_COUNTS:
         raise ValueError(f"Unsupported native audit schema: {metadata.get('schema')!r}.")
     if metadata.get("dtype") != "float32-little-endian":
         raise ValueError("Native audit dtype must be float32-little-endian.")
-    if int(metadata.get("record_float_count", -1)) != RECORD_FLOAT_COUNT:
-        raise ValueError(f"Native audit record must contain {RECORD_FLOAT_COUNT} floats.")
-    if int(metadata.get("record_bytes", -1)) != RECORD_BYTES:
-        raise ValueError(f"Native audit record must contain {RECORD_BYTES} bytes.")
+    record_float_count = RECORD_FLOAT_COUNTS[str(raw_schema)]
+    record_bytes = record_float_count * np.dtype("<f4").itemsize
+    if int(metadata.get("record_float_count", -1)) != record_float_count:
+        raise ValueError(f"Native audit record must contain {record_float_count} floats.")
+    if int(metadata.get("record_bytes", -1)) != record_bytes:
+        raise ValueError(f"Native audit record must contain {record_bytes} bytes.")
     for key in ("parameters", "device", "claims", "event_codes", "failure_codes"):
         if not isinstance(metadata.get(key), Mapping):
             raise ValueError(f"Native audit metadata is missing object {key!r}.")
@@ -335,6 +365,16 @@ def _validate_metadata(metadata: Mapping[str, Any]) -> None:
         raise ValueError("Native audit event mapping is missing 'escape'.")
     if "disk_transfer_slots_valid" not in metadata["claims"]:
         raise ValueError("Native audit claims omit disk_transfer_slots_valid.")
+    if raw_schema == RAW_SCHEMA_V2:
+        contract = metadata.get("canonical_state_contract")
+        if not isinstance(contract, Mapping):
+            raise ValueError("Native audit v2 metadata is missing canonical_state_contract.")
+        if contract.get("chart") != "ingoing Cartesian Kerr-Schild":
+            raise ValueError("Native audit v2 canonical states must use ingoing Cartesian Kerr-Schild.")
+        if contract.get("component_order") != ["x", "y", "z", "t"]:
+            raise ValueError("Native audit v2 canonical state component order is not (x,y,z,t).")
+        if contract.get("momentum_variance") != "covariant":
+            raise ValueError("Native audit v2 momentum must be covariant.")
 
 
 def _validate_native_summary(capture: NpgsAuditCapture) -> None:

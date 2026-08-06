@@ -909,13 +909,14 @@ Baseline build/performance gate (passed on 2026-08-06):
 - the repaired pre-audit visual path measures 200 median FPS at 1080p and
   76 median FPS at exact 4K on the recorded RTX 5080 Laptop configuration.
 
-Physics replacement gate (open):
+Physics replacement gate (partially passed; nonzero charge remains open):
 
 - visual and audit modes share one GLSL geodesic core;
 - audit schema `gr-bh-xr.npgs.audit.v1` records event/failure codes, escape
   direction, minimum radius, steps, Hamiltonian and Killing/Carter drift, and
   the first two disk-transfer orders;
-- `Q_charge=0` passes existing stable-region Kerr event and direction gates;
+- `Q_charge=0` passes existing stable-region Kerr event and direction gates at
+  native quality 2 or higher; quality 1 is visual-only;
 - nonzero charge is blocked until an independent CPU f64 Kerr-Newman reference
   passes Kerr and Reissner-Nordstrom limits, horizons, nullness, and conserved
   quantities;
@@ -923,23 +924,36 @@ Physics replacement gate (open):
 - fast-path performance after audit-core extraction regresses by no more than
   five percent from the same-machine baseline.
 
-Native audit transport gate (passed on 2026-08-06):
+Native audit transport and Kerr replay gate (passed on 2026-08-06):
 
-- the native offscreen pass emits exactly 32 finite little-endian float32
-  fields per pixel and a sidecar that agrees with the binary event counts;
+- raw v1 emits 32 float32 fields / 128 bytes; raw v2 emits 48 float32 fields /
+  192 bytes and adds exact initial/final ingoing Cartesian Kerr-Schild canonical
+  states. Both use a sidecar that agrees with binary event counts;
 - the Python converter rejects malformed byte lengths, unknown codes,
   inconsistent escape validity, and non-unit escape directions;
 - final HDF5 schema `gr-bh-xr.npgs.audit.v1` preserves the raw record, exposes
   normalized `M=1` fields, and records official-upstream, fork, compiled shader,
   GPU, driver, observer, and integrator provenance;
-- the default visual path remains byte-identical at the SPIR-V level, and an
-  interleaved parent/current timing check measured `183 -> 181 FPS` at 1080p
-  and `69 -> 68 FPS` at 4K, both below the five-percent regression limit.
+- at `a/M=0.9`, `Q=0`, `i=60 deg`, `r_obs=100M`, quality 2, 33x33, the native
+  capture has `104 capture / 985 escape / 0 invalid`;
+- deterministic 257-sample CPU replay requires stable event agreement `>=0.98`,
+  direction median `<1e-4 rad`, and RMS `<5e-4 rad`; measured values are
+  `1.0`, `1.39e-5 rad`, and `2.77e-5 rad` (max `9.51e-5 rad`);
+- full-grid native endpoint drift maxima are `0` for `E`, `6.71e-4` for `L_z`,
+  and `1.02e-3` for `Q`; escaped endpoint `abs(H)` is at most `1.90e-7`;
+- exact-geometry fast-path timing at fork `20acb4a` measured 189 FPS at 1080p
+  and 71 FPS at 4K versus the pre-audit 183/69 comparison, passing the
+  five-percent regression limit.
 
 This gate does not accept the NPGS Hamiltonian projection as physical accuracy.
-Raw pre-projection `abs(H)`, post-projection `abs(H)`, and relative momentum
-correction remain separate datasets. The `Q_charge=0` CPU-f64 comparison is
-still required before the physics replacement gate can close.
+Raw pre-projection `abs(H)`, post-projection `abs(H)`, relative momentum
+correction, endpoint invariants, and stepwise Carter maxima remain separate
+datasets. Captured endpoint H reconstructed from serialized f32 covectors is
+not a gate because near-horizon components reach `O(1e4)` and suffer
+cancellation; escaped endpoint H and endpoint `E/L_z/Q` are reported directly.
+One `0.099` stepwise Carter transient is retained as an outlier while its
+endpoint drift remains `O(1e-4)`. This closes only the `Q_charge=0` Kerr slice,
+not Kerr-Newman or polarization.
 
 Native XR gate (open):
 

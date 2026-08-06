@@ -1,7 +1,7 @@
 # NPGS Native Build And Performance Baseline
 
-Status: **build/performance baseline passed; physics replacement not yet
-accepted**.
+Status: **build/performance baseline and the quality-2 `Q_charge=0` Kerr slice
+passed; Kerr-Newman, polarization, disk parity, and native XR remain open**.
 
 ## Source Boundary
 
@@ -10,8 +10,8 @@ accepted**.
   `a039e6417b28d53cbd413ee8f6d64543e755aa3e`
 - Integration fork:
   https://github.com/Zhen-WushuiLingchun/NPGS
-- Measured fork SHA:
-  `d39c7d78d34273c683bf558fdff3364b5a547d28`
+- Current audited fork SHA:
+  `20acb4a0c25d1b6899625d9ceda6d8e97b93a906`
 - Submodule path: `runtime/NPGS`
 
 The 2026-08-06 refresh fetched complete, non-shallow histories from the fork
@@ -71,12 +71,43 @@ same-machine zero point for the fork before audit extraction. They do not prove
 that NPGS's Kerr/Kerr-Newman geodesics, polarization, disk, maximal extension,
 or observer models agree with GR-BH-XR references.
 
+After exact-state raw v2 instrumentation and exact Kerr geometry through the
+finite escape boundary, the same fast path measured 189 median FPS at 1080p
+and 71 at exact 4K. Against the same-machine pre-audit 183/69 comparison this
+does not regress, so the five-percent performance gate remains closed.
+
+## Q=0 Kerr Replay
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.validate_npgs_kerr `
+  --raw outputs/npgs/audit_kerr_a09_i60_33_q2_stable_carter_axis.bin `
+  --samples 257 --critical-band-pixels 1 `
+  --out outputs/npgs/npgs_kerr_accepted_a09_i60_q2.json `
+  --h5 outputs/npgs/npgs_kerr_accepted_a09_i60_q2.h5
+```
+
+The raw-v2 capture contains 48 little-endian float32 fields / 192 bytes per
+pixel, including exact initial/final ingoing KS canonical states. At
+`a/M=0.9`, `Q=0`, `i=60 deg`, `r_obs=100M`, quality 2, 33x33:
+
+- events: `104 capture / 985 escape / 0 invalid`;
+- stable and all-resolved CPU f64 event agreement: `1.0`;
+- escaped-direction median/RMS/max: `1.39e-5 / 2.77e-5 / 9.51e-5 rad`;
+- endpoint max drift: `E=0`, `L_z=6.71e-4`, `Q=1.02e-3`;
+- escaped endpoint `abs(H)` max: `1.90e-7`.
+
+Quality 2 is the minimum audit/scientific mode. Quality 1 is retained as the
+visual fast path. Captured endpoint H is recorded but not accepted as an
+independent residual because f32 covector components become cancellation-
+conditioned at the horizon. Stepwise and endpoint Carter diagnostics are also
+kept separate; the former has one `0.099` transient while the latter remains
+at most `1.02e-3` over the full grid.
+
 ## Remaining Gates
 
-1. Shared visual/audit GLSL core and schema `gr-bh-xr.npgs.audit.v1`.
-2. `Q_charge = 0` comparison with the independent Kerr CPU f64 reference.
-3. Independent Kerr-Newman and Walker-Penrose validation.
-4. Fast-path regression at or below five percent after audit integration.
-5. Native OpenXR stereo and Quest PCVR frame-time validation.
+1. Independent Kerr-Newman and Walker-Penrose validation.
+2. NPGS disk-transfer parity with the accepted GR-BH-XR schema.
+3. Native OpenXR stereo and Quest PCVR frame-time validation.
 
 Generated JSON, logs, and screenshots remain under ignored `outputs/npgs/`.

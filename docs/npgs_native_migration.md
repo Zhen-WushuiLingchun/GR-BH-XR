@@ -42,7 +42,7 @@ Upstream synchronization uses explicit merge commits into the fork integration
 branch. The submodule pointer moves only after the new fork commit passes its
 documented build, physics, and performance gates. History is never squashed.
 
-The first pinned integration baseline is
+The first pinned integration baseline was
 `Zhen-WushuiLingchun/NPGS@d39c7d78d34273c683bf558fdff3364b5a547d28`.
 Its four commits after upstream are deliberately limited to reproducible vcpkg
 integration, fail-closed shader asset/startup repair, deterministic launch
@@ -109,12 +109,15 @@ Quest acceptance. Full evidence and commands are in
 
 ## Native Audit Transport
 
-Fork commit `6631537fdbb9b23a89c5268065ae6a2405a4db7a` adds an opt-in
+Fork commit `6631537fdbb9b23a89c5268065ae6a2405a4db7a` added an opt-in
 offscreen audit capture without changing the normal visual SPIR-V. Both the
 visual and audit fragment shaders call the same `TraceRay` implementation. The
-native process writes one 128-byte little-endian float32 record per pixel plus
-a JSON sidecar; `python -m gr_bh_xr.npgs_audit` validates and converts those
-files to final schema `gr-bh-xr.npgs.audit.v1`.
+native process originally wrote one 128-byte little-endian float32 record per
+pixel. Fork commit `20acb4a0c25d1b6899625d9ceda6d8e97b93a906` advances the raw
+transport to v2: 48 float32 fields / 192 bytes per pixel, adding exact initial
+and final ingoing Cartesian Kerr-Schild positions and covariant momenta. The
+Python converter remains backward-compatible with raw v1 and writes both to
+final schema `gr-bh-xr.npgs.audit.v1`.
 
 The converter fails closed on a mismatched schema or byte length, non-finite
 records, unknown or non-integral event/failure codes, inconsistent escape flags,
@@ -139,12 +142,55 @@ revisions together with adapter/driver and every physical launch parameter.
 This is a transport and provenance gate only; accepting Kerr physics still
 requires the independent CPU-f64 comparison below.
 
+## Q=0 Kerr Cross-Check
+
+The first physics replacement slice passes for native quality 2. The native
+canonical contract is `(x,y,z,t)` with spin `+y` and negative affine marching.
+The CPU reference rotates spatial components as
+`(x,y,z)_N -> (x,-z,y)_P`, reorders to `(t,x,y,z)`, and negates the full
+covector to replay the same null ray with positive affine parameter. BL f64 is
+used for exterior event classification, while ingoing Cartesian KS f64 is used
+for escaped-ray direction so the angular comparison stays in one regular chart.
+
+Command:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.validate_npgs_kerr `
+  --raw outputs/npgs/audit_kerr_a09_i60_33_q2_stable_carter_axis.bin `
+  --samples 257 --critical-band-pixels 1 `
+  --out outputs/npgs/npgs_kerr_accepted_a09_i60_q2.json `
+  --h5 outputs/npgs/npgs_kerr_accepted_a09_i60_q2.h5
+```
+
+At `a/M=0.9`, `Q=0`, `i=60 deg`, `r_obs=100M`, 33x33, the native result is
+`104 capture / 985 escape / 0 invalid`. Stable and all-resolved event agreement
+are `1.0`. Escaped-direction median/RMS/max errors are
+`1.39e-5 / 2.77e-5 / 9.51e-5 rad`, below the `1e-4 / 5e-4` acceptance limits.
+Quality 1 remains a visual fast mode; quality 2 is the minimum scientific/audit
+mode because quality-1 same-chart direction errors exceed the RMS target.
+
+Raw-v2 endpoint states also expose independent `E`, `L_z`, and angular-form
+Carter `Q` drift. The full-grid maxima are `0`, `6.71e-4`, and `1.02e-3`,
+respectively. Escaped endpoint `abs(H)` is at most `1.90e-7`. Captured endpoint
+covectors can reach `O(1e4)` at the horizon, so re-evaluating H from serialized
+f32 components is cancellation-conditioned and is recorded but not gated. The
+native per-step Carter maximum includes one transient `0.099` spike; endpoint
+drift for that ray remains `O(1e-4)`, so both diagnostics are retained with
+distinct labels rather than hiding or pooling them.
+
+The exact-geometry visual fast path at fork `20acb4a` measured 189 median FPS at
+1080p and 71 at exact 4K on the same RTX 5080 Laptop configuration, compared
+with the pre-audit 183/69 FPS run. The five-percent regression gate therefore
+passes.
+
 ## Migration Gates
 
 1. Reproduce the unmodified NPGS desktop build and record same-machine timing.
 2. Add a separate audit output path without slowing the default fast path by
    more than five percent.
-3. Set charge to zero and pass the existing Kerr CPU-reference gates.
+3. Set charge to zero and pass the existing Kerr CPU-reference gates. **Passed
+   at native quality 2 on 2026-08-06.**
 4. Add an independent CPU Kerr-Newman reference before accepting nonzero charge.
 5. Add native OpenXR/Vulkan rendering and pass desktop plus Quest PCVR gates.
 6. Only then archive the Unity frontend outside the default branch.
