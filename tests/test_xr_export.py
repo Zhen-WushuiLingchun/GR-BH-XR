@@ -643,10 +643,17 @@ def test_unity_editor_urp_asset_repair_never_edits_serialized_version_fields():
     assert "SerializationUtility.GetManagedReferencesWithMissingTypes" in source
     assert "SerializationUtility.ClearAllManagedReferencesWithMissingTypes" in source
 
-    # The project-wide default Volume is the one settings-container value with a
-    # public setter in URP 17.0.4, so it is preserved through the typed
-    # IDefaultVolumeProfileSettings surface and verified afterwards. Everything
-    # else that cannot be carried across is reported, never guessed at.
+    # Compatible settings are sanitized through the installed-version factory,
+    # copied by managed-reference type, and byte-verified before the registered
+    # asset is touched. The typed Volume surface remains an extra load-bearing
+    # post-write check.
+    assert "RenderPipelineGlobalSettingsUtils.Create(existing.GetType(), sanitizedPath, existing)" in source
+    assert "CopyCompatibleManagedSettings" in source
+    assert "CollectManagedSettingsByType" in source
+    assert "EditorJsonUtility.ToJson" in source
+    assert "EditorJsonUtility.FromJsonOverwrite" in source
+    assert "AssertManagedSettingsEqual" in source
+    assert "preserved and byte-verified" in source
     assert (
         "TryGetRenderPipelineSettingsForPipeline<URPDefaultVolumeProfileSettings, UniversalRenderPipeline>"
         in source
@@ -662,10 +669,13 @@ def test_unity_editor_urp_asset_repair_never_edits_serialized_version_fields():
     assert "BeginUrpConstructionScope" in source
     assert "EndUrpConstructionScope" in source
     # Audit, preflight and repair each open the scope; each closes it in a finally.
-    assert source.count("= BeginUrpConstructionScope();") == 3
-    assert source.count("EndUrpConstructionScope(volumeProfilePathWasOccupied") == 3
+    assert source.count("BeginUrpConstructionScope();") == 3
+    assert source.count("EndUrpConstructionScope(") == 4  # declaration plus three finally calls
+    assert "AssetDatabase.LoadMainAssetAtPath(UrpDefaultVolumeProfilePath)" in source
+    assert "File.Exists(absolutePath)" in source
     assert "refusing to run:" in source
     assert "removed the transient" in source
+    assert "could not delete it" in source
 
     # Repair is explicit; it is never reachable from setup or build.
     assert '[MenuItem(RepairMenuPath)]' in source
@@ -689,7 +699,7 @@ def test_unity_editor_urp_asset_repair_never_edits_serialized_version_fields():
 
     # Machine-readable audit report in the Unity project's non-imported output
     # area, with the fields the operator needs to compare before and after.
-    assert '"grbhxr.urp_asset_repair/1"' in source
+    assert '"grbhxr.urp_asset_repair/2"' in source
     assert '"Logs", "GRBHXR", "urp_asset_repair"' in source
     assert "-grbhxrUrpRepairReportDir" in source
     assert "public UrpAssetProbe[] before" in source
@@ -699,7 +709,24 @@ def test_unity_editor_urp_asset_repair_never_edits_serialized_version_fields():
     assert "public bool registrationsChanged" in source
     assert "public string[] rendererDataPaths" in source
     assert "public string backupDirectory" in source
+    assert "public bool rollbackPerformed" in source
+    assert "RestoreBackups" in source
+    assert "rollback also failed" in source
+    assert '"-grbhxrUrpRepairTestFailAfterAssets"' in source
+    assert "every incompatible asset is backed up" in source
+    assert "injected validation failure" in source
+    assert "Keep cleanup inside the transaction boundary" in source
+    assert "repair did not converge" in source
+    assert "changed a GraphicsSettings or QualitySettings asset registration" in source
     assert "JsonUtility.ToJson" in source
+
+    # Every renderer slot and the default index are verified; a repair cannot
+    # silently keep only rendererDataList[0]. Project reference keys use the full
+    # property path so same-named fields cannot alias in the loss report.
+    assert "AssertRendererDataPreserved" in source
+    assert "renderer data slot {index} is null" in source
+    assert "StableProjectReferenceKey" in source
+    assert 'return $"managed:{typeName}{relativePath}";' in source
 
     assert "Unity.RenderPipelines.Universal.Runtime" in asmdef
     assert "Unity.RenderPipelines.Core.Runtime" in asmdef

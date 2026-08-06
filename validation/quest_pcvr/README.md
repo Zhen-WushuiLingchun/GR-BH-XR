@@ -41,6 +41,18 @@ not, and the log names each asset with its serialized and expected version. The
 repair entry point is `...BatchRepairUrpAssets` and is the only one that writes.
 See `xr/unity_frontend/README.md` for the full contract.
 
+The accepted repair gate also requires preservation evidence, not only matching
+version numbers. Schema-v2 reports must state that all 26 URP-17.0.4-compatible
+managed settings were copied and serialized identically, every renderer-data
+slot and default renderer index survived, project references are matched by
+managed type plus relative property path, and `registrationsChanged` is false.
+A deliberate one-asset failure run must exit `1`, report
+`rollbackPerformed: true`, and restore the original `10/13/13` versions before a
+normal repair is accepted. These checks prevent a compiling but silently reset
+render configuration from passing the gate. Post-write compatibility,
+registration equality, and transient-asset cleanup are part of the same
+transaction and must fail into that rollback path.
+
 A project that opens, compiles, and passes this preflight is version-consistent.
 That is a build-tooling result only. It is not a headset result and it is not an
 MR passthrough RGB result; those remain gated on the protocol below and on the

@@ -62,8 +62,9 @@ namespace GRBHXR.EditorTools
         private const string RenderPipelineAssetVersionProperty = "k_AssetVersion";
         private const string GlobalSettingsContainerProperty = "m_Settings";
 
-        private const string ReportSchema = "grbhxr.urp_asset_repair/1";
+        private const string ReportSchema = "grbhxr.urp_asset_repair/2";
         private const string ReportDirArgument = "-grbhxrUrpRepairReportDir";
+        private const string FailureInjectionArgument = "-grbhxrUrpRepairTestFailAfterAssets";
 
         // Serialized properties that must never be carried from the incompatible
         // asset into the pristine one. The version fields are the whole point of
@@ -96,14 +97,14 @@ namespace GRBHXR.EditorTools
             PopulateEnvironment(report);
 
             var notes = new List<string>();
-            bool volumeProfilePathWasOccupied = BeginUrpConstructionScope();
+            BeginUrpConstructionScope();
             try
             {
                 report.before = ProbeAll();
             }
             finally
             {
-                EndUrpConstructionScope(volumeProfilePathWasOccupied, notes);
+                EndUrpConstructionScope(notes);
             }
 
             report.after = report.before;
@@ -153,14 +154,14 @@ namespace GRBHXR.EditorTools
 
             var notes = new List<string>();
             UrpAssetProbe[] probes;
-            bool volumeProfilePathWasOccupied = BeginUrpConstructionScope();
+            BeginUrpConstructionScope();
             try
             {
                 probes = ProbeAll();
             }
             finally
             {
-                EndUrpConstructionScope(volumeProfilePathWasOccupied, notes);
+                EndUrpConstructionScope(notes);
             }
             foreach (string note in notes)
             {
@@ -224,52 +225,119 @@ namespace GRBHXR.EditorTools
             var preserved = new List<string>();
             var deliberateDefaults = new List<string>();
 
-            bool volumeProfilePathWasOccupied = BeginUrpConstructionScope();
+            BeginUrpConstructionScope();
             try
             {
-                report.before = ProbeAll();
-
-                string backupDirectory = Path.Combine(ReportDirectory(), $"pre_repair_{report.timestampUtc}");
-                Directory.CreateDirectory(backupDirectory);
-                report.backupDirectory = backupDirectory.Replace('\\', '/');
-
-                foreach (UrpAssetProbe probe in report.before)
+                try
                 {
-                    if (probe.compatible)
+                    report.before = ProbeAll();
+
+                    string backupDirectory = Path.Combine(ReportDirectory(), $"pre_repair_{report.timestampUtc}");
+                    Directory.CreateDirectory(backupDirectory);
+                    report.backupDirectory = backupDirectory.Replace('\\', '/');
+
+                    // A repair is transactional: every incompatible asset is backed up
+                    // before the first serialized object is changed.
+                    foreach (UrpAssetProbe probe in report.before)
                     {
-                        actions.Add($"skipped {probe.assetPath}: already at version {probe.serializedVersion}");
-                        continue;
+                        if (!probe.compatible)
+                        {
+                            BackupAssetFile(probe.assetPath, backupDirectory);
+                        }
                     }
 
-                    BackupAssetFile(probe.assetPath, backupDirectory);
+                    int failAfterAssets = CommandLineIntValue(FailureInjectionArgument, 0);
+                    int repairedAssets = 0;
+                    foreach (UrpAssetProbe probe in report.before)
+                    {
+                        if (probe.compatible)
+                        {
+                            actions.Add($"skipped {probe.assetPath}: already at version {probe.serializedVersion}");
+                            continue;
+                        }
 
-                    if (probe.role == "globalSettings")
-                    {
-                        RepairGlobalSettings(probe, actions, preserved, deliberateDefaults);
+                        if (probe.role == "globalSettings")
+                        {
+                            RepairGlobalSettings(probe, actions, preserved, deliberateDefaults);
+                        }
+                        else
+                        {
+                            RepairRenderPipelineAsset(probe, actions, preserved, deliberateDefaults);
+                        }
+                        repairedAssets += 1;
+                        if (failAfterAssets > 0 && repairedAssets >= failAfterAssets)
+                        {
+                            throw new InvalidOperationException(
+                                $"{LogPrefix} injected validation failure after {repairedAssets} repaired asset(s)."
+                            );
+                        }
                     }
-                    else
+
+                    AssetDatabase.SaveAssets();
+                    AssetDatabase.Refresh();
+
+                    // Probed inside the scope so the transient volume profile URP creates
+                    // is removed once, after both probe passes, rather than left behind.
+                    report.after = ProbeAll();
+                    report.compatibleAfter = AllCompatible(report.after);
+                    report.registrationsChanged = RegistrationsChanged(report.before, report.after);
+                    if (!report.compatibleAfter)
                     {
-                        RepairRenderPipelineAsset(probe, actions, preserved, deliberateDefaults);
+                        throw new InvalidOperationException(
+                            $"{LogPrefix} repair did not converge. Assets are still incompatible with the installed editor."
+                        );
+                    }
+                    if (report.registrationsChanged)
+                    {
+                        throw new InvalidOperationException(
+                            $"{LogPrefix} changed a GraphicsSettings or QualitySettings asset registration."
+                        );
                     }
                 }
-
-                AssetDatabase.SaveAssets();
-                AssetDatabase.Refresh();
-
-                // Probed inside the scope so the transient volume profile URP creates
-                // is removed once, after both probe passes, rather than left behind.
-                report.after = ProbeAll();
+                finally
+                {
+                    // Keep cleanup inside the transaction boundary. A leftover
+                    // URP-created asset is a failed repair and must trigger rollback.
+                    EndUrpConstructionScope(actions);
+                }
             }
-            finally
+            catch (Exception repairFailure)
             {
-                EndUrpConstructionScope(volumeProfilePathWasOccupied, actions);
+                report.failure = repairFailure.ToString();
+                if (!string.IsNullOrEmpty(report.backupDirectory))
+                {
+                    try
+                    {
+                        RestoreBackups(report.before, report.backupDirectory, actions);
+                        report.rollbackPerformed = true;
+                    }
+                    catch (Exception rollbackFailure)
+                    {
+                        report.failure += Environment.NewLine + "ROLLBACK FAILURE:" + Environment.NewLine + rollbackFailure;
+                        report.actions = actions.ToArray();
+                        string rollbackReportPath = WriteReport(report);
+                        throw new AggregateException(
+                            $"{LogPrefix} failed and rollback also failed. Inspect {rollbackReportPath} and restore " +
+                            $"the pre-repair copies from {report.backupDirectory} before opening the project again.",
+                            repairFailure,
+                            rollbackFailure
+                        );
+                    }
+                }
+                report.actions = actions.ToArray();
+                report.preservedValues = preserved.ToArray();
+                report.deliberateDefaults = deliberateDefaults.ToArray();
+                string failedReportPath = WriteReport(report);
+                throw new InvalidOperationException(
+                    $"{LogPrefix} failed and restored every backed-up render-pipeline asset. " +
+                    $"The failure report is at {failedReportPath}.",
+                    repairFailure
+                );
             }
 
             report.actions = actions.ToArray();
             report.preservedValues = preserved.ToArray();
             report.deliberateDefaults = deliberateDefaults.ToArray();
-            report.compatibleAfter = AllCompatible(report.after);
-            report.registrationsChanged = RegistrationsChanged(report.before, report.after);
             string reportPath = WriteReport(report);
 
             foreach (UrpAssetProbe probe in report.before)
@@ -298,13 +366,6 @@ namespace GRBHXR.EditorTools
                 $"backup={report.backupDirectory}, report={reportPath}"
             );
 
-            if (!report.compatibleAfter)
-            {
-                throw new InvalidOperationException(
-                    $"{LogPrefix} repair did not converge. Assets are still incompatible with the installed editor. " +
-                    $"Pre-repair copies are in {report.backupDirectory}; the machine-readable report is at {reportPath}."
-                );
-            }
         }
 
         public static void BatchRepairUrpAssets()
@@ -335,23 +396,44 @@ namespace GRBHXR.EditorTools
             {
                 directory = "Assets/Settings";
             }
+            VolumeProfile previousVolumeProfile = ReadDefaultVolumeProfile();
+            Dictionary<string, UnityEngine.Object> previousProjectReferences =
+                CollectProjectAssetReferences(existing);
 
             // RenderPipelineGlobalSettingsUtils.Create writes an asset to disk, so
-            // the pristine instance is built at a scratch path and removed after it
-            // has been copied over the registered asset.
+            // both scratch instances are removed after the repaired object has been
+            // copied over the registered asset. The first clone uses the damaged
+            // asset as a data source: Unity drops managed-reference types absent from
+            // the installed URP while retaining every compatible setting value. The
+            // second clone supplies the installed editor's authoritative asset
+            // version and default settings layout.
             string scratchPath = $"{directory}/GRBHXR_UrpGlobalSettings_Pristine.asset";
-            RenderPipelineGlobalSettings pristine =
-                RenderPipelineGlobalSettingsUtils.Create(existing.GetType(), scratchPath);
-            if (pristine == null)
-            {
-                throw new InvalidOperationException(
-                    $"{LogPrefix} failed to create a pristine {existing.GetType().Name} for the installed URP version."
-                );
-            }
-            string pristinePath = AssetDatabase.GetAssetPath(pristine);
+            string sanitizedPath = $"{directory}/GRBHXR_UrpGlobalSettings_Sanitized.asset";
+            RenderPipelineGlobalSettings sanitized = null;
+            RenderPipelineGlobalSettings pristine = null;
+            string sanitizedAssetPath = null;
+            string pristinePath = null;
 
             try
             {
+                sanitized = RenderPipelineGlobalSettingsUtils.Create(existing.GetType(), sanitizedPath, existing);
+                if (sanitized == null)
+                {
+                    throw new InvalidOperationException(
+                        $"{LogPrefix} failed to sanitize compatible settings from {existingPath}."
+                    );
+                }
+                sanitizedAssetPath = AssetDatabase.GetAssetPath(sanitized);
+
+                pristine = RenderPipelineGlobalSettingsUtils.Create(existing.GetType(), scratchPath);
+                if (pristine == null)
+                {
+                    throw new InvalidOperationException(
+                        $"{LogPrefix} failed to create a pristine {existing.GetType().Name} for the installed URP version."
+                    );
+                }
+                pristinePath = AssetDatabase.GetAssetPath(pristine);
+
                 int pristineVersion = ReadIntProperty(pristine, GlobalSettingsVersionProperty);
                 if (pristineVersion != probe.expectedVersion)
                 {
@@ -362,12 +444,25 @@ namespace GRBHXR.EditorTools
                     );
                 }
 
-                // The settings container holds [SerializeReference] entries. It is
-                // deliberately not carried across: the incompatible asset's container
-                // is exactly where the nine URP 17.5.0-only types live, and the
-                // pristine one was populated by
-                // EditorGraphicsSettings.PopulateRenderPipelineGraphicsSettings for
-                // the installed URP version.
+                if (SerializationUtility.HasManagedReferencesWithMissingTypes(sanitized))
+                {
+                    throw new InvalidOperationException(
+                        $"{LogPrefix} sanitized clone for {existingPath} still contains managed-reference types " +
+                        "that do not exist in the installed URP. Refusing to guess at a partial settings migration."
+                    );
+                }
+
+                RemoveNullManagedSettings(sanitized);
+                int managedSettingsCopied = CopyCompatibleManagedSettings(sanitized, pristine, existingPath);
+                preserved.Add(
+                    $"{existingPath}: preserved and byte-verified {managedSettingsCopied} compatible " +
+                    "render-pipeline graphics settings by managed-reference type"
+                );
+
+                // Top-level fields are copied separately. The settings container is
+                // blocked here because it has already been migrated type-by-type;
+                // copying the original container would reintroduce the newer editor's
+                // missing types.
                 int copied = CopyTopLevelProperties(
                     existing,
                     pristine,
@@ -377,16 +472,10 @@ namespace GRBHXR.EditorTools
                 );
                 actions.Add($"carried {copied} top-level serialized properties into the pristine global settings");
 
-                // The default volume profile is the one project-authored value that
-                // lives inside the settings container and has a public setter, via
-                // the public IDefaultVolumeProfileSettings surface. Read it before
-                // the container is replaced. Every other project asset reference in
-                // the container is recorded so any loss is reported rather than
-                // silently absorbed.
-                VolumeProfile previousVolumeProfile = ReadDefaultVolumeProfile();
-                Dictionary<string, UnityEngine.Object> previousProjectReferences =
-                    CollectProjectAssetReferences(existing);
-
+                // Keep a typed post-write check for the project default profile in
+                // addition to the exact managed-setting comparison. It is a
+                // load-bearing project asset and should fail closed if URP's global
+                // registration changed while scratch assets were created.
                 // Missing managed references are tracked per object, so clear the
                 // stale ones on the registered asset before overwriting it.
                 if (SerializationUtility.HasManagedReferencesWithMissingTypes(existing))
@@ -399,6 +488,7 @@ namespace GRBHXR.EditorTools
                 existing.name = existingName;
                 EditorUtility.SetDirty(existing);
                 AssetDatabase.SaveAssetIfDirty(existing);
+                AssertManagedSettingsEqual(pristine, existing, existingPath);
                 actions.Add(
                     $"rewrote {existingPath} in place from a pristine {existing.GetType().Name}; " +
                     $"guid preserved as {AssetDatabase.AssetPathToGUID(existingPath)}"
@@ -417,13 +507,21 @@ namespace GRBHXR.EditorTools
                     preserved,
                     deliberateDefaults
                 );
+
+                if (probe.missingManagedReferenceTypes.Length > 0)
+                {
+                    deliberateDefaults.Add(
+                        $"{existingPath}: discarded only the {probe.missingManagedReferenceTypes.Length} " +
+                        "managed-reference types unavailable in the installed URP: " +
+                        string.Join(" | ", probe.missingManagedReferenceTypes)
+                    );
+                }
             }
             finally
             {
-                if (!string.IsNullOrEmpty(pristinePath) && pristinePath != existingPath)
-                {
-                    AssetDatabase.DeleteAsset(pristinePath);
-                }
+                EditorGraphicsSettings.SetRenderPipelineGlobalSettingsAsset<UniversalRenderPipeline>(existing);
+                DeleteScratchAssetOrThrow(pristinePath, existingPath);
+                DeleteScratchAssetOrThrow(sanitizedAssetPath, existingPath);
             }
         }
 
@@ -443,11 +541,21 @@ namespace GRBHXR.EditorTools
                 );
             }
 
-            ScriptableRendererData rendererData = null;
             ReadOnlySpan<ScriptableRendererData> rendererDataList = existing.rendererDataList;
-            if (rendererDataList.Length > 0)
+            ScriptableRendererData rendererData = null;
+            for (int index = 0; index < rendererDataList.Length; index += 1)
             {
-                rendererData = rendererDataList[0];
+                if (rendererDataList[index] == null)
+                {
+                    throw new InvalidOperationException(
+                        $"{LogPrefix} refusing to repair {probe.assetPath}: renderer data slot {index} is null. " +
+                        "Repairing would make a project-authored renderer substitution ambiguous."
+                    );
+                }
+                if (rendererData == null)
+                {
+                    rendererData = rendererDataList[index];
+                }
             }
             if (rendererData == null)
             {
@@ -456,6 +564,9 @@ namespace GRBHXR.EditorTools
                     "Repairing would silently substitute a newly created renderer."
                 );
             }
+
+            string[] expectedRendererPaths = DescribeRendererData(existing);
+            int expectedDefaultRendererIndex = ReadIntProperty(existing, "m_DefaultRendererIndex");
 
             string existingName = existing.name;
             UniversalRenderPipelineAsset pristine = UniversalRenderPipelineAsset.Create(rendererData);
@@ -507,6 +618,16 @@ namespace GRBHXR.EditorTools
                     $"rewrote {probe.assetPath} in place from a pristine UniversalRenderPipelineAsset; " +
                     $"guid preserved as {AssetDatabase.AssetPathToGUID(probe.assetPath)}"
                 );
+                AssertRendererDataPreserved(
+                    existing,
+                    expectedRendererPaths,
+                    expectedDefaultRendererIndex,
+                    probe.assetPath
+                );
+                preserved.Add(
+                    $"{probe.assetPath}: preserved all {expectedRendererPaths.Length} renderer data slots and " +
+                    $"default renderer index {expectedDefaultRendererIndex}"
+                );
             }
             finally
             {
@@ -554,6 +675,158 @@ namespace GRBHXR.EditorTools
             return copied;
         }
 
+        private static void RemoveNullManagedSettings(UnityEngine.Object owner)
+        {
+            var serialized = new SerializedObject(owner);
+            SerializedProperty list = serialized.FindProperty("m_Settings.m_SettingsList.m_List");
+            if (list == null)
+            {
+                throw new InvalidOperationException(
+                    $"{LogPrefix} could not find the render-pipeline graphics settings list on {owner.name}."
+                );
+            }
+
+            for (int index = list.arraySize - 1; index >= 0; index -= 1)
+            {
+                SerializedProperty element = list.GetArrayElementAtIndex(index);
+                if (element.managedReferenceValue == null)
+                {
+                    list.DeleteArrayElementAtIndex(index);
+                }
+            }
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(owner);
+            AssetDatabase.SaveAssetIfDirty(owner);
+        }
+
+        // The data-source factory drops unavailable types but keeps compatible
+        // managed settings. Copy those settings into the pristine installed-version
+        // object by type, not by list index. EditorJsonUtility preserves serialized
+        // scalar fields and Unity object references; an exact JSON round trip check
+        // fails closed before the registered asset is touched.
+        private static int CopyCompatibleManagedSettings(
+            UnityEngine.Object source,
+            UnityEngine.Object destination,
+            string label
+        )
+        {
+            Dictionary<string, object> sourceSettings = CollectManagedSettingsByType(source, label + " sanitized source");
+            Dictionary<string, object> destinationSettings = CollectManagedSettingsByType(
+                destination,
+                label + " installed-version destination"
+            );
+
+            if (sourceSettings.Count != destinationSettings.Count)
+            {
+                throw new InvalidOperationException(
+                    $"{LogPrefix} refusing to repair {label}: sanitized source exposes {sourceSettings.Count} " +
+                    $"compatible settings but the installed-version object exposes {destinationSettings.Count}."
+                );
+            }
+
+            var expectedJson = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (KeyValuePair<string, object> entry in sourceSettings)
+            {
+                if (!destinationSettings.TryGetValue(entry.Key, out object destinationValue))
+                {
+                    throw new InvalidOperationException(
+                        $"{LogPrefix} refusing to repair {label}: installed URP does not expose compatible setting " +
+                        $"type {entry.Key}."
+                    );
+                }
+                string json = EditorJsonUtility.ToJson(entry.Value, prettyPrint: false);
+                EditorJsonUtility.FromJsonOverwrite(json, destinationValue);
+                expectedJson.Add(entry.Key, json);
+            }
+
+            EditorUtility.SetDirty(destination);
+            AssetDatabase.SaveAssetIfDirty(destination);
+
+            Dictionary<string, object> verifiedSettings = CollectManagedSettingsByType(
+                destination,
+                label + " verified destination"
+            );
+            foreach (KeyValuePair<string, string> entry in expectedJson)
+            {
+                if (!verifiedSettings.TryGetValue(entry.Key, out object verifiedValue))
+                {
+                    throw new InvalidOperationException(
+                        $"{LogPrefix} lost compatible setting {entry.Key} while repairing {label}."
+                    );
+                }
+                string verifiedJson = EditorJsonUtility.ToJson(verifiedValue, prettyPrint: false);
+                if (!string.Equals(entry.Value, verifiedJson, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        $"{LogPrefix} changed serialized values for compatible setting {entry.Key} while repairing " +
+                        $"{label}. Refusing to overwrite the registered asset."
+                    );
+                }
+            }
+            return expectedJson.Count;
+        }
+
+        private static Dictionary<string, object> CollectManagedSettingsByType(UnityEngine.Object owner, string label)
+        {
+            var serialized = new SerializedObject(owner);
+            SerializedProperty list = serialized.FindProperty("m_Settings.m_SettingsList.m_List");
+            if (list == null)
+            {
+                throw new InvalidOperationException($"{LogPrefix} could not find the settings list on {label}.");
+            }
+
+            var settings = new Dictionary<string, object>(StringComparer.Ordinal);
+            for (int index = 0; index < list.arraySize; index += 1)
+            {
+                SerializedProperty element = list.GetArrayElementAtIndex(index);
+                object value = element.managedReferenceValue;
+                if (value == null)
+                {
+                    continue;
+                }
+                string typeName = element.managedReferenceFullTypename;
+                if (string.IsNullOrEmpty(typeName) || settings.ContainsKey(typeName))
+                {
+                    throw new InvalidOperationException(
+                        $"{LogPrefix} found an empty or duplicate managed setting type on {label}: '{typeName}'."
+                    );
+                }
+                settings.Add(typeName, value);
+            }
+            return settings;
+        }
+
+        private static void AssertManagedSettingsEqual(
+            UnityEngine.Object expected,
+            UnityEngine.Object actual,
+            string label
+        )
+        {
+            Dictionary<string, object> expectedSettings = CollectManagedSettingsByType(expected, label + " expected");
+            Dictionary<string, object> actualSettings = CollectManagedSettingsByType(actual, label + " actual");
+            if (expectedSettings.Count != actualSettings.Count)
+            {
+                throw new InvalidOperationException(
+                    $"{LogPrefix} changed the compatible managed-setting count while writing {label}: " +
+                    $"{expectedSettings.Count} -> {actualSettings.Count}."
+                );
+            }
+            foreach (KeyValuePair<string, object> entry in expectedSettings)
+            {
+                if (!actualSettings.TryGetValue(entry.Key, out object actualValue) ||
+                    !string.Equals(
+                        EditorJsonUtility.ToJson(entry.Value, prettyPrint: false),
+                        EditorJsonUtility.ToJson(actualValue, prettyPrint: false),
+                        StringComparison.Ordinal
+                    ))
+                {
+                    throw new InvalidOperationException(
+                        $"{LogPrefix} changed compatible managed setting {entry.Key} while writing {label}."
+                    );
+                }
+            }
+        }
+
         private static bool IsBlocked(string propertyPath, string[] additionalBlocked)
         {
             foreach (string blocked in BlockedPropertyPaths)
@@ -579,9 +852,11 @@ namespace GRBHXR.EditorTools
         // UrpDefaultVolumeProfilePath unconditionally. CreateAsset replaces whatever
         // is already there and issues a new GUID, so refuse outright if a real asset
         // occupies that path rather than destroy it.
-        private static bool BeginUrpConstructionScope()
+        private static void BeginUrpConstructionScope()
         {
-            bool occupied = AssetDatabase.LoadAssetAtPath<VolumeProfile>(UrpDefaultVolumeProfilePath) != null;
+            string absolutePath = Path.Combine(ProjectRoot(), UrpDefaultVolumeProfilePath);
+            bool occupied = AssetDatabase.LoadMainAssetAtPath(UrpDefaultVolumeProfilePath) != null ||
+                File.Exists(absolutePath);
             if (occupied)
             {
                 throw new InvalidOperationException(
@@ -591,31 +866,19 @@ namespace GRBHXR.EditorTools
                     "that asset first, then re-run."
                 );
             }
-            return occupied;
         }
 
-        private static void EndUrpConstructionScope(bool pathWasOccupied, List<string> notes)
+        private static void EndUrpConstructionScope(List<string> notes)
         {
-            if (pathWasOccupied)
+            string absolutePath = Path.Combine(ProjectRoot(), UrpDefaultVolumeProfilePath);
+            bool exists = AssetDatabase.LoadMainAssetAtPath(UrpDefaultVolumeProfilePath) != null ||
+                File.Exists(absolutePath);
+            if (!exists)
             {
                 return;
             }
 
-            var transient = AssetDatabase.LoadAssetAtPath<VolumeProfile>(UrpDefaultVolumeProfilePath);
-            if (transient == null)
-            {
-                return;
-            }
-
-            if (ReferenceEquals(transient, ReadDefaultVolumeProfile()))
-            {
-                notes.Add(
-                    $"kept {UrpDefaultVolumeProfilePath}: URP created it and it is now the project default volume profile"
-                );
-                return;
-            }
-
-            if (AssetDatabase.DeleteAsset(UrpDefaultVolumeProfilePath))
+            if (AssetDatabase.DeleteAsset(UrpDefaultVolumeProfilePath) && !File.Exists(absolutePath))
             {
                 notes.Add(
                     $"removed the transient {UrpDefaultVolumeProfilePath} that URP 17.0.4 creates whenever a global " +
@@ -624,9 +887,30 @@ namespace GRBHXR.EditorTools
                 return;
             }
 
-            notes.Add(
-                $"WARNING: URP created {UrpDefaultVolumeProfilePath} and it could not be deleted; remove it by hand"
+            throw new InvalidOperationException(
+                $"{LogPrefix} created transient {UrpDefaultVolumeProfilePath} but could not delete it. " +
+                "The operation is not read-only and therefore cannot be accepted. Remove the transient asset and re-run."
             );
+        }
+
+        private static void DeleteScratchAssetOrThrow(string scratchPath, string protectedPath)
+        {
+            if (string.IsNullOrEmpty(scratchPath) || string.Equals(scratchPath, protectedPath, StringComparison.Ordinal))
+            {
+                return;
+            }
+            string absolutePath = Path.Combine(ProjectRoot(), scratchPath);
+            bool exists = AssetDatabase.LoadMainAssetAtPath(scratchPath) != null || File.Exists(absolutePath);
+            if (!exists)
+            {
+                return;
+            }
+            if (!AssetDatabase.DeleteAsset(scratchPath) || File.Exists(absolutePath))
+            {
+                throw new InvalidOperationException(
+                    $"{LogPrefix} could not delete scratch asset {scratchPath}. Refusing to report a clean repair."
+                );
+            }
         }
 
         // URPDefaultVolumeProfileSettings is public in URP 17.0.4 and implements the
@@ -758,13 +1042,53 @@ namespace GRBHXR.EditorTools
                 {
                     continue;
                 }
-                if (!references.ContainsKey(iterator.name))
+                string stableKey = StableProjectReferenceKey(sourceObject, iterator);
+                if (!references.ContainsKey(stableKey))
                 {
-                    references.Add(iterator.name, value);
+                    references.Add(stableKey, value);
                 }
             }
 
             return references;
+        }
+
+        private static string StableProjectReferenceKey(
+            SerializedObject owner,
+            SerializedProperty property
+        )
+        {
+            const string listPath = "m_Settings.m_SettingsList.m_List";
+            const string elementPrefix = listPath + ".Array.data[";
+            string path = property.propertyPath;
+            if (!path.StartsWith(elementPrefix, StringComparison.Ordinal))
+            {
+                return path;
+            }
+
+            int indexEnd = path.IndexOf(']', elementPrefix.Length);
+            if (indexEnd < 0 ||
+                !int.TryParse(
+                    path.Substring(elementPrefix.Length, indexEnd - elementPrefix.Length),
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out int index
+                ))
+            {
+                return path;
+            }
+            SerializedProperty list = owner.FindProperty(listPath);
+            if (list == null || index < 0 || index >= list.arraySize)
+            {
+                return path;
+            }
+            SerializedProperty element = list.GetArrayElementAtIndex(index);
+            string typeName = element.managedReferenceFullTypename;
+            if (string.IsNullOrEmpty(typeName))
+            {
+                return path;
+            }
+            string relativePath = path.Substring(indexEnd + 1);
+            return $"managed:{typeName}{relativePath}";
         }
 
         private static UrpAssetProbe[] ProbeAll()
@@ -911,6 +1235,41 @@ namespace GRBHXR.EditorTools
             return paths;
         }
 
+        private static void AssertRendererDataPreserved(
+            UniversalRenderPipelineAsset asset,
+            string[] expectedPaths,
+            int expectedDefaultIndex,
+            string label
+        )
+        {
+            string[] actualPaths = DescribeRendererData(asset);
+            if (actualPaths.Length != expectedPaths.Length)
+            {
+                throw new InvalidOperationException(
+                    $"{LogPrefix} changed the renderer data slot count for {label}: " +
+                    $"{expectedPaths.Length} -> {actualPaths.Length}."
+                );
+            }
+            for (int index = 0; index < expectedPaths.Length; index += 1)
+            {
+                if (!string.Equals(expectedPaths[index], actualPaths[index], StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        $"{LogPrefix} changed renderer data slot {index} for {label}: " +
+                        $"{expectedPaths[index]} -> {actualPaths[index]}."
+                    );
+                }
+            }
+            int actualDefaultIndex = ReadIntProperty(asset, "m_DefaultRendererIndex");
+            if (actualDefaultIndex != expectedDefaultIndex)
+            {
+                throw new InvalidOperationException(
+                    $"{LogPrefix} changed the default renderer index for {label}: " +
+                    $"{expectedDefaultIndex} -> {actualDefaultIndex}."
+                );
+            }
+        }
+
         private static string QualityLevelName(int index)
         {
             string[] names = QualitySettings.names;
@@ -1028,12 +1387,15 @@ namespace GRBHXR.EditorTools
         {
             if (string.IsNullOrEmpty(assetPath))
             {
-                return;
+                throw new InvalidOperationException($"{LogPrefix} cannot back up an asset with an empty path.");
             }
             string absolute = Path.Combine(ProjectRoot(), assetPath);
             if (!File.Exists(absolute))
             {
-                return;
+                throw new FileNotFoundException(
+                    $"{LogPrefix} cannot repair {assetPath} because its serialized file is missing.",
+                    absolute
+                );
             }
             string destination = Path.Combine(backupDirectory, Path.GetFileName(assetPath));
             File.Copy(absolute, destination, overwrite: true);
@@ -1042,6 +1404,61 @@ namespace GRBHXR.EditorTools
             {
                 File.Copy(meta, destination + ".meta", overwrite: true);
             }
+        }
+
+        private static void RestoreBackups(UrpAssetProbe[] probes, string backupDirectory, List<string> actions)
+        {
+            foreach (UrpAssetProbe probe in probes)
+            {
+                if (probe.compatible)
+                {
+                    continue;
+                }
+                string source = Path.Combine(backupDirectory, Path.GetFileName(probe.assetPath));
+                if (!File.Exists(source))
+                {
+                    throw new FileNotFoundException(
+                        $"{LogPrefix} rollback copy is missing for {probe.assetPath}.",
+                        source
+                    );
+                }
+                string destination = Path.Combine(ProjectRoot(), probe.assetPath);
+                File.Copy(source, destination, overwrite: true);
+
+                string sourceMeta = source + ".meta";
+                string destinationMeta = destination + ".meta";
+                if (File.Exists(sourceMeta))
+                {
+                    File.Copy(sourceMeta, destinationMeta, overwrite: true);
+                }
+                AssetDatabase.ImportAsset(probe.assetPath, ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate);
+                actions.Add($"rollback restored {probe.assetPath} from {source}");
+            }
+
+            string globalSettingsPath = FindProbePath(probes, "globalSettings");
+            if (!string.IsNullOrEmpty(globalSettingsPath))
+            {
+                RenderPipelineGlobalSettings globalSettings =
+                    AssetDatabase.LoadAssetAtPath<RenderPipelineGlobalSettings>(globalSettingsPath);
+                if (globalSettings != null)
+                {
+                    EditorGraphicsSettings.SetRenderPipelineGlobalSettingsAsset<UniversalRenderPipeline>(globalSettings);
+                }
+            }
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+        }
+
+        private static string FindProbePath(UrpAssetProbe[] probes, string role)
+        {
+            foreach (UrpAssetProbe probe in probes)
+            {
+                if (string.Equals(probe.role, role, StringComparison.Ordinal))
+                {
+                    return probe.assetPath;
+                }
+            }
+            return null;
         }
 
         private static void PopulateEnvironment(UrpRepairReport report)
@@ -1101,6 +1518,22 @@ namespace GRBHXR.EditorTools
             return fallback;
         }
 
+        private static int CommandLineIntValue(string key, int fallback)
+        {
+            string raw = CommandLineValue(key, null);
+            if (string.IsNullOrEmpty(raw))
+            {
+                return fallback;
+            }
+            if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) || value < 0)
+            {
+                throw new InvalidOperationException(
+                    $"{LogPrefix} expected a non-negative integer after {key}, got '{raw}'."
+                );
+            }
+            return value;
+        }
+
         [Serializable]
         private sealed class UrpAssetProbe
         {
@@ -1138,6 +1571,8 @@ namespace GRBHXR.EditorTools
             public string[] actions = new string[0];
             public string[] preservedValues = new string[0];
             public string[] deliberateDefaults = new string[0];
+            public bool rollbackPerformed;
+            public string failure;
             public bool registrationsChanged;
             public bool compatibleAfter;
         }

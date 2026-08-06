@@ -52,21 +52,37 @@ from here.
   Repair rewrites the existing asset object in place via
   `EditorUtility.CopySerialized` from a pristine object, so GUIDs, asset paths,
   and the `GraphicsSettings` / `QualitySettings` registrations are preserved.
+  Compatible graphics settings inside the managed-reference container are first
+  sanitized through a data-source clone, copied by stable type into the pristine
+  object, and serialized again for exact comparison. All incompatible assets are
+  backed up before the first write; an exception restores and reimports every
+  backup.
 - Validation: Unity `6000.0.76f1` batch runs against the formal project, full
   logs and machine-readable reports preserved under
-  `outputs/claude_agents/2026-08-05-mr-device-gate/urp17-repair/`. Audit exit 0
-  with no project mutation; preflight exit **1** on the damaged assets and exit
-  **0** after repair; repair exit 0. Post-repair state:
-  `m_AssetVersion` 10 -> 8, both `k_AssetVersion`/`k_AssetPreviousVersion`
-  13 -> 12, the nine URP 17.5.0-only `[SerializeReference]` types dropped
-  (35 -> 26 settings, none added), the six URP 17.5.0-only RP asset keys dropped,
-  and `m_DebugLevel` restored. A byte diff of both `*_RPAsset.asset` files
-  against their pre-repair copies shows no other change, so renderer references,
-  shadow cascades, splits, biases, soft shadow quality, render scale, cookie
-  formats and volume profile all survived. The project default volume profile
-  `Assets/Settings/DefaultVolumeProfile.asset` is preserved through the public
-  `IDefaultVolumeProfileSettings.volumeProfile` setter and verified after
-  writing. Python suite: 169 passed before, 171 passed after.
+  `outputs/claude_agents/2026-08-05-mr-device-gate/urp17-repair/`. The initial
+  repair implementation was **rejected** after an independent diff showed that
+  it reset the valid
+  `URPShaderStrippingSetting.m_StripUnusedPostProcessingVariants` value from `1`
+  to `0`; its report did not disclose that loss. The corrected schema-v2 repair
+  was rerun from the untouched pre-repair copies. It preserved and serialized
+  identically all 26 URP-17.0.4-compatible managed settings, including the
+  stripping flag and default volume-profile reference; removed only the nine
+  unavailable 17.5-only types; preserved all renderer-data slots and default
+  renderer indices; retained all asset GUIDs and registrations; and produced
+  `m_AssetVersion` 10 -> 8 plus both RP asset versions 13 -> 12. A deliberate
+  failure after the first repaired asset exited `1`, emitted
+  `rollbackPerformed: true`, and restored all three originals byte-for-byte at
+  versions 10/13/13 before the final successful repair. The final preflight
+  exited `0`. Post-write version compatibility, registration equality, and
+  transient cleanup are inside the transaction, so any late gate failure also
+  restores the backed-up render-pipeline assets. The audit/preflight paths may
+  create and then delete URP's
+  hard-coded transient `Assets/DefaultVolumeProfile.asset`; acceptance requires
+  successful deletion, so they do not leave a project asset behind. The final
+  transaction implementation was rerun under
+  `urp17-repair/transaction-v5/`: injected repair exit `1` with rollback to
+  `10/13/13`, normal repair exit `0` at `8/12/12` with the stripping flag still
+  `1`, final preflight exit `0`, and the repository suite reported `171 passed`.
 - References: URP 17.0.4 and SRP core 17.0.4 package sources in the formal
   project's `Library/PackageCache`, read directly rather than from documentation.
   Key sites: `Runtime/UniversalRenderPipelineGlobalSettings.cs:22,31,239`,

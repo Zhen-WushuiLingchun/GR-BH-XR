@@ -273,12 +273,23 @@ version field, in YAML or through `SerializedProperty`. It builds a pristine
 asset with the public factory for the installed URP
 (`RenderPipelineGlobalSettingsUtils.Create` and
 `UniversalRenderPipelineAsset.Create`), carries the project's settings across it
-property by property with the version and identity fields blocked, and then
-copies that pristine object over the existing asset with
+without carrying the version and identity fields, and then copies that pristine
+object over the existing asset with
 `EditorUtility.CopySerialized`. The corrected version arrives as a property of a
 correctly constructed object. Because the existing asset object is rewritten in
 place, its GUID and path survive and the `GraphicsSettings` /
 `QualitySettings` registrations are untouched.
+
+The global settings container needs an extra migration step. The repair first
+creates a data-source clone from the damaged asset. Unity drops the unavailable
+17.5-only managed-reference types from that clone while retaining the 26 types
+that exist in URP 17.0.4. Those compatible settings are copied into the pristine
+17.0.4 object by managed-reference type with `EditorJsonUtility`, including
+scalar fields and project object references. Every copied setting is serialized
+again and compared byte-for-byte before the registered asset is overwritten.
+This gate was added after an earlier implementation silently reset
+`URPShaderStrippingSetting.m_StripUnusedPostProcessingVariants`; that rejected
+run is retained as audit evidence and is not an accepted repair.
 
 `UniversalRenderPipelineGlobalSettings` and its `Ensure()` overload are
 `internal` in URP 17.0.4, so neither is callable from this assembly; the public
@@ -317,6 +328,14 @@ Each run writes a machine-readable report and pre-repair copies of every asset
 it touches under `<project>/Logs/GRBHXR/urp_asset_repair/`. `Logs/` is not
 imported by the Unity asset database and is covered by this repository's
 `[Ll]ogs/` ignore rule. Override with `-grbhxrUrpRepairReportDir <path>`.
+All incompatible assets are backed up before the first write. Any exception
+restores every backup, reimports the assets synchronously, and emits a schema-v2
+failure report with `rollbackPerformed`. The validation-only
+`-grbhxrUrpRepairTestFailAfterAssets N` argument deliberately fails after `N`
+repairs so this rollback path can be exercised under the locked editor; do not
+use it for a normal repair. Post-repair compatibility, pipeline registrations,
+and deletion of URP's transient construction asset are inside that transaction:
+failure of any of those checks also rolls back the render-pipeline assets.
 
 Two behaviours worth knowing:
 
