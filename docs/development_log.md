@@ -19,6 +19,38 @@ from here.
 
 ## Log
 
+### 2026-08-06 - Native NPGS nonzero-charge Kerr-Newman gate
+
+- Goal: Accept or reject NPGS's nonzero-charge geodesic kernel without
+  replacing the native runtime or using the GLSL implementation as its own
+  scientific reference.
+- Changed files / components: added a minimal independent f64 Kerr-Newman BL/KS
+  metric, analytic derivatives, neutral-photon DOP853 replay tracer,
+  `H/E/L_z/Q_Carter` diagnostics, raw-v2 native validator, HDF5/JSON evidence,
+  tests, equations, and gate documentation.
+- Academic reason: NPGS already supplies the faster and broader renderer. The
+  project only implements the smallest independent oracle needed to distinguish
+  a correct KN kernel from a visually plausible one.
+- Physical correspondence: `Delta=r^2-2Mr+a^2+Q_charge^2` and
+  `H_KS=(Mr^3-Q_charge^2 r^2/2)/(r^4+a^2z^2)` follow
+  `li2026kerrNewmanPolarizedTransfer` Eq. 2.1-2.2. Neutral photon motion keeps
+  the Hamiltonian and Killing/Carter diagnostics; no Lorentz force is included.
+- Validation: unit gates cover `Q_charge=0 -> Kerr`, `a=0 -> RN`, analytic
+  horizons, BL/KS tensor equivalence, `det(g_KS)=-1`, metric derivatives, and a
+  captured nonzero-charge ray. Native quality-2 generic KN
+  (`a/M=0.6,Q/M=0.5`) produced `101/988/0` capture/escape/invalid; 257 f64
+  replays gave stable agreement `1.0` and direction median/RMS
+  `1.43e-5/2.99e-5 rad`. The RN runtime limit (`a=0,Q/M=0.6`) produced
+  `97/992/0`; 129 replays gave `1.0` and `1.62e-5/4.07e-5 rad`.
+  The complete repository suite passed `243` tests.
+- Claim boundary: this accepts neutral sub-extremal exterior KN ray geometry.
+  The CPU capture event is at `r_+ + 0.02M`; capture residuals are not presented
+  as horizon-penetration evidence. Polarization, charged particles, disk/jet
+  emission, Cauchy-horizon continuation, and maximal extension remain open.
+- References: `li2026kerrNewmanPolarizedTransfer`; NPGS fork/raw-v2 provenance.
+- Open issues / next steps: validate NPGS disk semantics and Walker-Penrose
+  polarization independently, then begin native Vulkan/OpenXR integration.
+
 ### 2026-08-06 - NPGS exact-state Kerr replacement gate
 
 - Goal: Determine whether the native NPGS `Q_charge=0` path can replace the

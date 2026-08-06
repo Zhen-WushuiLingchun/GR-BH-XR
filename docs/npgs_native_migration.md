@@ -184,6 +184,47 @@ The exact-geometry visual fast path at fork `20acb4a` measured 189 median FPS at
 with the pre-audit 183/69 FPS run. The five-percent regression gate therefore
 passes.
 
+## Nonzero-Charge Kerr-Newman Cross-Check
+
+The native runtime is used directly; the Python implementation is a small f64
+oracle that replays the exact raw-v2 launch states. It follows the
+Kerr-Newman metric of `li2026kerrNewmanPolarizedTransfer`, with
+
+```text
+Delta = r^2 - 2 M r + a^2 + Q^2
+H_KS = (M r^3 - Q^2 r^2 / 2) / (r^4 + a^2 z^2)
+```
+
+and validates neutral null geodesics only. Unit gates require the `Q -> 0`
+Kerr limit, the `a -> 0` Reissner-Nordstrom limit, the analytic horizons,
+`det(g_KS)=-1`, BL/KS tensor equivalence, analytic metric derivatives, and
+conserved `E`, `L_z`, and Carter `Q`.
+
+Native commands produced two quality-2 raw-v2 captures at `r_obs=100M`,
+`i=60 deg`, 33x33:
+
+- generic KN: `a/M=0.6`, `Q/M=0.5`, `101 capture / 988 escape / 0 invalid`;
+- RN limit: `a=0`, `Q/M=0.6`, `97 capture / 992 escape / 0 invalid`.
+
+The deterministic f64 replay measured:
+
+| Case | Samples | Stable event agreement | Direction median | Direction RMS | Native/CPU stable failures |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| KN `a/M=0.6, Q/M=0.5` | 257 | 1.0 | `1.43e-5 rad` | `2.99e-5 rad` | 0 / 0 |
+| RN `a=0, Q/M=0.6` | 129 | 1.0 | `1.62e-5 rad` | `4.07e-5 rad` | 0 / 0 |
+
+Past-directed camera rays serialized in the ingoing chart become
+cancellation-conditioned as they approach the future horizon. The CPU gate
+therefore classifies capture at `r_+ + 0.02M`; capture `H` is retained but is
+not presented as horizon-penetration evidence. Escaped-ray direction and
+residuals remain regular and are the continuous-quantity gate.
+
+Commands and full interpretation are in
+`validation/npgs_kerr_newman/README.md`. This closes only neutral,
+sub-extremal, exterior Kerr-Newman ray geometry. It does not validate charged
+particles, Walker-Penrose polarization, disk/jet emission, Cauchy-horizon
+continuation, or maximal extension.
+
 ## Migration Gates
 
 1. Reproduce the unmodified NPGS desktop build and record same-machine timing.
@@ -192,6 +233,8 @@ passes.
 3. Set charge to zero and pass the existing Kerr CPU-reference gates. **Passed
    at native quality 2 on 2026-08-06.**
 4. Add an independent CPU Kerr-Newman reference before accepting nonzero charge.
+   **Neutral exterior ray geometry passed on 2026-08-06; polarization and
+   maximal extension remain open.**
 5. Add native OpenXR/Vulkan rendering and pass desktop plus Quest PCVR gates.
 6. Only then archive the Unity frontend outside the default branch.
 

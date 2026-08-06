@@ -273,6 +273,44 @@ below roughly `1.9e3 K` the clipped linear-sRGB blue channel is exactly zero,
 that plateau and saturates at its hottest member, so the recovered temperature
 never falls below the published `alphaAnchorTemperatureK`.
 
+## Kerr-Newman Audit Geometry
+
+The native migration audit uses neutral photons in a sub-extremal
+Kerr-Newman spacetime. The independent f64 oracle follows Eq. (2.1)-(2.2) of
+`li2026kerrNewmanPolarizedTransfer` in the same `(-,+,+,+)` signature and
+geometric units as the Kerr reference:
+
+```text
+Sigma = r^2 + a^2 cos^2(theta)
+Delta = r^2 - 2 M r + a^2 + Q_charge^2
+r_+/- = M +/- sqrt(M^2 - a^2 - Q_charge^2)
+```
+
+The ingoing Cartesian Kerr-Schild audit form is
+
+```text
+g_mu_nu = eta_mu_nu + 2 H l_mu l_nu
+H = (M r^3 - Q_charge^2 r^2 / 2) / (r^4 + a^2 z^2)
+g^mu_nu = eta^mu_nu - 2 H l^mu l^nu
+```
+
+where `r(x,y,z)` obeys the same oblate-spheroidal quartic as Kerr. Charge
+changes `H` and `Delta`, not that spatial coordinate map. For a neutral photon,
+the Hamiltonian and separation diagnostics remain
+
+```text
+H_null = 1/2 g^mu_nu p_mu p_nu = 0
+E = -p_t
+L_z = x p_y - y p_x
+Q_Carter = p_theta^2 + cos^2(theta)
+           [L_z^2 / sin^2(theta) - a^2 E^2]
+```
+
+`Q_charge` denotes the black-hole electric charge; `Q_Carter` denotes the
+Carter separation constant. They must not be conflated. The current validator
+does not implement charged-particle Lorentz force, polarization transport, or
+maximal extension.
+
 ## Simplified GRRT
 
 Invariant intensity:

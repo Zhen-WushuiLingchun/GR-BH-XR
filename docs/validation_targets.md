@@ -909,7 +909,8 @@ Baseline build/performance gate (passed on 2026-08-06):
 - the repaired pre-audit visual path measures 200 median FPS at 1080p and
   76 median FPS at exact 4K on the recorded RTX 5080 Laptop configuration.
 
-Physics replacement gate (partially passed; nonzero charge remains open):
+Physics replacement gate (Kerr and neutral exterior Kerr-Newman passed;
+polarization/disk/maximal extension remain open):
 
 - visual and audit modes share one GLSL geodesic core;
 - audit schema `gr-bh-xr.npgs.audit.v1` records event/failure codes, escape
@@ -917,9 +918,9 @@ Physics replacement gate (partially passed; nonzero charge remains open):
   the first two disk-transfer orders;
 - `Q_charge=0` passes existing stable-region Kerr event and direction gates at
   native quality 2 or higher; quality 1 is visual-only;
-- nonzero charge is blocked until an independent CPU f64 Kerr-Newman reference
-  passes Kerr and Reissner-Nordstrom limits, horizons, nullness, and conserved
-  quantities;
+- the independent CPU f64 Kerr-Newman oracle must pass Kerr and
+  Reissner-Nordstrom limits, horizons, nullness, metric derivatives, and
+  conserved quantities before any nonzero-charge runtime claim;
 - Walker-Penrose/Stokes claims remain blocked until their independent gates;
 - fast-path performance after audit-core extraction regresses by no more than
   five percent from the same-machine baseline.
@@ -952,8 +953,35 @@ datasets. Captured endpoint H reconstructed from serialized f32 covectors is
 not a gate because near-horizon components reach `O(1e4)` and suffer
 cancellation; escaped endpoint H and endpoint `E/L_z/Q` are reported directly.
 One `0.099` stepwise Carter transient is retained as an outlier while its
-endpoint drift remains `O(1e-4)`. This closes only the `Q_charge=0` Kerr slice,
-not Kerr-Newman or polarization.
+endpoint drift remains `O(1e-4)`. This closes the `Q_charge=0` Kerr slice, not
+polarization.
+
+Native Kerr-Newman neutral-ray gate (passed on 2026-08-06):
+
+- the f64 oracle implements BL and ingoing Cartesian KS Kerr-Newman geometry
+  from `li2026kerrNewmanPolarizedTransfer`, including analytic derivatives and
+  neutral-photon `H/E/L_z/Q` diagnostics;
+- unit limits require exact reduction to the accepted Kerr implementation at
+  `Q=0`, exact Reissner-Nordstrom at `a=0`, analytic outer/inner horizons,
+  `det(g_KS)=-1`, and BL/KS tensor equivalence;
+- generic KN `a/M=0.6, Q/M=0.5`, quality 2, 33x33 produced
+  `101 capture / 988 escape / 0 invalid`; a 257-sample replay measured stable
+  event agreement `1.0`, direction median `1.43e-5 rad`, and RMS
+  `2.99e-5 rad`;
+- RN `a=0, Q/M=0.6`, quality 2, 33x33 produced
+  `97 capture / 992 escape / 0 invalid`; a 129-sample replay measured stable
+  event agreement `1.0`, direction median `1.62e-5 rad`, and RMS
+  `4.07e-5 rad`;
+- both cases require zero native failures and zero CPU invalid events outside
+  the recorded critical boundary, stable event agreement `>=0.98`, direction
+  median `<1e-4 rad`, and RMS `<5e-4 rad`;
+- capture is classified at `r_+ + 0.02M`: captured past-directed camera rays in
+  the ingoing chart are cancellation-conditioned near the future horizon, so
+  capture `H` is reported separately and is not a horizon-crossing gate.
+
+This gate accepts neutral sub-extremal exterior Kerr-Newman ray geometry only.
+Charged-particle motion, polarization, disk/jet emission, Cauchy-horizon
+continuation, and maximal extension remain fail-closed.
 
 Native XR gate (open):
 
@@ -964,7 +992,8 @@ Native XR gate (open):
   evidence gates;
 - stable 72 Hz is required on Quest PCVR and 90 Hz remains the target.
 
-See `validation/npgs_native_baseline/README.md`.
+See `validation/npgs_native_baseline/README.md` and
+`validation/npgs_kerr_newman/README.md`.
 
 ## Phase 6 Simplified GRRT
 

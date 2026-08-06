@@ -499,11 +499,14 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
   GLSL reference request.
 - Short summary: Treats polarized radiative transfer around Kerr-Newman black
   holes.
-- Relevant equations / assumptions / methods: Kerr-Newman charge and polarized
-  transfer.
-- Project use: Watchlist for future exploratory Kerr-Newman visualization.
-- Limitations / open questions: Electric charge is outside the first-year
-  validated Kerr scope.
+- Relevant equations / assumptions / methods: Eq. (2.1)-(2.2) defines the
+  Boyer-Lindquist Kerr-Newman metric through `Sigma` and
+  `Delta=r^2-2Mr+a^2+Q^2`; later sections treat polarized transfer.
+- Project use: Primary metric source for the independent f64 Kerr-Newman audit
+  oracle and the nonzero-charge NPGS event/direction gate.
+- Limitations / open questions: The accepted 2026-08-06 gate covers neutral
+  exterior rays only. Polarization, charged particles, emission physics, and
+  maximal extension remain independently blocked.
 
 ### Zhihu Kerr-Newman GLSL Article
 
@@ -547,9 +550,10 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
   Windows CI/dependency wiring only and was not merged into the integration
   branch.
 - Limitations / open questions: The repository is engineering evidence, not a
-  peer-reviewed benchmark. Kerr-Newman, polarization, maximal extension, jets,
-  and volumetric effects require independent gates. No public BBH/GW branch was
-  available at the migration refresh.
+  peer-reviewed benchmark. Neutral exterior Kerr-Newman rays passed an
+  independent f64 event/direction gate on 2026-08-06; polarization, maximal
+  extension, jets, and volumetric effects still require separate gates. No
+  public BBH/GW branch was available at the migration refresh.
 
 ### Bruneton Black-Hole Shader Repository
 
