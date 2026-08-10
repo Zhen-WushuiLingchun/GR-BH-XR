@@ -1010,6 +1010,27 @@ to claim that the corresponding implementation already exists.
 - Project use: Metric-provider architecture comparison.
 - Limitations / open questions: Not used as a numerical oracle here.
 
+### Peters 1964 - Gravitational Radiation And Two-Body Motion
+
+- Source path: `docs/equations.md`
+- PDF path: Not stored; stable publisher record at the locator below.
+- Code review path: Not applicable; analytic orbit law.
+- BibTeX key: `peters1964grMotionTwoPointMasses`
+- Stable locator: DOI `10.1103/PhysRev.136.B1224`.
+- Search date: 2026-08-10.
+- Search terms: Peters 1964 gravitational radiation motion two point masses
+  circular orbit decay.
+- Why added: Primary source for the first independently checkable shrinking
+  BBH orbit before the full 4PN trajectory layer.
+- Short summary: Derives secular changes of Keplerian binary orbital elements
+  under leading gravitational-radiation reaction.
+- Relevant equations / assumptions / methods: Circular limit
+  `dr/dt=-(64/5) eta M^3/r^3`, analytic coalescence law, and quadrupole energy
+  balance in geometric units.
+- Project use: Task 5b orbit provider and analytic gate.
+- Limitations / open questions: Adiabatic leading order only; no higher PN,
+  spins, eccentric merger dynamics, or strong-field validity.
+
 ### Combi et al. 2021 - Superposed Spinning-BBH Metric
 
 - Source path: `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`

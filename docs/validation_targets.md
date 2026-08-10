@@ -69,6 +69,19 @@
 - Runtime capture uses the declared `2 M_A` worldtubes. No event-horizon or
   apparent-horizon claim is made for this approximation.
 
+## BBH/XR Task 5b: Quasi-Circular Inspiral Entry
+
+- The first shrinking orbit uses Peters' leading-quadrupole circular law and
+  is labelled `physics_approximation`, not full 4PN.
+- Mass convention is explicit: `q=m1/m2` with `0<q<=1`; center-of-mass
+  position and momentum must vanish to `<1e-13` for tested unequal masses.
+- Numerical derivatives of separation and phase must agree with `dr/dt` and
+  Keplerian `Omega` to `<2e-6` relative error.
+- Newtonian binding-energy loss must equal the quadrupole flux to `<1e-13`
+  relative error.
+- Evaluation at or below the declared minimum separation must fail closed;
+  merger interpolation is a later provider, not an extrapolation of this law.
+
 Validation is part of the physics interface. A renderer output is not considered
 academic until its relevant validation path is documented.
 

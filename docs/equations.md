@@ -474,6 +474,21 @@ This Newtonian fixed orbit is a controlled entry slice, not the paper's full
 4PN inspiral and not a merger model. The provider uses explicit excision
 worldtubes only as runtime validity surfaces; they are not event horizons.
 
+The next trajectory slice adds leading-quadrupole adiabatic radiation
+reaction for a nonspinning quasi-circular binary, following
+`peters1964grMotionTwoPointMasses`. With `eta=m1 m2/M^2`:
+
+```text
+dr/dt = -(64/5) eta M^3 / r^3,
+r(t)^4 = r0^4 - (256/5) eta M^3 (t-t0),
+Omega^2 = M/r^3,
+phi(t)-phi0 = [r0^(5/2)-r(t)^(5/2)] / [32 eta M^(5/2)].
+```
+
+The implementation fails closed at a declared minimum separation. This is a
+PN entry and timing oracle, not a claim that the full 4PN trajectory in
+Combi-Ressler has already been implemented.
+
 The independent 3+1 audit uses
 
 ```text

@@ -177,6 +177,12 @@ Kerr-Schild terms. It is accepted as a constraint-audited
 vacuum solution, or a merger. The `2 M_A` capture surfaces are explicit
 worldtubes and must not be described as apparent or event horizons.
 
+An optional unequal-mass orbit can shrink according to the Peters
+leading-quadrupole circular law. This supplies physically sourced time
+dependence and a clean energy-balance gate, but remains below the planned 4PN
+trajectory fidelity and is invalid once the declared minimum separation is
+reached.
+
 ## Real-Time Shader Reference Boundary
 
 Real-time GLSL/WebGL/Vulkan black-hole projects are useful engineering

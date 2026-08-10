@@ -1,7 +1,7 @@
 """Analytic and approximate providers for dynamic-spacetime validation."""
 
 from .minkowski_dynamic import MinkowskiMetricProvider
-from .bbh_orbit import BinaryHoleState, FixedCircularBinaryOrbit
+from .bbh_orbit import BinaryHoleState, FixedCircularBinaryOrbit, QuasiCircularInspiralOrbit
 from .bbh_superposed_ks import (
     SuperposedKerrSchildBBHProvider,
     boosted_schwarzschild_ks_perturbation,
@@ -17,6 +17,7 @@ from .plane_gw import (
 __all__ = [
     "BinaryHoleState",
     "FixedCircularBinaryOrbit",
+    "QuasiCircularInspiralOrbit",
     "MinkowskiMetricProvider",
     "PlaneGWMetricProvider",
     "PlaneGWParameters",

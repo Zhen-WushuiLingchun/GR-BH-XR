@@ -1,5 +1,18 @@
 # Development Log
 
+## 2026-08-10 - Task 5b leading-quadrupole inspiral orbit
+
+- Added unequal-mass quasi-circular inspiral states with the explicit
+  convention `q=m1/m2<=1`, center-of-mass weighting, and Peters leading-order
+  radiation reaction.
+- Analytic `r(t)` and `phi(t)` reproduce `dr/dt`, Keplerian `Omega`, and
+  Newtonian binding-energy/quadrupole-flux balance in the formal gate.
+- The formal gate reports maximum relative errors `2.20e-9`, `3.01e-9`, and
+  `3.09e-16` respectively, with zero center-of-mass residual for `q=1,0.5`.
+- The orbit fails closed at a configured minimum separation and is labelled as
+  a PN entry approximation, not the full Combi-Ressler 4PN trajectory or a
+  merger model.
+
 ## 2026-08-10 - Task 5a equal-mass superposed KS provider
 
 - Implemented the first Combi-Ressler Eq. 11 slice: equal-mass nonspinning

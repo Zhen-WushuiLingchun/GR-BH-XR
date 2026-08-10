@@ -202,3 +202,24 @@ The JSON and HDF5 persist every constraint sample, separation, phase, region,
 and momentum residual. These finite nonzero residuals are the expected quality
 measure of a superposed metric. The provider is always labelled
 `physics_approximation`; its excision worldtubes are not event horizons.
+
+## Task 5b: Leading-Quadrupole Inspiral
+
+The orbit layer next adds unequal masses and a shrinking nonspinning circular
+orbit using `peters1964grMotionTwoPointMasses`. It is intentionally narrower
+than the full 4PN trajectory used by Combi-Ressler.
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.validate_bbh_orbit `
+  --out outputs/bbh_dynamic/bbh_orbit_quadrupole.json
+```
+
+The gate covers `q=m1/m2` values `1` and `0.5`, center-of-mass cancellation,
+the analytic separation and phase derivatives, Newtonian binding-energy /
+quadrupole-flux balance, and fail-closed minimum separation. Full 4PN spin and
+eccentric corrections remain open and cannot be inferred from this gate.
+
+The formal run records zero center-of-mass residual, maximum relative errors
+`2.20e-9` in `dr/dt`, `3.01e-9` in orbital frequency, and `3.09e-16` in
+Newtonian energy balance.

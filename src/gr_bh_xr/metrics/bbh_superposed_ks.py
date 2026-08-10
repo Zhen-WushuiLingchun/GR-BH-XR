@@ -1,8 +1,8 @@
-"""Equal-mass superposed boosted Kerr-Schild BBH metric.
+"""Superposed boosted Kerr-Schild BBH metric.
 
-This is the first validated slice of Combi and Ressler Eq. (11): two
-nonspinning Schwarzschild Kerr-Schild perturbations move on a fixed circular
-orbit. It is a fast physics approximation, not an Einstein evolution.
+This is a validated slice of Combi and Ressler Eq. (11): two nonspinning
+Schwarzschild Kerr-Schild perturbations move on an auditable orbit provider.
+It is a fast physics approximation, not an Einstein evolution.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from ..dynamic_metric import _adm_from_metric
 from ..dynamic_types import MetricSample
 from ..metric_ks import MINKOWSKI_COVARIANT
 from ..types import FloatArray
-from .bbh_orbit import BinaryHoleState, FixedCircularBinaryOrbit
+from .bbh_orbit import BinaryHoleState, FixedCircularBinaryOrbit, QuasiCircularInspiralOrbit
 
 
 _COMPLEX_STEP = 1.0e-28
@@ -66,15 +66,26 @@ def boosted_schwarzschild_ks_perturbation(
 
 @dataclass(frozen=True)
 class SuperposedKerrSchildBBHProvider:
-    """Combi-Ressler Eq. (11) for a fixed equal-mass circular binary."""
+    """Combi-Ressler Eq. (11) for supported nonspinning binary orbits."""
 
-    orbit: FixedCircularBinaryOrbit = FixedCircularBinaryOrbit()
+    orbit: FixedCircularBinaryOrbit | QuasiCircularInspiralOrbit = FixedCircularBinaryOrbit()
     worldtube_factor: float = 2.0
-    source_revision: str = "gr-bh-xr.combi-ressler-eq11.equal-mass-v1"
+    source_revision: str | None = None
 
     def __post_init__(self) -> None:
         if not math.isfinite(self.worldtube_factor) or self.worldtube_factor <= 0.0:
             raise ValueError("worldtube_factor must be positive and finite.")
+        if self.source_revision is None:
+            suffix = (
+                "quadrupole-inspiral-v1"
+                if isinstance(self.orbit, QuasiCircularInspiralOrbit)
+                else "equal-mass-v1"
+            )
+            object.__setattr__(
+                self,
+                "source_revision",
+                f"gr-bh-xr.combi-ressler-eq11.{suffix}",
+            )
 
     @property
     def evidence_label(self) -> str:
@@ -143,6 +154,5 @@ class SuperposedKerrSchildBBHProvider:
             gamma_inv=gamma_inv,
             validity="valid" if outside_worldtubes else "outside_domain",
             evidence_label="physics_approximation",
-            source_revision=self.source_revision,
+            source_revision=str(self.source_revision),
         )
-
