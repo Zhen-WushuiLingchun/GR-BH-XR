@@ -16,7 +16,7 @@ from ..dynamic_metric import _adm_from_metric
 from ..dynamic_types import MetricSample
 from ..metric_ks import MINKOWSKI_COVARIANT
 from ..types import FloatArray
-from .bbh_orbit import BinaryHoleState, FixedCircularBinaryOrbit, QuasiCircularInspiralOrbit
+from .bbh_orbit import BinaryHoleState, BinaryTrajectory, FixedCircularBinaryOrbit
 
 
 _COMPLEX_STEP = 1.0e-28
@@ -91,7 +91,7 @@ def boosted_schwarzschild_ks_perturbation(
 class SuperposedKerrSchildBBHProvider:
     """Combi-Ressler Eq. (11) for supported nonspinning binary orbits."""
 
-    orbit: FixedCircularBinaryOrbit | QuasiCircularInspiralOrbit = FixedCircularBinaryOrbit()
+    orbit: BinaryTrajectory = FixedCircularBinaryOrbit()
     worldtube_factor: float = 2.0
     source_revision: str | None = None
 
@@ -99,25 +99,10 @@ class SuperposedKerrSchildBBHProvider:
         if not math.isfinite(self.worldtube_factor) or self.worldtube_factor <= 0.0:
             raise ValueError("worldtube_factor must be positive and finite.")
         if self.source_revision is None:
-            spinning = any(
-                np.linalg.norm(spin) > 0.0
-                for spin in (
-                    self.orbit.dimensionless_spin1,
-                    self.orbit.dimensionless_spin2,
-                )
-            )
-            if isinstance(self.orbit, QuasiCircularInspiralOrbit):
-                suffix = (
-                    "quadrupole-inspiral-spinning-v1"
-                    if spinning
-                    else "quadrupole-inspiral-v1"
-                )
-            else:
-                suffix = "spinning-circular-v1" if spinning else "equal-mass-v1"
             object.__setattr__(
                 self,
                 "source_revision",
-                f"gr-bh-xr.combi-ressler-eq11.{suffix}",
+                f"gr-bh-xr.combi-ressler-eq11.{self.orbit.source_revision}",
             )
 
     @property

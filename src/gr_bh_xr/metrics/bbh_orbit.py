@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
+from typing import Protocol
 
 import numpy as np
 
@@ -31,9 +32,15 @@ class BinaryHoleState:
         speed2 = np.dot(self.velocity, self.velocity)
         if float(np.real(speed2)) >= 1.0:
             raise ValueError("hole trajectory must remain timelike (|v| < 1).")
-        if not np.iscomplexobj(self.mass) and not np.iscomplexobj(self.spin):
-            if float(np.linalg.norm(self.spin)) > float(self.mass) + 1.0e-14:
-                raise ValueError("specific spin magnitude must satisfy |a| <= mass.")
+
+
+class BinaryTrajectory(Protocol):
+    """Structural contract consumed by the superposed metric provider."""
+
+    @property
+    def source_revision(self) -> str: ...
+
+    def states(self, t: float | complex) -> tuple[BinaryHoleState, BinaryHoleState]: ...
 
 
 @dataclass(frozen=True)
@@ -77,6 +84,14 @@ class FixedCircularBinaryOrbit:
     @property
     def period(self) -> float:
         return 2.0 * math.pi / self.omega
+
+    @property
+    def source_revision(self) -> str:
+        spinning = any(
+            np.linalg.norm(spin) > 0.0
+            for spin in (self.dimensionless_spin1, self.dimensionless_spin2)
+        )
+        return "spinning-circular-v1" if spinning else "equal-mass-v1"
 
     def states(self, t: float | complex) -> tuple[BinaryHoleState, BinaryHoleState]:
         """Return equal-mass hole states at global coordinate time ``t``."""
@@ -163,6 +178,18 @@ class QuasiCircularInspiralOrbit:
     @property
     def radiation_reaction_coefficient(self) -> float:
         return 64.0 / 5.0 * self.symmetric_mass_ratio * self.total_mass**3
+
+    @property
+    def source_revision(self) -> str:
+        spinning = any(
+            np.linalg.norm(spin) > 0.0
+            for spin in (self.dimensionless_spin1, self.dimensionless_spin2)
+        )
+        return (
+            "quadrupole-inspiral-spinning-v1"
+            if spinning
+            else "quadrupole-inspiral-v1"
+        )
 
     @property
     def valid_until(self) -> float:

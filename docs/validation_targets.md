@@ -93,6 +93,18 @@
 - The spinning superposition remains `physics_approximation`; near/bridge/far
   ADM residuals are persisted and checked against the source-paper envelope.
 
+## BBH/XR Task 5d: Merger-To-Remnant Transition
+
+- Before the transition, the metric must equal the selected inspiral provider
+  to `<1e-14`; after it, the two coincident half-mass terms must equal one Kerr
+  remnant to `<1e-13`.
+- The Appendix-B weight must have exact endpoints and reflection symmetry to
+  `<1e-14`; position and velocity must remain continuous across both ends.
+- Mid-transition complex-step derivatives must agree with finite differences
+  to `<2e-8`; pre/mid/post constraint residuals are persisted separately.
+- Remnant mass/spin/kick are supplied evidence-bearing inputs until an
+  independently validated NR fitting module exists.
+
 Validation is part of the physics interface. A renderer output is not considered
 academic until its relevant validation path is documented.
 

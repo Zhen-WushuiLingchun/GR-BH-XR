@@ -502,7 +502,25 @@ l = [r X - a cross X + (a.X) a/r] / (r^2+|a|^2).
 The sign is fixed by the existing ingoing Cartesian convention: for
 `a=(0,0,a)` this yields `l_x=(r x+a y)/(r^2+a^2)` and
 `l_y=(r y-a x)/(r^2+a^2)`. Each term is then Lorentz transformed exactly as in
-the nonspinning provider. `|a|<=M` is enforced for every real hole state.
+the nonspinning provider. Physical inspiral and remnant inputs enforce
+`|chi|<=1`. The two-term remnant representation is allowed to carry the same
+specific `a_f` in both half-mass terms because their coincident perturbations
+sum to the single physical Kerr metric `(M_f,a_f)`.
+
+The merger provider follows Combi-Ressler Eqs. (14)-(15): each term approaches
+`M_f/2` and the same remnant specific-spin vector `a_f`. Its Appendix-B smooth
+weight is
+
+```text
+E(s) = exp(-1/s) for s>0, otherwise 0,
+W(s) = E(s) / [E(s)+E(1-s)],  s=(t-t_start)/(t_end-t_start).
+```
+
+Because the current leading-order inspiral does not itself coalesce the two
+coordinate centers, GR-BH-XR also blends each center to a supplied shared
+remnant worldline and differentiates that blend consistently for velocity and
+acceleration. This is a documented trajectory-coalescence extension. Remnant
+mass, spin, kick, and center are explicit inputs pending independent NR fits.
 
 The independent 3+1 audit uses
 

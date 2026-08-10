@@ -1,5 +1,18 @@
 # Development Log
 
+## 2026-08-10 - Task 5d merger-to-remnant transition
+
+- Added the Combi-Ressler Appendix-B smooth interpolation for mass and
+  specific spin, plus a derivative-consistent coalescence of both coordinate
+  centers onto a supplied remnant worldline.
+- Before the transition the provider is exactly the selected inspiral; after
+  it, two coincident `M_f/2,a_f` terms sum to one physical Kerr remnant.
+- Remnant properties remain explicit inputs pending independently validated NR
+  fits. The transition retains the `physics_approximation` label.
+- The formal gate reports exact-inspiral error `0`, single-remnant endpoint
+  error `2.22e-16`, inverse-derivative disagreement `3.35e-9`, and sampled
+  Hamiltonian residuals `7.81e-5 -> 5.57e-4 -> 6.46e-7` across pre/mid/post.
+
 ## 2026-08-10 - Task 5c generic-spin Kerr-Schild terms
 
 - Generalized each superposed hole from a Schwarzschild term to the arbitrary

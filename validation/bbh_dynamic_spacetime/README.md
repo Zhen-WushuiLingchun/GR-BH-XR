@@ -237,3 +237,22 @@ Cartesian Kerr metric, rotates a generic spin and field point together, checks
 all four inverse-metric derivatives, and persists near/bridge/far ADM
 constraint residuals. It validates the implemented superposed-Kerr
 approximation; it does not promote that superposition to an Einstein solution.
+
+## Task 5d: Merger To Kerr Remnant
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.validate_bbh_remnant `
+  --out outputs/bbh_dynamic/bbh_remnant_transition.json
+```
+
+This gate proves both hard endpoints, Appendix-B weight symmetry, state
+continuity, derivative agreement, and pre/mid/post constraint behavior. The
+remnant parameters are supplied explicitly; this is not yet a validation of
+any numerical-relativity remnant fitting formula.
+
+The formal gate records endpoint metric errors `0` and `2.22e-16`, transition
+weight symmetry error `1.11e-16`, and inverse-derivative disagreement
+`3.35e-9`. At the sampled bridge point, the Hamiltonian constraint rises from
+`7.81e-5` before transition to `5.57e-4` mid-transition, then falls to
+`6.46e-7` at the exact post-merger Kerr endpoint.

@@ -189,6 +189,12 @@ and passes single-Kerr and rotation-covariance gates. Superposition residuals
 remain nonzero, so generic-spin support does not change the provider's
 `physics_approximation` label.
 
+The merger slice smoothly coalesces the two trajectory centers and interpolates
+the two KS terms into one supplied Kerr remnant. The post-transition endpoint
+is an exact Kerr metric, but the transition remains a prescribed approximate
+spacetime. No apparent/event horizon or NR-fit accuracy is inferred from the
+smooth interpolation alone.
+
 ## Real-Time Shader Reference Boundary
 
 Real-time GLSL/WebGL/Vulkan black-hole projects are useful engineering
