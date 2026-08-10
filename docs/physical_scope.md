@@ -169,6 +169,14 @@ For BBH visual toys, the UI and documentation must state:
 Approximate visual model, not a solution of Einstein equations.
 ```
 
+The accepted first CPU BBH slice is narrower than the eventual interactive
+model: two equal, nonspinning holes on a fixed-separation Newtonian circular
+orbit, with the metric formed by superposed instantaneous boosted
+Kerr-Schild terms. It is accepted as a constraint-audited
+`physics_approximation`, not as PN inspiral, numerical relativity, an exact
+vacuum solution, or a merger. The `2 M_A` capture surfaces are explicit
+worldtubes and must not be described as apparent or event horizons.
+
 ## Real-Time Shader Reference Boundary
 
 Real-time GLSL/WebGL/Vulkan black-hole projects are useful engineering

@@ -50,6 +50,25 @@
 - The metric's vacuum evidence label is valid only to linear order in strain;
   it is not an exact nonlinear plane-wave solution and is not a BBH provider.
 
+## BBH/XR Task 5a: Equal-Mass Superposed Kerr-Schild Provider
+
+- The first BBH slice is equal-mass, nonspinning, and fixed-separation
+  circular. PN radiation reaction, merger interpolation, and remnant fits are
+  separate later commits.
+- The covariant metric follows Combi-Ressler Eq. 11 and every sample carries
+  `evidence_label=physics_approximation`.
+- Inverse consistency, Lorentz-null covectors, half-period hole exchange, and
+  the large-separation isolated-hole limit must pass to f64 tolerance.
+- Complex-step inverse-metric derivatives must agree with an independent
+  centered finite-difference oracle to `<2e-8` maximum absolute error.
+- Vacuum ADM residuals are persisted by separation, phase, and spatial region.
+  Source-based broad gates are `max|H|<0.2` near hole worldtubes,
+  `max|H|<1e-2` between holes, `max|H|<1e-4` in the far sample, with far-field
+  falloff at least `r^-3`. These surround the source's reported `1e-1--1e-2`,
+  about `1e-3`, and about `r^-4` behavior without claiming exact constraints.
+- Runtime capture uses the declared `2 M_A` worldtubes. No event-horizon or
+  apparent-horizon claim is made for this approximation.
+
 Validation is part of the physics interface. A renderer output is not considered
 academic until its relevant validation path is documented.
 

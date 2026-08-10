@@ -169,3 +169,36 @@ Observed f64 evidence on 2026-08-10:
 The vacuum claim is linear in the physical strain amplitude. This is an
 analytic dynamic-metric gate, not a binary-black-hole model and not a claim
 that a display-amplified gravitational wave has physical amplitude.
+
+## Task 5a: Equal-Mass Superposed Kerr-Schild Metric
+
+The first approximate BBH metric is the smallest reviewable slice of
+Combi-Ressler Eq. 11: equal masses, zero spin, fixed separation, and a
+Newtonian circular orbit. It uses instantaneous Lorentz boosts and omits the
+explicit acceleration term in the coordinate Jacobian exactly as documented
+by the source. It is not the later 4PN inspiral-to-remnant model.
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.validate_bbh_constraints `
+  --stencil-step 0.04 `
+  --out outputs/bbh_dynamic/bbh_constraints_equal_mass.json `
+  --h5 outputs/bbh_dynamic/bbh_constraints_equal_mass.h5
+```
+
+Observed f64 evidence on 2026-08-10:
+
+- inverse derivative complex-step versus centered finite difference:
+  `6.37e-12` maximum absolute difference;
+- half-period equal-mass exchange symmetry: `2.22e-16`;
+- companion perturbation under separation doubling: `2.0044` and `2.0027`,
+  consistent with the isolated-hole `1/d` limit;
+- constraint stencil relative change: `8.09e-3`;
+- near-hole `max|H|=5.47e-2`, bridge `max|H|=2.01e-3`, and far
+  `max|H|=2.97e-7`;
+- far Hamiltonian log2 slopes under radius doubling: `-5.67` and `-7.40`.
+
+The JSON and HDF5 persist every constraint sample, separation, phase, region,
+and momentum residual. These finite nonzero residuals are the expected quality
+measure of a superposed metric. The provider is always labelled
+`physics_approximation`; its excision worldtubes are not event horizons.

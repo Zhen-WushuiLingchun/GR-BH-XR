@@ -45,7 +45,7 @@ source was found.
 | Charged disk matter | Blocked | Neutral photons in a charged spacetime do not define a charged-plasma disk model. |
 | Maximal extension | Visual/mathematical only | Exact stationary Kerr-Newman continuation is not an astrophysical collapse-interior prediction. |
 | Native OpenXR and MR | Interface complete, runtime candidate | The render-sink and measured-frame contracts exist without changing desktop GLFW. Session/swapchain and real camera-frame delivery remain device gates. |
-| BBH/GW | Tasks 0-4 foundations accepted; physical BBH provider not yet implemented | The equation/source baseline, sequential-stereo gate, Python f64 dynamic Hamiltonian oracle, native metric-provider interface, and analytic TT plane-GW gates are complete. Combi-Ressler approximate BBH and offline numerical-relativity snapshot providers remain later gates. No public NPGS BBH/GW implementation exists at the refreshed upstream refs. |
+| BBH/GW | Tasks 0-4 plus the Task 5a CPU approximation are accepted; no dynamic native renderer yet | The analytic gates and an equal-mass, nonspinning, fixed-circular-orbit Combi-Ressler Eq. 11 provider now pass derivative, symmetry, isolated-hole, and ADM-constraint gates. It remains a `physics_approximation`; PN inspiral, merger/remnant, native GLSL, and NR snapshots remain open. |
 
 The migration does not treat NPGS screenshots or feature claims as scientific
 validation. GR-BH-XR retains its Python f64 reference solvers, audit schemas,
@@ -107,8 +107,9 @@ Current status should therefore be read by capability, not by number:
   cannot substitute for RGB evidence.
 - BBH/GW implementation is active. The simulated-stereo baseline, Python f64
   time-dependent Hamiltonian oracle, native stationary-provider extraction,
-  and analytic TT plane-GW delay/derivative gates are accepted. No physical
-  time-dependent BBH provider or dynamic NPGS ray path is accepted yet. No
+  analytic TT plane-GW gates, and the constraint-audited equal-mass CPU SKS
+  approximation are accepted. No dynamic NPGS ray path, PN inspiral,
+  merger-to-remnant transition, or NR snapshot provider is accepted yet. No
   public BBH/GW source branch was available in the
   reviewed NPGS repository; showcase media is not implementation evidence.
   See `docs/plans/2026-08-10-bbh-dynamic-spacetime-xr.md`.

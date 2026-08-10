@@ -47,10 +47,9 @@ def test_bbh_dynamic_track_has_versioned_plan_and_fail_closed_status() -> None:
     assert "nr_snapshot_truth" in plan
     assert "apparent horizons or explicit worldtubes" in plan
     assert "docs/plans/2026-08-10-bbh-dynamic-spacetime-xr.md" in status
-    assert "Tasks 0-4 foundations accepted" in status
-    assert "physical BBH provider not yet implemented" in status
-    assert "No physical" in status
-    assert "time-dependent BBH provider or dynamic NPGS ray path is accepted yet" in status
+    assert "Task 5a CPU approximation" in status
+    assert "no dynamic native renderer yet" in status
+    assert "No dynamic NPGS ray path" in status
     assert "simulated stereo" in targets
     assert "both-invalid rays" in targets
     assert "waveform-only assets" in note

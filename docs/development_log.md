@@ -1,5 +1,20 @@
 # Development Log
 
+## 2026-08-10 - Task 5a equal-mass superposed KS provider
+
+- Implemented the first Combi-Ressler Eq. 11 slice: equal-mass nonspinning
+  Schwarzschild KS perturbations on a fixed Newtonian circular orbit with
+  instantaneous Lorentz boosts.
+- Added complex-step derivatives for all four inverse-metric coordinates and
+  an independent finite-difference ADM Hamiltonian/momentum constraint oracle.
+- The formal gate covers separations `10/20/40M` and two phases. It records
+  derivative difference `6.37e-12`, exchange symmetry `2.22e-16`, near-hole
+  `max|H|=5.47e-2`, bridge `2.01e-3`, and far `2.97e-7`.
+- Constraint residuals are persisted as approximation evidence. The declared
+  capture worldtubes are not called event or apparent horizons.
+- PN inspiral, aligned/generic spin, merger interpolation, and the NPGS GLSL
+  provider remain subsequent independent tasks.
+
 ## 2026-08-10 - Task 4 analytic dynamic-spacetime gates
 
 - Added an arbitrary-direction, arbitrary-polarization TT plane-wave metric

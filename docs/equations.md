@@ -436,6 +436,56 @@ display_angular_displacement = visual_gain * physical_angular_displacement
 `visual_gain` is metadata and must never modify the metric provider or its
 physical audit buffers.
 
+### Superposed boosted Kerr-Schild approximation
+
+The first BBH provider follows Combi and Ressler Eq. 11. In global Cartesian
+coordinates it adds two Lorentz-transformed single-hole Kerr-Schild
+perturbations to one shared flat background:
+
+```text
+g_ab = eta_ab
+     + [2 H Lambda^d_a l_d Lambda^c_b l_c]_(1)
+     + [2 H Lambda^d_a l_d Lambda^c_b l_c]_(2).
+```
+
+For the first accepted slice each hole is nonspinning, so in its instantaneous
+rest frame
+
+```text
+H_A = M_A / R_A,
+l_a dX^a = dT + X_i dX^i / R_A.
+```
+
+The global-to-hole spatial coordinates and covector Jacobian use the
+instantaneous Lorentz boost of Combi-Ressler Eqs. 8-10. Following the source,
+explicit acceleration terms are omitted from that Jacobian to avoid the
+accelerated-coordinate pathology at large radius. Time dependence still
+enters through the hole positions, velocities, and changing boost direction.
+
+The first orbit is equal-mass and circular at fixed coordinate separation:
+
+```text
+Omega^2 = M_total / separation^3,
+s_1 = +(separation/2) (cos Omega t, sin Omega t, 0),
+s_2 = -s_1.
+```
+
+This Newtonian fixed orbit is a controlled entry slice, not the paper's full
+4PN inspiral and not a merger model. The provider uses explicit excision
+worldtubes only as runtime validity surfaces; they are not event horizons.
+
+The independent 3+1 audit uses
+
+```text
+K_ij = [-partial_t gamma_ij + D_i beta_j + D_j beta_i] / (2 alpha),
+H_constraint = R + K^2 - K_ij K^ij,
+M^i_constraint = D_j (K^ij - gamma^ij K).
+```
+
+The superposition does not solve these constraints exactly. Their residuals
+are scientific output measuring approximation quality, not numerical noise to
+hide or renormalize away.
+
 ### Independent 3+1 cross-check
 
 For validation, decompose the photon momentum in the Eulerian frame as
