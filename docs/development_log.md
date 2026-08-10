@@ -1,5 +1,19 @@
 # Development Log
 
+## 2026-08-10 - Task 4 analytic dynamic-spacetime gates
+
+- Added an arbitrary-direction, arbitrary-polarization TT plane-wave metric
+  provider with exact finite-amplitude inversion and analytic derivatives,
+  while limiting the vacuum claim to linear order in physical strain.
+- Added a fixed-arrival-plane f64 gate against Angelil and Saha Eq. 14. At
+  `h=1e-3`, the delay residual is `5.12e-7`; halving `h` reduces it by a factor
+  `3.99982`, giving observed order `1.99994`.
+- The gate records `max|H|=1.05e-15`, nonzero `Delta p_t=-3.8567e-4`, and a
+  physical angular displacement of `1.01793e-4 rad`.
+- Display amplification is kept outside the metric provider and persisted
+  separately so gravitational-wave visibility cannot be mistaken for physical
+  strain.
+
 ## 2026-08-10 - Task 3 native metric-provider interface
 
 - Added native C++ and shared GLSL metric-provider contracts carrying metric

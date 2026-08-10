@@ -35,6 +35,21 @@
 - Representative stationary fast-path GPU p95 regression must remain below
   two percent, within the overall five-percent NPGS migration budget.
 
+## BBH/XR Task 4: Analytic Dynamic Spacetimes
+
+- The zero-amplitude plane-wave provider must be exactly Minkowski.
+- Its analytic inverse-metric derivatives must agree with an independent
+  finite-difference oracle to `<1e-9` maximum absolute error.
+- The dynamic Hamiltonian must resolve the fixed arrival plane with
+  `max|H| <2e-12` and nonzero `Delta p_t`.
+- The numerical-minus-first-order Angelil-Saha time-delay residual must scale
+  quadratically with strain: observed order in `[1.8, 2.2]` when amplitude is
+  halved.
+- `visual_gain=1` must be the identity. Any non-unit gain is display metadata
+  only and cannot alter metric samples or physical audit values.
+- The metric's vacuum evidence label is valid only to linear order in strain;
+  it is not an exact nonlinear plane-wave solution and is not a BBH provider.
+
 Validation is part of the physics interface. A renderer output is not considered
 academic until its relevant validation path is documented.
 

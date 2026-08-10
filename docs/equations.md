@@ -399,6 +399,43 @@ Hamiltonian, provider constraint residuals, interpolation convergence, and
 analytic limiting cases. A renderer must not freeze `p_t` merely because the
 stationary Kerr implementation did so.
 
+### Analytic plane-GW gate
+
+Before introducing a binary approximation, the dynamic solver is tested with
+the transverse-traceless plane wave of `angelil2015gwOptics`, generalized to
+an arbitrary propagation direction `k_hat` and polarization angle `psi`:
+
+```text
+g_mu_nu = eta_mu_nu + h_mu_nu
+h_0mu = 0
+h_ij = h cos[omega(k_hat dot x - t) + phase] e_ij(psi)
+
+e_ij(psi) = cos(2 psi) (u_i u_j - v_i v_j)
+          + sin(2 psi) (u_i v_j + v_i u_j),
+u dot k_hat = v dot k_hat = u dot v = 0.
+```
+
+The implementation inverts this finite-amplitude metric exactly and evaluates
+`partial_mu g^alpha beta` analytically. Its vacuum interpretation is asserted
+only to first order in the physical strain `h`; the finite-amplitude inverse is
+a numerically convenient extension, not an exact nonlinear plane-wave vacuum
+solution.
+
+For a ray followed to a fixed arrival plane, the first-order coordinate-time
+delay is Angelil and Saha Eq. 14 evaluated along the unperturbed ray. The
+numerical-minus-first-order residual must therefore scale as `O(h^2)`. This
+gate also verifies that `h -> 0` is exactly Minkowski and that a dynamic wave
+produces nonzero `Delta p_t` while preserving the null Hamiltonian.
+
+Any display amplification is applied only after tracing:
+
+```text
+display_angular_displacement = visual_gain * physical_angular_displacement
+```
+
+`visual_gain` is metadata and must never modify the metric provider or its
+physical audit buffers.
+
 ### Independent 3+1 cross-check
 
 For validation, decompose the photon momentum in the Eulerian frame as

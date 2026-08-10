@@ -136,3 +136,36 @@ and geometric polarization on, measured 10.188 ms stereo-pair GPU p95 over 80
 pairs after 20 warmup pairs.  The pre-refactor baseline was 10.164 ms, a
 0.24-percent increase and below the two-percent task threshold.  This remains
 sequential synthetic stereo rather than an OpenXR total-frame result.
+
+## Task 4: Analytic Dynamic-Spacetime Gates
+
+The first genuinely time-dependent metric gate is a linear transverse-
+traceless plane gravitational wave based on `angelil2015gwOptics` Eq. 2 and
+Eq. 14. It tests the full dynamic Hamilton solver before the approximate BBH
+provider is introduced.
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.validate_dynamic_analytic `
+  --amplitude 1e-3 --angular-frequency 0.7 --distance 7 `
+  --visual-gain 1 `
+  --out outputs/bbh_dynamic/plane_gw_analytic.json
+```
+
+Observed f64 evidence on 2026-08-10:
+
+- zero amplitude is exactly Minkowski;
+- analytic inverse-metric derivatives agree with an independent finite-
+  difference oracle to `6.69e-11` maximum absolute difference;
+- the numerical arrival delay is `1.290025e-3`, versus the first-order result
+  `1.290536e-3`;
+- halving strain changes the higher-order residual by a factor `3.99982`, an
+  observed convergence order of `1.99994`;
+- `max|H| = 1.05e-15`, while `p_t` changes by `-3.8567e-4` as required for a
+  time-dependent metric;
+- physical angular displacement is `1.01793e-4 rad`; `visual_gain=1` leaves it
+  unchanged exactly.
+
+The vacuum claim is linear in the physical strain amplitude. This is an
+analytic dynamic-metric gate, not a binary-black-hole model and not a claim
+that a display-amplified gravitational wave has physical amplitude.
