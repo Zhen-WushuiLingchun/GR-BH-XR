@@ -111,3 +111,28 @@ Observed f64 anchors on 2026-08-10:
 The scale-factor provider is an analytic solver oracle, not a BBH model.  BBH
 claims remain closed until the approximate provider and its constraint gates
 pass.
+
+## Task 3: Native Metric-Provider Interface
+
+The native renderer now exposes the same provider concepts needed by a dynamic
+metric without changing the accepted stationary Kerr-Newman arithmetic.  The
+C++ contract records `(t,x,y,z)` covariant/inverse metrics, all four
+`partial_mu g^alpha_beta`, ADM lapse/shift/spatial metric, validity, evidence,
+interpolation error, and source revision.  The historical GLSL state remains
+`(x,y,z,t)` and its stationary adapter explicitly fixes `p_t` only because
+`partial_t g^alpha_beta` is identically zero.
+
+The raw-v3 binary zero-regression used the same 17x17 Kerr case before and
+after extraction (`a/M=0.9`, `Q/M=0`, `i=60 deg`, `r_obs=100M`, `FOV=40 deg`,
+quality 2).  Both files have SHA-256
+`3C8B5F371DDD781D76DE58C95BE63509E04000A58CD1914A256C592978A82B33`.
+All 73,984 bytes are identical: 4 capture, 285 escape, 0 invalid, and 0
+nonfinite records.  The JSON sidecar additionally identifies
+`npgs.kerr-newman-ks.v1`, `analytic_exact`, `stationary=true`, metric time,
+validity domain, and zero interpolation error.
+
+The representative stationary fast-path check at 1832x1920 per eye, disk off
+and geometric polarization on, measured 10.188 ms stereo-pair GPU p95 over 80
+pairs after 20 warmup pairs.  The pre-refactor baseline was 10.164 ms, a
+0.24-percent increase and below the two-percent task threshold.  This remains
+sequential synthetic stereo rather than an OpenXR total-frame result.

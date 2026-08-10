@@ -23,6 +23,18 @@
 - Provider-domain exits fail closed and record provider provenance and invalid
   sample counts.
 
+## BBH/XR Task 3: Native Metric Provider
+
+- The native C++ and GLSL contracts expose metric time, provider revision,
+  evidence label, validity, interpolation error, and all four inverse-metric
+  derivatives.
+- The stationary Kerr-Newman adapter may keep `p_t` fixed only while it
+  declares `partial_t g_inverse = 0`.
+- A frozen raw-v3 Kerr audit must be byte-identical before and after provider
+  extraction; matching event counts alone are insufficient.
+- Representative stationary fast-path GPU p95 regression must remain below
+  two percent, within the overall five-percent NPGS migration budget.
+
 Validation is part of the physics interface. A renderer output is not considered
 academic until its relevant validation path is documented.
 

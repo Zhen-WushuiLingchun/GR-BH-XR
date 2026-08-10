@@ -1,5 +1,22 @@
 # Development Log
 
+## 2026-08-10 - Task 3 native metric-provider interface
+
+- Added native C++ and shared GLSL metric-provider contracts carrying metric
+  time, analytic derivatives, ADM fields, validity, evidence, interpolation
+  error, and revision provenance.
+- Routed the accepted stationary Kerr-Newman RHS through the shared GLSL
+  adapter.  Stationarity is now the explicit reason `p_t` remains fixed; the
+  forthcoming dynamic adapters must provide a nonzero time derivative.
+- The Release build compiled all four black-hole shader variants and the f64
+  native provider.  A 17x17 raw-v3 Kerr audit was byte-identical before and
+  after extraction (SHA-256
+  `3C8B5F371DDD781D76DE58C95BE63509E04000A58CD1914A256C592978A82B33`),
+  with 4 capture, 285 escape, and no invalid/nonfinite records.
+- A representative 1832x1920 sequential stereo measurement changed from
+  10.164 ms to 10.188 ms GPU p95, a 0.24-percent increase.  This is not an
+  OpenXR headset-frame claim.
+
 ## 2026-08-10 - Task 2 f64 time-dependent Hamilton oracle
 
 - Added the shared `MetricSample`/provider/event contracts and a full
