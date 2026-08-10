@@ -183,6 +183,12 @@ dependence and a clean energy-balance gate, but remains below the planned 4PN
 trajectory fidelity and is invalid once the declared minimum separation is
 reached.
 
+Each superposed hole may carry an aligned or generic subextremal spin vector.
+This changes the individual term from boosted Schwarzschild to boosted Kerr
+and passes single-Kerr and rotation-covariance gates. Superposition residuals
+remain nonzero, so generic-spin support does not change the provider's
+`physics_approximation` label.
+
 ## Real-Time Shader Reference Boundary
 
 Real-time GLSL/WebGL/Vulkan black-hole projects are useful engineering

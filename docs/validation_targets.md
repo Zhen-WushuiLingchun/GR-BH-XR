@@ -82,6 +82,17 @@
 - Evaluation at or below the declared minimum separation must fail closed;
   merger interpolation is a later provider, not an extrapolation of this law.
 
+## BBH/XR Task 5c: Spinning Superposed Kerr-Schild Terms
+
+- A stationary z-aligned single term must reproduce the existing Cartesian
+  Kerr-Schild metric to `<1e-13` maximum component error.
+- Generic-spin terms must be covariant under a simultaneous rigid rotation of
+  the field point and spin vector to `<1e-13`.
+- Complex-step inverse-metric derivatives must agree with the independent
+  finite-difference oracle to `<2e-8`.
+- The spinning superposition remains `physics_approximation`; near/bridge/far
+  ADM residuals are persisted and checked against the source-paper envelope.
+
 Validation is part of the physics interface. A renderer output is not considered
 academic until its relevant validation path is documented.
 

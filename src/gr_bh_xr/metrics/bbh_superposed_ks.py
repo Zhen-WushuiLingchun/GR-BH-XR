@@ -38,10 +38,10 @@ def lorentz_boost_covector_jacobian(velocity: FloatArray) -> FloatArray:
     return jacobian
 
 
-def boosted_schwarzschild_ks_perturbation(
+def boosted_kerr_ks_perturbation(
     event: FloatArray, hole: BinaryHoleState
 ) -> tuple[FloatArray, complex]:
-    """Return one boosted Schwarzschild KS perturbation and rest radius."""
+    """Return one boosted arbitrary-spin Kerr-Schild perturbation and radius."""
 
     x = np.asarray(event)
     displacement = x[1:4] - hole.position
@@ -51,17 +51,40 @@ def boosted_schwarzschild_ks_perturbation(
     rest_position = displacement.copy()
     if abs(speed2) > 1.0e-30:
         rest_position += ((gamma - 1.0) / speed2) * np.dot(v, displacement) * v
-    radius = np.sqrt(np.dot(rest_position, rest_position))
+    spin = np.asarray(hole.spin)
+    spin2 = np.dot(spin, spin)
+    rho2 = np.dot(rest_position, rest_position)
+    projection = np.dot(spin, rest_position)
+    q = rho2 - spin2
+    radius2 = 0.5 * (q + np.sqrt(q * q + 4.0 * projection * projection))
+    radius = np.sqrt(radius2)
     if abs(radius) <= 1.0e-14:
-        raise ValueError("superposed KS metric is singular at a hole center.")
+        raise ValueError("superposed KS metric is singular at a Kerr ring/origin.")
 
+    denominator = radius * radius + spin2
+    spatial_l = (
+        radius * rest_position
+        - np.cross(spin, rest_position)
+        + projection * spin / radius
+    ) / denominator
     rest_l_cov = np.concatenate(
-        [np.ones(1, dtype=np.result_type(event)), rest_position / radius]
+        [np.ones(1, dtype=np.result_type(event, spin)), spatial_l]
     )
     jacobian = lorentz_boost_covector_jacobian(v)
     global_l_cov = jacobian.T @ rest_l_cov
-    perturbation = (2.0 * hole.mass / radius) * np.outer(global_l_cov, global_l_cov)
+    h = hole.mass * radius**3 / (radius**4 + projection * projection)
+    perturbation = 2.0 * h * np.outer(global_l_cov, global_l_cov)
     return perturbation, radius
+
+
+def boosted_schwarzschild_ks_perturbation(
+    event: FloatArray, hole: BinaryHoleState
+) -> tuple[FloatArray, complex]:
+    """Backward-compatible zero-spin wrapper around the Kerr term."""
+
+    if np.max(np.abs(hole.spin)) > 1.0e-15:
+        raise ValueError("Schwarzschild wrapper requires zero spin.")
+    return boosted_kerr_ks_perturbation(event, hole)
 
 
 @dataclass(frozen=True)
@@ -76,11 +99,21 @@ class SuperposedKerrSchildBBHProvider:
         if not math.isfinite(self.worldtube_factor) or self.worldtube_factor <= 0.0:
             raise ValueError("worldtube_factor must be positive and finite.")
         if self.source_revision is None:
-            suffix = (
-                "quadrupole-inspiral-v1"
-                if isinstance(self.orbit, QuasiCircularInspiralOrbit)
-                else "equal-mass-v1"
+            spinning = any(
+                np.linalg.norm(spin) > 0.0
+                for spin in (
+                    self.orbit.dimensionless_spin1,
+                    self.orbit.dimensionless_spin2,
+                )
             )
+            if isinstance(self.orbit, QuasiCircularInspiralOrbit):
+                suffix = (
+                    "quadrupole-inspiral-spinning-v1"
+                    if spinning
+                    else "quadrupole-inspiral-v1"
+                )
+            else:
+                suffix = "spinning-circular-v1" if spinning else "equal-mass-v1"
             object.__setattr__(
                 self,
                 "source_revision",
@@ -99,7 +132,7 @@ class SuperposedKerrSchildBBHProvider:
         dtype = np.result_type(event)
         metric = MINKOWSKI_COVARIANT.astype(dtype, copy=True)
         for hole in self.hole_states(t):
-            perturbation, _radius = boosted_schwarzschild_ks_perturbation(event, hole)
+            perturbation, _radius = boosted_kerr_ks_perturbation(event, hole)
             metric += perturbation
         return metric
 
@@ -110,7 +143,7 @@ class SuperposedKerrSchildBBHProvider:
         event = np.concatenate([[float(t)], np.asarray(x, dtype=np.float64)])
         radii = []
         for hole in self.hole_states(float(t)):
-            _perturbation, radius = boosted_schwarzschild_ks_perturbation(event, hole)
+            _perturbation, radius = boosted_kerr_ks_perturbation(event, hole)
             radii.append(float(np.real(radius)))
         return radii[0], radii[1]
 

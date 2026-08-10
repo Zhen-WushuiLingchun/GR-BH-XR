@@ -1,5 +1,14 @@
 # Development Log
 
+## 2026-08-10 - Task 5c generic-spin Kerr-Schild terms
+
+- Generalized each superposed hole from a Schwarzschild term to the arbitrary
+  spin-vector Kerr-Schild form while preserving the zero-spin API.
+- Added explicit dimensionless spin vectors to fixed and shrinking orbit
+  providers, with the real subextremal bound `|chi|<=1`.
+- Added formal single-Kerr, rigid-rotation covariance, derivative, and ADM
+  constraint gates. The model remains a constraint-audited approximation.
+
 ## 2026-08-10 - Task 5b leading-quadrupole inspiral orbit
 
 - Added unequal-mass quasi-circular inspiral states with the explicit

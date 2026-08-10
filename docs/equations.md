@@ -489,6 +489,21 @@ The implementation fails closed at a declared minimum separation. This is a
 PN entry and timing oracle, not a claim that the full 4PN trajectory in
 Combi-Ressler has already been implemented.
 
+For a hole with arbitrary specific-spin vector `a` in its instantaneous rest
+frame, the accepted Kerr-Schild term generalizes to
+
+```text
+r^4 - (|X|^2-|a|^2) r^2 - (a.X)^2 = 0,
+H = M r^3 / (r^4 + (a.X)^2),
+l_0 = 1,
+l = [r X - a cross X + (a.X) a/r] / (r^2+|a|^2).
+```
+
+The sign is fixed by the existing ingoing Cartesian convention: for
+`a=(0,0,a)` this yields `l_x=(r x+a y)/(r^2+a^2)` and
+`l_y=(r y-a x)/(r^2+a^2)`. Each term is then Lorentz transformed exactly as in
+the nonspinning provider. `|a|<=M` is enforced for every real hole state.
+
 The independent 3+1 audit uses
 
 ```text

@@ -223,3 +223,17 @@ eccentric corrections remain open and cannot be inferred from this gate.
 The formal run records zero center-of-mass residual, maximum relative errors
 `2.20e-9` in `dr/dt`, `3.01e-9` in orbital frequency, and `3.09e-16` in
 Newtonian energy balance.
+
+## Task 5c: Aligned And Generic Spin
+
+```powershell
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.validate_bbh_spin `
+  --out outputs/bbh_dynamic/bbh_spin_gate.json
+```
+
+The gate compares a z-aligned single-hole term directly with the accepted
+Cartesian Kerr metric, rotates a generic spin and field point together, checks
+all four inverse-metric derivatives, and persists near/bridge/far ADM
+constraint residuals. It validates the implemented superposed-Kerr
+approximation; it does not promote that superposition to an Einstein solution.

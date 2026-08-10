@@ -3,14 +3,16 @@ import math
 import numpy as np
 
 from gr_bh_xr.dynamic_metric import finite_difference_inverse_metric_derivatives
-from gr_bh_xr.metric_ks import MINKOWSKI_COVARIANT
+from gr_bh_xr.metric_ks import MINKOWSKI_COVARIANT, ks_metric
 from gr_bh_xr.metrics import (
     BinaryHoleState,
     FixedCircularBinaryOrbit,
     SuperposedKerrSchildBBHProvider,
+    boosted_kerr_ks_perturbation,
     boosted_schwarzschild_ks_perturbation,
     lorentz_boost_covector_jacobian,
 )
+from gr_bh_xr.types import MetricParams
 
 
 def test_fixed_circular_orbit_center_of_mass_and_half_period_exchange() -> None:
@@ -34,6 +36,75 @@ def test_zero_velocity_boost_is_identity_and_single_term_is_schwarzschild_ks() -
     np.testing.assert_allclose(
         perturbation, 2.0 * hole.mass / radius * np.outer(expected_l, expected_l)
     )
+
+
+def test_z_aligned_single_kerr_term_matches_existing_ks_metric() -> None:
+    mass = 0.7
+    spin = 0.4
+    hole = BinaryHoleState(
+        mass,
+        np.zeros(3),
+        np.zeros(3),
+        np.zeros(3),
+        np.array([0.0, 0.0, spin]),
+    )
+    xyz = np.array([2.3, -1.7, 0.8])
+    perturbation, _radius = boosted_kerr_ks_perturbation(
+        np.concatenate([[0.0], xyz]), hole
+    )
+    expected = ks_metric(MetricParams(M=mass, a=spin), xyz)
+    np.testing.assert_allclose(
+        MINKOWSKI_COVARIANT + perturbation, expected, atol=3.0e-15
+    )
+
+
+def test_arbitrary_spin_kerr_term_is_rotation_covariant() -> None:
+    rotation = np.array(
+        [
+            [0.0, -1.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+    position = np.array([2.7, -1.3, 0.9])
+    spin = np.array([0.12, -0.18, 0.31])
+    hole = BinaryHoleState(0.8, np.zeros(3), np.zeros(3), np.zeros(3), spin)
+    rotated_hole = BinaryHoleState(
+        0.8, np.zeros(3), np.zeros(3), np.zeros(3), rotation @ spin
+    )
+    perturbation, _ = boosted_kerr_ks_perturbation(
+        np.concatenate([[0.0], position]), hole
+    )
+    rotated, _ = boosted_kerr_ks_perturbation(
+        np.concatenate([[0.0], rotation @ position]), rotated_hole
+    )
+    transform = np.eye(4)
+    transform[1:4, 1:4] = rotation
+    np.testing.assert_allclose(
+        rotated, transform @ perturbation @ transform.T, atol=3.0e-15
+    )
+
+
+def test_spinning_binary_provider_reports_spin_revision_and_null_ks_terms() -> None:
+    orbit = FixedCircularBinaryOrbit(
+        separation=20.0,
+        dimensionless_spin1=(0.0, 0.0, 0.6),
+        dimensionless_spin2=(0.2, -0.1, 0.3),
+    )
+    provider = SuperposedKerrSchildBBHProvider(orbit)
+    sample = provider.sample(0.4, np.array([2.0, 5.0, 1.0]))
+    assert sample.source_revision.endswith("spinning-circular-v1")
+    event = np.array([0.4, 2.0, 5.0, 1.0])
+    for hole in provider.hole_states(0.4):
+        perturbation, _ = boosted_kerr_ks_perturbation(event, hole)
+        eigenvalues, eigenvectors = np.linalg.eigh(perturbation)
+        direction = eigenvectors[:, int(np.argmax(np.abs(eigenvalues)))]
+        assert abs(float(direction @ MINKOWSKI_COVARIANT @ direction)) < 3.0e-15
+
+
+def test_binary_orbit_rejects_superextremal_dimensionless_spin() -> None:
+    with np.testing.assert_raises_regex(ValueError, "chi"):
+        FixedCircularBinaryOrbit(dimensionless_spin1=(0.0, 0.0, 1.01))
 
 
 def test_boosted_ks_covector_remains_null_on_flat_background() -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 
 import numpy as np
@@ -14,15 +14,16 @@ from ..types import FloatArray
 class BinaryHoleState:
     """One hole's instantaneous background-frame state in geometric units."""
 
-    mass: float
+    mass: float | complex
     position: FloatArray
     velocity: FloatArray
     acceleration: FloatArray
+    spin: FloatArray = field(default_factory=lambda: np.zeros(3, dtype=np.float64))
 
     def __post_init__(self) -> None:
-        if not math.isfinite(self.mass) or self.mass <= 0.0:
+        if not np.isfinite(self.mass) or float(np.real(self.mass)) <= 0.0:
             raise ValueError("hole mass must be positive and finite.")
-        for name in ("position", "velocity", "acceleration"):
+        for name in ("position", "velocity", "acceleration", "spin"):
             value = np.asarray(getattr(self, name))
             if value.shape != (3,) or not np.all(np.isfinite(value)):
                 raise ValueError(f"{name} must be a finite three-vector.")
@@ -30,6 +31,9 @@ class BinaryHoleState:
         speed2 = np.dot(self.velocity, self.velocity)
         if float(np.real(speed2)) >= 1.0:
             raise ValueError("hole trajectory must remain timelike (|v| < 1).")
+        if not np.iscomplexobj(self.mass) and not np.iscomplexobj(self.spin):
+            if float(np.linalg.norm(self.spin)) > float(self.mass) + 1.0e-14:
+                raise ValueError("specific spin magnitude must satisfy |a| <= mass.")
 
 
 @dataclass(frozen=True)
@@ -45,6 +49,8 @@ class FixedCircularBinaryOrbit:
     separation: float = 20.0
     phase0: float = 0.0
     angular_frequency: float | None = None
+    dimensionless_spin1: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    dimensionless_spin2: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     def __post_init__(self) -> None:
         if not math.isfinite(self.total_mass) or self.total_mass <= 0.0:
@@ -59,6 +65,8 @@ class FixedCircularBinaryOrbit:
             raise ValueError("angular_frequency must be positive and finite.")
         if orbital_speed >= 1.0:
             raise ValueError("circular orbit would be superluminal.")
+        _validate_dimensionless_spin(self.dimensionless_spin1, "dimensionless_spin1")
+        _validate_dimensionless_spin(self.dimensionless_spin2, "dimensionless_spin2")
 
     @property
     def omega(self) -> float:
@@ -84,8 +92,20 @@ class FixedCircularBinaryOrbit:
         )
         acceleration = -(omega * omega) * position
         mass = 0.5 * self.total_mass
-        first = BinaryHoleState(mass, position, velocity, acceleration)
-        second = BinaryHoleState(mass, -position, -velocity, -acceleration)
+        first = BinaryHoleState(
+            mass,
+            position,
+            velocity,
+            acceleration,
+            mass * np.asarray(self.dimensionless_spin1),
+        )
+        second = BinaryHoleState(
+            mass,
+            -position,
+            -velocity,
+            -acceleration,
+            mass * np.asarray(self.dimensionless_spin2),
+        )
         return first, second
 
 
@@ -104,6 +124,8 @@ class QuasiCircularInspiralOrbit:
     phase0: float = 0.0
     t0: float = 0.0
     minimum_separation: float = 6.0
+    dimensionless_spin1: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    dimensionless_spin2: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     def __post_init__(self) -> None:
         values = (
@@ -124,6 +146,8 @@ class QuasiCircularInspiralOrbit:
             raise ValueError("minimum_separation must be positive.")
         if self.initial_separation <= self.minimum_separation:
             raise ValueError("initial_separation must exceed minimum_separation.")
+        _validate_dimensionless_spin(self.dimensionless_spin1, "dimensionless_spin1")
+        _validate_dimensionless_spin(self.dimensionless_spin2, "dimensionless_spin2")
 
     @property
     def masses(self) -> tuple[float, float]:
@@ -191,11 +215,21 @@ class QuasiCircularInspiralOrbit:
             first_fraction * relative_position,
             first_fraction * relative_velocity,
             first_fraction * relative_acceleration,
+            first_mass * np.asarray(self.dimensionless_spin1),
         )
         second = BinaryHoleState(
             second_mass,
             -second_fraction * relative_position,
             -second_fraction * relative_velocity,
             -second_fraction * relative_acceleration,
+            second_mass * np.asarray(self.dimensionless_spin2),
         )
         return first, second
+
+
+def _validate_dimensionless_spin(values: tuple[float, float, float], name: str) -> None:
+    spin = np.asarray(values, dtype=np.float64)
+    if spin.shape != (3,) or not np.all(np.isfinite(spin)):
+        raise ValueError(f"{name} must be a finite three-vector.")
+    if float(np.linalg.norm(spin)) > 1.0 + 1.0e-14:
+        raise ValueError(f"{name} must satisfy |chi| <= 1.")
