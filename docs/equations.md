@@ -338,20 +338,132 @@ Polarization is deferred until scalar intensity is validated:
 S = (I, Q, U, V)^T
 ```
 
-## Time-Dependent BBH Later Track
+## Time-Dependent BBH Track
 
-For later time-dependent metrics, use a documented 3+1 form:
+This section freezes the conventions used by the dynamic-spacetime oracle.
+It follows `vincent2012geodesic3p1` and `bohn2015bbhAppearance`. Coordinates
+are `x^mu = (t, x^i)`, momenta are covariant canonical components `p_mu`, the
+signature is `(-,+,+,+)`, and `G = c = 1`.
+
+### ADM reconstruction
+
+The 3+1 line element is
 
 ```text
 ds^2 = -alpha^2 dt^2
-       + gamma_ij (dx^i + beta^i dt)(dx^j + beta^j dt)
+       + gamma_ij (dx^i + beta^i dt)(dx^j + beta^j dt).
 ```
 
-The null condition can be expressed as:
+With `beta_i = gamma_ij beta^j`, the four-metric and its inverse are
 
 ```text
-p_t = beta^i p_i - alpha sqrt(gamma^{ij} p_i p_j)
+g_00 = -alpha^2 + beta_i beta^i
+g_0i = beta_i
+g_ij = gamma_ij
+
+g^00 = -1 / alpha^2
+g^0i = beta^i / alpha^2
+g^ij = gamma^ij - beta^i beta^j / alpha^2.
 ```
 
-The sign convention and Hamiltonian choice must be re-derived before this track
-is implemented.
+The future-directed null root used to initialize a covariant momentum is
+
+```text
+p_t = beta^i p_i - alpha sqrt(gamma^ij p_i p_j).
+```
+
+This is the negative-energy branch because the Eulerian photon energy is
+`E_n = -p_mu n^mu > 0`, with `n^mu = alpha^-1 (1, -beta^i)`.
+
+### Canonical dynamic Hamiltonian
+
+The primary f64 oracle evolves the complete four-dimensional Hamilton system:
+
+```text
+H(t, x, p) = 1/2 g^mu_nu(t, x) p_mu p_nu = 0
+
+dx^mu / dlambda = g^mu_nu p_nu
+dp_mu / dlambda = -1/2 partial_mu(g^alpha_beta) p_alpha p_beta.
+```
+
+In particular,
+
+```text
+dp_t / dlambda = -1/2 partial_t(g^alpha_beta) p_alpha p_beta.
+```
+
+`p_t` is conserved only when `partial_t g^mu_nu = 0`. Likewise, `p_phi`
+requires axial symmetry and the Kerr Carter constant requires separability.
+None is a generic BBH invariant. Dynamic audit therefore uses the null
+Hamiltonian, provider constraint residuals, interpolation convergence, and
+analytic limiting cases. A renderer must not freeze `p_t` merely because the
+stationary Kerr implementation did so.
+
+### Independent 3+1 cross-check
+
+For validation, decompose the photon momentum in the Eulerian frame as
+
+```text
+p^mu = E_n (n^mu + V^mu),
+n_mu V^mu = 0,
+gamma_ij V^i V^j = 1.
+```
+
+Using the extrinsic-curvature convention
+`K_ij = -1/2 Lie_n(gamma_ij)`, Vincent et al. give
+
+```text
+dx^i / dt = alpha V^i - beta^i
+dE_n / dt = E_n alpha
+             [K_ij V^i V^j - V^i partial_i ln(alpha)].
+```
+
+Bohn et al. instead evolve the normalized covariant direction
+
+```text
+Pi_i = p_i / (alpha p^0)
+     = p_i / sqrt(gamma^jk p_j p_k),
+Pi^i = gamma^ij Pi_j,
+
+dx^i / dt = alpha Pi^i - beta^i,
+
+dPi_i / dt = -partial_i alpha
+              + (partial_j alpha Pi^j
+                 - alpha K_jk Pi^j Pi^k) Pi_i
+              + partial_i beta^k Pi_k
+              - alpha/2 partial_i gamma^jk Pi_j Pi_k,
+
+d ln(alpha p^0) / dt = -partial_i alpha Pi^i
+                        + alpha K_ij Pi^i Pi^j.
+```
+
+The canonical and normalized-momentum forms must agree on events, redshift,
+and escape direction in their common validity domain. The normalized form is a
+cross-check and possible GPU optimization, not a replacement oracle.
+
+### Dynamic redshift and horizons
+
+The frequency measured by an observer with four-velocity `u^mu` is
+
+```text
+nu = -p_mu u^mu.
+```
+
+Thus the transfer factor from emitter to receiver is
+
+```text
+g = nu_rec / nu_emit
+  = (-p_mu u_rec^mu) / (-p_mu u_emit^mu),
+1 + z = 1 / g.
+```
+
+This definition remains valid without stationarity. It must use the photon
+momentum and observer/emitter states at their respective intersection events;
+a single conserved energy at infinity is not available in a generic BBH.
+
+Runtime capture may use a versioned apparent-horizon surface or an explicit
+excision worldtube supplied by the metric producer. An event horizon is
+future-global and may only be reconstructed offline. Any superposed
+Kerr-Schild or PN-to-remnant BBH provider is labelled
+`physics_approximation`; real-time evaluation of that provider is not a
+real-time solution of the Einstein equations.

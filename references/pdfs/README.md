@@ -45,3 +45,13 @@ documents, or temporary downloads. That directory is ignored by Git.
 
 For local-only files, still add a `references/references.md` entry with the
 stable locator and mark the PDF path as local-only.
+
+## Temporary Review Cache
+
+Literature downloaded only for equation extraction, license inspection, or a
+bounded source review may instead remain under ignored `outputs/`. For example,
+the 2026-08-10 BBH review cache is under `outputs/bbh_literature/`. Such files
+are not project sources and must not be required for tests or builds. Their
+stable locators, reviewed revisions, checksums when relevant, and conclusions
+must still be recorded in `references/references.md`, a source note, or a code
+review before the cache is used to justify implementation.

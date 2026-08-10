@@ -949,3 +949,285 @@ ignored `references/pdfs/local_only/`.
 - Limitations / open questions: Pedagogical/interpretive rather than a
   derivation source; it is classified as such and not used to justify any
   numerical threshold.
+
+## BBH Dynamic-Spacetime Foundation Set
+
+All entries in this section share the literature-review note
+`references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md` and
+the search date `2026-08-10`. No source in this section is treated as a license
+to claim that the corresponding implementation already exists.
+
+### Bohn et al. 2015 - Numerical BBH Appearance
+
+- Source path: `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`
+- PDF path: Not stored; open arXiv preprint at the locator below.
+- Code review path: Not applicable; paper reference.
+- BibTeX key: `bohn2015bbhAppearance`
+- Stable locator: arXiv `1410.7775`; DOI `10.1088/0264-9381/32/6/065002`
+- Search terms: binary black hole numerical relativity ray tracing appearance
+- Why added: Defines the principal morphology and redshift benchmark family
+  for light traced through analytic and fully numerical BBH spacetimes.
+- Short summary: Produces strong-field BBH images with capture, redshift,
+  eyebrows, and self-similar image structure.
+- Relevant equations / assumptions / methods: 3+1 numerical spacetime ray
+  tracing with normalized photon momentum.
+- Project use: Later approximate-metric and NR-snapshot image gates.
+- Limitations / open questions: An image benchmark is not a reusable metric
+  dataset; implementation details must still be independently reproduced.
+
+### Vincent et al. 2012 - 3+1 Geodesics
+
+- Source path: `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`
+- PDF path: Not stored; open arXiv preprint at the locator below.
+- Code review path: Not applicable; paper reference.
+- BibTeX key: `vincent2012geodesic3p1`
+- Stable locator: arXiv `1208.3927`; DOI `10.1088/0264-9381/29/24/245005`
+- Search terms: 3+1 geodesic equation numerical spacetime redshift
+- Why added: Primary equation source for rays and photon energy in ADM data.
+- Short summary: Derives null/timelike geodesic equations and redshift in the
+  3+1 formalism for numerically supplied spacetimes.
+- Relevant equations / assumptions / methods: Lapse, shift, spatial metric,
+  normalized spatial momentum, and photon-energy evolution.
+- Project use: Independent formulation for validating the canonical dynamic
+  Hamilton solver and ADM snapshot reader.
+- Limitations / open questions: Gauge and interpolation errors remain the
+  responsibility of the selected numerical-spacetime provider.
+
+### Vincent et al. 2011 - GYOTO
+
+- Source path: `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`
+- PDF path: Not stored; open arXiv preprint at the locator below.
+- Code review path: Not reviewed in this slice; architecture paper only.
+- BibTeX key: `vincent2011gyoto`
+- Stable locator: arXiv `1109.4769`; DOI `10.1088/0264-9381/28/22/225011`
+- Search terms: GYOTO numerical metric ray tracing 3+1
+- Why added: Architecture precedent for pluggable analytic and numerical
+  metrics in one ray tracer.
+- Short summary: Describes an open, modular general-relativistic ray tracer
+  that can consume Kerr or numerical 3+1 metrics.
+- Relevant equations / assumptions / methods: Null/timelike geodesic
+  integration and modular metric/astrophysical-object interfaces.
+- Project use: Metric-provider architecture comparison.
+- Limitations / open questions: Not used as a numerical oracle here.
+
+### Combi et al. 2021 - Superposed Spinning-BBH Metric
+
+- Source path: `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`
+- PDF path: Not stored; open arXiv preprint at the locator below.
+- Code review path: Pending source-implementation review before Task 5.
+- BibTeX key: `combi2021superposedMetric`
+- Stable locator: arXiv `2103.15707`; DOI `10.1103/PhysRevD.104.044041`
+- Search terms: superposed spinning black hole binary metric boosted Kerr PN
+- Why added: Establishes the fast approximate-metric lineage selected for the
+  first interactive BBH provider.
+- Short summary: Superposes boosted spinning black-hole metrics along 3.5PN
+  inspiral trajectories and evaluates vacuum/GRMHD behavior.
+- Relevant equations / assumptions / methods: Time-dependent boosts,
+  post-Newtonian trajectories, and constraint diagnostics.
+- Project use: Limit and constraint gates for the first approximate provider.
+- Limitations / open questions: Approximate rather than an exact Einstein
+  evolution; the reviewed paper version used harmonic-coordinate terms.
+
+### Combi and Ressler 2026 - Inspiral-To-Merger Metric Approximation
+
+- Source path: `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`
+- PDF path: Not stored; open arXiv preprint at the locator below.
+- Code review path:
+  `references/code_reviews/2026-08-10-combi-ressler-bbh-metric.md`.
+- BibTeX key: `combi2026bbhMetricApproximation`
+- Stable locator: arXiv `2403.13308`, revision 3 dated 2026-01-18.
+- Search terms: binary black hole metric approximation inspiral merger 4PN
+  boosted Kerr-Schild
+- Why added: Preferred first interactive metric source from inspiral through a
+  fitted remnant transition.
+- Short summary: Uses boosted Kerr-Schild superposition, fourth-order PN
+  trajectories, and a time interpolation to an NR-fitted remnant.
+- Relevant equations / assumptions / methods: Analytic approximate metric,
+  constraint evaluation, PN orbit, and merger/remnant interpolation.
+- Project use: `physics_approximation` CPU and GLSL provider after full equation
+  and source review.
+- Limitations / open questions: The source reports comparison to NR but does not
+  become an exact Einstein solution; thresholds must be preregistered from the
+  reviewed revision and local convergence study.
+
+### Combi and Ressler 2024 - BBH Metric Source Archive
+
+- Source path:
+  `references/code_reviews/2026-08-10-combi-ressler-bbh-metric.md`
+- PDF path: Not applicable; software archive reviewed locally under ignored
+  `outputs/bbh_literature/`.
+- Code review path:
+  `references/code_reviews/2026-08-10-combi-ressler-bbh-metric.md`.
+- BibTeX key: `combiRessler2024bbhMetricCode`
+- Stable locator: Zenodo `10.5281/zenodo.10841021`, version 1.
+- Search terms: Combi Ressler binary black hole metric source code Zenodo
+  SuperposedBBH
+- Why added: Pins the actual public implementation archive rather than
+  inferring implementation details from the paper abstract.
+- Short summary: Contains a generated covariant superposed boosted
+  Kerr-Schild evaluator, Mathematica metric-building notebooks, and a bundled
+  CBwaves trajectory package.
+- Relevant equations / assumptions / methods: Flat background plus two
+  transformed single-hole Kerr-Schild perturbations driven by trajectory data.
+- Project use: Source-provenance evidence for an independently implemented
+  `physics_approximation` provider.
+- Limitations / open questions: The archive is not a standalone full v3
+  provider and has mixed file-level licensing. It is not vendored. Reviewed
+  archive MD5: `ecc4d1268342520f29e4537d5f3ab183`.
+
+### Baumgarte and Shapiro 1998 - BSSN Formulation
+
+- Source path: `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`
+- PDF path: Not stored; open arXiv preprint at the locator below.
+- Code review path: Not applicable; formulation paper.
+- BibTeX key: `baumgarte1998bssn`
+- Stable locator: arXiv `gr-qc/9810065`; DOI `10.1103/PhysRevD.59.024007`
+- Search terms: BSSN conformal traceless numerical relativity
+- Why added: Foundation for the high-fidelity offline evolution route.
+- Short summary: Develops a stable conformal-traceless 3+1 evolution system.
+- Relevant equations / assumptions / methods: ADM variables, conformal metric,
+  trace-free extrinsic curvature, and evolved connection variables.
+- Project use: Formulation provenance for BSSN-family ADM snapshots.
+- Limitations / open questions: Production gauge, boundaries, AMR, and
+  convergence are code/run-specific.
+
+### Campanelli et al. 2006 - Moving Punctures
+
+- Source path: `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`
+- PDF path: Not stored; open arXiv preprint at the locator below.
+- Code review path: Not applicable; method paper.
+- BibTeX key: `campanelli2006movingPuncture`
+- Stable locator: arXiv `gr-qc/0511048`; DOI `10.1103/PhysRevLett.96.111101`
+- Search terms: moving puncture binary black hole evolution
+- Why added: Basis for a practical non-excision BBH evolution path.
+- Short summary: Demonstrates stable orbital evolution of black-hole binaries
+  with moving punctures.
+- Relevant equations / assumptions / methods: BSSN evolution, puncture gauge,
+  lapse and shift choices.
+- Project use: Gauge/provenance reference for offline BBH pilot data.
+- Limitations / open questions: Ray interpolation must respect the producer
+  gauge rather than reinterpret coordinates as physical distances.
+
+### Pretorius 2005 - Generalized-Harmonic BBH Evolution
+
+- Source path: `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`
+- PDF path: Not stored; open arXiv preprint at the locator below.
+- Code review path: Not applicable; method paper.
+- BibTeX key: `pretorius2005bbhEvolution`
+- Stable locator: arXiv `gr-qc/0507014`; DOI `10.1103/PhysRevLett.95.121101`
+- Search terms: generalized harmonic binary black hole merger evolution
+- Why added: Independent full-NR formulation lineage for BBH merger data.
+- Short summary: Demonstrates stable binary-black-hole merger evolution using
+  generalized harmonic coordinates.
+- Relevant equations / assumptions / methods: Hyperbolic Einstein evolution,
+  gauge source functions, excision, and adaptive mesh refinement.
+- Project use: Alternative high-fidelity producer provenance.
+- Limitations / open questions: Not the first planned local production stack.
+
+### Einstein Toolkit 2026_05 - Hypatia Release
+
+- Source path: `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`
+- PDF path: Not applicable; official release documentation.
+- Code review path: Deferred until the offline NR pilot.
+- BibTeX key: `einsteinToolkit2026hypatia`
+- Stable locator: https://www.einsteintoolkit.org/about/releases/ET_2026_05_announcement.html
+- Search terms: Einstein Toolkit 2026_05 CarpetX GPU BSSN Z4c TwoPuncturesX
+- Why added: Selected offline NR production stack candidate.
+- Short summary: Documents GPU-enabled BSSNOK/Z4c thorns for CarpetX,
+  TwoPuncturesX initial data, and apparent-horizon support.
+- Relevant equations / assumptions / methods: BSSNOK/Z4c evolution, AMR,
+  puncture initial data, exact test data, horizon tracking.
+- Project use: Version pin for a later two-resolution BBH production pilot.
+- Limitations / open questions: Release capability is not evidence that the
+  project has compiled or validated a local production run.
+
+### CarpetX 2026 Manual
+
+- Source path: `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`
+- PDF path: Not applicable; official living documentation.
+- Code review path: Deferred until snapshot ingestion.
+- BibTeX key: `carpetx2026manual`
+- Stable locator: https://einsteintoolkit.org/thornguide/CarpetX/CarpetX/documentation.html
+- Search terms: CarpetX openPMD HDF5 ADIOS2 interpolation output
+- Why added: Defines likely native output and AMR/interpolation interfaces for
+  the NR snapshot path.
+- Short summary: Documents the AMReX-based CarpetX driver, interpolation, and
+  openPMD output backed by HDF5 or ADIOS2.
+- Relevant equations / assumptions / methods: Block-structured AMR, output
+  metadata, refinement hierarchy, and interpolation.
+- Project use: Basis for `gr-bh-xr.bbh.adm-snapshot.v1` conversion.
+- Limitations / open questions: Exact field names and derivative export must be
+  frozen against the selected thorn list and parameter file.
+
+### SXS Public Waveform Data Documentation
+
+- Source path: `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`
+- PDF path: Not applicable; official data documentation.
+- Code review path: Not applicable; data-contract review.
+- BibTeX key: `sxs2026waveformDocs`
+- Stable locator: https://data.black-holes.org/waveforms/documentation.html
+- Search terms: SXS public data waveform horizon initial ADM metric fields
+- Why added: Prevents waveform-only products from being misused as a near-zone
+  four-dimensional metric.
+- Short summary: Documents waveform modes, horizon data, metadata, and EvID
+  initial fields available in the public SXS data products.
+- Relevant equations / assumptions / methods: Asymptotic strain/Psi4 modes,
+  horizon diagnostics, and selected initial-data fields.
+- Project use: Structured rejection of waveform-only inputs for strong-field
+  ray tracing.
+- Limitations / open questions: The public documentation does not promise a
+  complete evolved near-zone 4D metric for every catalog simulation.
+
+### Ashtekar and Krishnan 2004 - Isolated And Dynamical Horizons
+
+- Source path: `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`
+- PDF path: Not stored; open arXiv preprint at the locator below.
+- Code review path: Not applicable; theory review.
+- BibTeX key: `ashtekar2004dynamicalHorizons`
+- Stable locator: arXiv `gr-qc/0407042`; DOI `10.12942/lrr-2004-10`
+- Search terms: dynamical horizons apparent horizon event horizon future global
+- Why added: Fixes the runtime horizon-claim boundary.
+- Short summary: Reviews quasi-local isolated and dynamical horizons and their
+  use in evolving spacetimes.
+- Relevant equations / assumptions / methods: Marginally trapped surfaces,
+  dynamical-horizon flux laws, and quasi-local horizon quantities.
+- Project use: Runtime capture uses apparent-horizon/worldtube evidence;
+  event-horizon reconstruction remains offline.
+- Limitations / open questions: A producer-specific horizon finder and
+  interpolation error still need validation.
+
+### Angelil and Saha 2015 - Plane-GW Optics
+
+- Source path: `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`
+- PDF path: Not stored; open arXiv preprint at the locator below.
+- Code review path: Not applicable; analytic reference.
+- BibTeX key: `angelil2015gwOptics`
+- Stable locator: arXiv `1505.03157`.
+- Search terms: plane gravitational wave Hamiltonian light propagation
+- Why added: Provides a nonstationary analytic ray gate before BBH complexity.
+- Short summary: Derives plane-GW effects on light in Hamiltonian geometric
+  optics and compares them with wave optics.
+- Relevant equations / assumptions / methods: Perturbative null Hamiltonian,
+  time delay, and phase modulation.
+- Project use: Linear plane-GW provider, amplitude convergence, and
+  `visual_gain` identity gate.
+- Limitations / open questions: Linear perturbation theory is a regression
+  metric, not a strong-field merger model.
+
+### Cunha et al. 2018 - Exact Stationary Binary Shadows
+
+- Source path: `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`
+- PDF path: Not stored; open arXiv preprint at the locator below.
+- Code review path: Not applicable; morphology reference.
+- BibTeX key: `cunha2018exactBinaryShadows`
+- Stable locator: arXiv `1805.03798`; DOI `10.1103/PhysRevD.98.044053`
+- Search terms: exact stationary binary black hole shadows eyebrows
+- Why added: Separates stationary binary-shadow morphology from merger
+  dynamics while retaining a useful eyebrow benchmark.
+- Short summary: Studies exact static/stationary double-black-hole shadows and
+  compares their main structures with dynamical-binary images.
+- Relevant equations / assumptions / methods: Exact stationary double-hole
+  metrics and null-geodesic shadow construction.
+- Project use: Optional morphology gate after the dynamic analytic gates.
+- Limitations / open questions: Conical struts and stationarity make these
+  spacetimes unsuitable as orbital inspiral or merger truth.

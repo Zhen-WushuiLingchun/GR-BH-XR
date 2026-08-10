@@ -1087,10 +1087,29 @@ Required checks:
 
 ## Long-Range BBH Track
 
+The active implementation and dependency order are frozen in
+`docs/plans/2026-08-10-bbh-dynamic-spacetime-xr.md`. The corresponding
+literature baseline is
+`references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`.
+The track is planned, not implemented or accepted.
+
 Required checks:
 
 - BBH visual toy is labeled as approximate and non-Einstein-solution;
 - time-dependent vacuum lensing uses a documented metric source;
+- the dynamic Hamiltonian integrates `p_t`; stationary Kerr conservation of
+  `E`, `L_z`, or Carter `Q` is not silently reused when the provider lacks the
+  corresponding symmetry;
+- the provider exposes coordinates, gauge, validity domain, evidence label,
+  source revision, `g_mu_nu`, `g^mu_nu`, and all derivatives required by the
+  ray equations;
+- runtime capture uses an apparent horizon or explicit worldtube. An event
+  horizon may be claimed only from an offline future-global reconstruction;
+- approximate BBH providers persist Hamiltonian/momentum-constraint evidence
+  and remain labeled `physics_approximation`;
+- numerical-relativity snapshot inputs record formulation, gauge, grid and
+  refinement metadata, interpolation order, constraint history, producer
+  commit, and checksums;
 - single-Kerr static transfer maps are not reused as physical evidence for
   BBH, multi-black-hole, or gravitational-wave lensing; those systems need
   time-dependent transfer maps, offline/cache playback, adaptive tracing, or
@@ -1110,3 +1129,38 @@ Long-range real-time or interactive work must introduce one of:
 Neural acceleration must learn transfer functions or radiance fields from
 validated exact data. It must not replace the audit buffers with an untraceable
 image generator.
+
+### BBH Entry Gates
+
+Before the first BBH shader implementation:
+
+- a simulated stereo matrix records GPU timestamp p50/p95/p99 at per-eye
+  `1600x1728`, `1832x1920`, `2064x2208`, and `2464x2592` for sequential and
+  multiview sinks;
+- 72 Hz requires total p95 `<13.89 ms` and targets physics rendering
+  `<11 ms`; 90 Hz requires total p95 `<11.11 ms` and targets physics rendering
+  `<9 ms`;
+- a Python f64 provider interface passes Minkowski, stationary Kerr zero
+  regression, and a deliberately time-dependent metric with nonzero `dp_t`;
+- a linear plane-GW gate demonstrates the expected perturbative limit and
+  records the physical effect separately from any XR `visual_gain`.
+
+Before an approximate BBH result is accepted:
+
+- CPU/GPU stable-region event agreement is `>=98%` and both-invalid rays are
+  reported separately;
+- escaped-direction median error is `<1e-4 rad` and RMS error is
+  `<5e-4 rad` for a preregistered parameter slice;
+- constraint residuals, isolated-hole limits, exchange symmetry, and
+  separation/time dependence are persisted rather than inferred from RGB;
+- performance claims use measured dynamic-metric stereo p95, not the existing
+  static 4K mono frame rate.
+
+Before dynamic BBH MR is accepted:
+
+- `metric_time`, binary phase, OpenXR predicted display time, camera capture
+  time, and camera-frame history are carried by the render contract;
+- each eye uses its own origin and pose, finite room geometry is not treated as
+  radiance at infinity, and missing rear/retarded-time coverage fails closed;
+- `meters_per_M` and any gravitational-wave `visual_gain` are explicit audit
+  metadata.

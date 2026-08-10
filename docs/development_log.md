@@ -19,6 +19,72 @@ from here.
 
 ## Log
 
+### 2026-08-10 - BBH dynamic-spacetime implementation plan and literature baseline
+
+- Goal: freeze a long-horizon, reviewable route from the accepted single-hole
+  NPGS runtime to approximate real-time BBH tracing, offline numerical-
+  relativity truth data, and time-correct XR/MR rendering.
+- Changed files / components: added
+  `docs/plans/2026-08-10-bbh-dynamic-spacetime-xr.md` and
+  `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`;
+  registered their status and gates in `docs/current_status.md`,
+  `docs/validation_targets.md`, and the central literature indexes.
+- Academic reason: a dynamic BBH metric removes stationarity, so the renderer
+  must evolve the full four-dimensional Hamilton system and cannot reuse Kerr
+  energy, axial angular momentum, or Carter conservation as generic evidence.
+- Physical correspondence: the first interactive provider is a constraint-
+  audited superposed Kerr-Schild approximation. The high-fidelity path consumes
+  time-indexed ADM fields from an offline BSSN/Z4c or generalized-harmonic
+  evolution. Runtime capture uses apparent horizons/worldtubes; event horizons
+  remain offline future-global products.
+- Assumptions and conventions: geometric units and signature `(-,+,+,+)` are
+  retained. Real-time metric evaluation, real-time ray integration, and
+  real-time Einstein evolution are separate claims. Any visible amplification
+  of a gravitational-wave effect records `visual_gain` separately.
+- Validation: documentation contracts require the active plan, source note,
+  evidence labels, simulated-stereo timing budgets, dynamic Hamiltonian gate,
+  apparent-horizon boundary, and camera/metric timing semantics. The focused
+  documentation suite passed `4` tests and the complete repository suite passed
+  `273` tests in `152.28 s`. No BBH implementation or performance acceptance
+  is claimed by this entry.
+- References: Bohn et al. 2015; Vincent et al. 2011/2012; Combi et al. 2021;
+  Combi and Ressler 2024/2026 revision; BSSN, moving-puncture and generalized-
+  harmonic foundations; Einstein Toolkit/CarpetX; SXS data documentation;
+  dynamical horizons; analytic plane-GW optics.
+- Open issues / next steps: finish the equation-level Task 0 review, then run
+  the simulated stereo performance gate and implement the Python f64 dynamic
+  metric oracle before modifying the NPGS shader core.
+
+### 2026-08-10 - BBH equation freeze and Combi-Ressler source audit
+
+- Goal: close Task 0 with a primary dynamic Hamiltonian, an independent 3+1
+  cross-check, and a pinned review of the public approximate-BBH source.
+- Changed files / components: expanded the dynamic section of
+  `docs/equations.md`; added
+  `references/code_reviews/2026-08-10-combi-ressler-bbh-metric.md`; updated the
+  source note, literature indexes, and documentation contract tests.
+- Academic reason: a time-dependent metric requires `p_t` evolution and a
+  source-level provenance boundary before formulas are ported to Python or
+  GLSL.
+- Physical correspondence: the primary oracle is the covariant canonical
+  four-dimensional null Hamiltonian. Vincent's Eulerian energy/direction form
+  and Bohn's normalized covariant momentum form are independent 3+1 checks.
+  Runtime capture remains an apparent-horizon/worldtube claim, never a local
+  event-horizon claim.
+- Assumptions and conventions: signature `(-,+,+,+)`, geometric units,
+  `x^0=t`, and covariant canonical momentum. The Combi-Ressler model remains a
+  `physics_approximation` rather than an Einstein evolution.
+- Validation: Zenodo archive `public_repo.zip` (446718 bytes) reproduced the
+  published MD5 `ecc4d1268342520f29e4537d5f3ab183`. The generated metric form,
+  external dependencies, missing derivative/constraint interface, and mixed
+  file-level licenses were inspected. The archive remains ignored and is not
+  vendored.
+- References: Vincent et al. 2012; Bohn et al. 2015; Combi and Ressler v3;
+  Zenodo `10.5281/zenodo.10841021`; Ashtekar and Krishnan 2004.
+- Open issues / next steps: choose and gate the ADM interpolation basis during
+  Task 7. Task 1 synthetic stereo and Task 2 f64 dynamic Hamilton work may now
+  begin independently.
+
 ### 2026-08-10 - Native NPGS OpenXR and MR interface contracts
 
 - Goal: complete the device-independent NPGS runtime boundary before physical

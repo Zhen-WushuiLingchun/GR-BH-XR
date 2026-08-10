@@ -18,10 +18,11 @@ evidence. Neither should be used alone to infer the current runtime.
 | Unity Task 10 MR | Experimental, unaccepted | Camera/depth integration code exists, but calibrated RGB delivery and registration have not been demonstrated on the device. Enumeration, compilation, or depth acquisition alone is not acceptance. |
 | Native NPGS fork | Accepted for neutral exterior Kerr/Kerr-Newman rays, Kerr `Q=0` disk transfer, and geometric polarization transport at quality 2; native XR/MR interfaces are candidates | Complete official history is pinned through the GPL fork. Exact native states pass independent CPU f64 event/direction/disk gates, and raw v3 camera bases plus the complete Walker-Penrose scalar pass direct f64 parallel transport. OpenXR/Vulkan ownership, stereo-view, calibrated-camera, and depth provenance contracts now compile, but no native OpenXR session or delivered MR camera frame has passed a device gate. |
 
-The repository suite passed `271` tests on 2026-08-10 after the centralized
-NPGS integration/MR contracts were added. The preceding Task 9/10 baseline,
+The repository suite passed `273` tests on 2026-08-10 after the BBH dynamic-
+spacetime plan and its fail-closed documentation contracts were registered.
+The centralized NPGS integration/MR contracts, preceding Task 9/10 baseline,
 complete Unity `.meta` coverage, native Kerr/Kerr-Newman/disk gates, and raw-v3
-polarization-geometry gates remain in the same full regression.
+polarization-geometry gates remain in the same regression.
 
 ## NPGS Native Migration
 
@@ -44,7 +45,7 @@ source was found.
 | Charged disk matter | Blocked | Neutral photons in a charged spacetime do not define a charged-plasma disk model. |
 | Maximal extension | Visual/mathematical only | Exact stationary Kerr-Newman continuation is not an astrophysical collapse-interior prediction. |
 | Native OpenXR and MR | Interface complete, runtime candidate | The render-sink and measured-frame contracts exist without changing desktop GLFW. Session/swapchain and real camera-frame delivery remain device gates. |
-| BBH/GW | Blocked | No public implementation exists at the refreshed upstream refs; showcase output is not source or validation evidence. |
+| BBH/GW | Active plan; implementation not started | The versioned plan uses an independently validated time-dependent metric interface, a Combi-Ressler approximate real-time provider, and an offline numerical-relativity snapshot path. No public NPGS BBH/GW implementation exists at the refreshed upstream refs. |
 
 The migration does not treat NPGS screenshots or feature claims as scientific
 validation. GR-BH-XR retains its Python f64 reference solvers, audit schemas,
@@ -88,6 +89,9 @@ Current status should therefore be read by capability, not by number:
 - execution Task 9: Unity HLSL Kerr-Schild live tracing;
 - execution Task 10: MR camera/depth experiment;
 - NPGS native migration: a new runtime track, not the historical BBH Task 10.
+- BBH dynamic-spacetime track: the active post-migration roadmap in
+  `docs/plans/2026-08-10-bbh-dynamic-spacetime-xr.md`, not an accepted runtime
+  capability.
 
 ## Open Gates
 
@@ -101,6 +105,9 @@ Current status should therefore be read by capability, not by number:
 - Device proof of fresh calibrated MR RGB delivery before any
   passthrough-lensing claim. Environment depth remains an independent input and
   cannot substitute for RGB evidence.
-- BBH/GW work remains deferred. No public BBH/GW source branch was available
-  in the reviewed NPGS repository; showcase media is not implementation
-  evidence.
+- BBH/GW implementation is now an active planned track, but no dynamic metric
+  provider or dynamic NPGS ray path is accepted yet. The first gates are a
+  simulated-stereo performance baseline and a Python f64 time-dependent
+  Hamiltonian oracle. No public BBH/GW source branch was available in the
+  reviewed NPGS repository; showcase media is not implementation evidence.
+  See `docs/plans/2026-08-10-bbh-dynamic-spacetime-xr.md`.
