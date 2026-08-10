@@ -13,7 +13,7 @@ import h5py
 import numpy as np
 
 from .metric_kn import KerrNewmanParams, ks_inverse_metric
-from .npgs_audit import RAW_SCHEMA_V3, load_native_audit
+from .npgs_audit import RAW_SCHEMA_V3, RAW_SCHEMA_V4, load_native_audit
 from .polarization_kn import (
     project_null_covector_time,
     reproject_screen_basis,
@@ -50,7 +50,7 @@ def validate_npgs_polarization(
     if samples <= 0:
         raise ValueError("samples must be positive.")
     capture = load_native_audit(raw_path, metadata_path=metadata_path)
-    if capture.metadata["schema"] != RAW_SCHEMA_V3:
+    if capture.metadata["schema"] not in (RAW_SCHEMA_V3, RAW_SCHEMA_V4):
         raise ValueError("Polarization validation requires native audit raw schema v3.")
     required = (
         capture.initial_ingoing_x,

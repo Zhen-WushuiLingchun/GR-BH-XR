@@ -26,9 +26,15 @@ from .npgs_contract import (
 RAW_SCHEMA_V1 = "gr-bh-xr.npgs.audit.raw.v1"
 RAW_SCHEMA_V2 = "gr-bh-xr.npgs.audit.raw.v2"
 RAW_SCHEMA_V3 = "gr-bh-xr.npgs.audit.raw.v3"
-RAW_SCHEMA = RAW_SCHEMA_V3
+RAW_SCHEMA_V4 = "gr-bh-xr.npgs.audit.raw.v4"
+RAW_SCHEMA = RAW_SCHEMA_V4
 SCHEMA = "gr-bh-xr.npgs.audit.v1"
-RECORD_FLOAT_COUNTS = {RAW_SCHEMA_V1: 32, RAW_SCHEMA_V2: 48, RAW_SCHEMA_V3: 64}
+RECORD_FLOAT_COUNTS = {
+    RAW_SCHEMA_V1: 32,
+    RAW_SCHEMA_V2: 48,
+    RAW_SCHEMA_V3: 64,
+    RAW_SCHEMA_V4: 72,
+}
 DISK_ORDERS = 2
 
 
@@ -70,6 +76,8 @@ class NpgsAuditCapture:
     camera_fy_cov_native: np.ndarray | None
     camera_walker_penrose: np.ndarray | None
     camera_basis_diagnostics: np.ndarray | None
+    dynamic_meta: np.ndarray | None
+    dynamic_diagnostics: np.ndarray | None
 
 
 def load_native_audit(
@@ -175,15 +183,18 @@ def load_native_audit(
     for values in (disk_r, disk_sin_phi, disk_cos_phi, disk_g, disk_delta_t):
         values[~disk_validity] = np.nan
 
-    has_canonical_state = raw_schema in (RAW_SCHEMA_V2, RAW_SCHEMA_V3)
+    has_canonical_state = raw_schema in (RAW_SCHEMA_V2, RAW_SCHEMA_V3, RAW_SCHEMA_V4)
     initial_ingoing_x = records[..., 32:36].copy() if has_canonical_state else None
     initial_ingoing_p_cov = records[..., 36:40].copy() if has_canonical_state else None
     final_ingoing_x = records[..., 40:44].copy() if has_canonical_state else None
     final_ingoing_p_cov = records[..., 44:48].copy() if has_canonical_state else None
-    camera_fx_cov_native = records[..., 48:52].copy() if raw_schema == RAW_SCHEMA_V3 else None
-    camera_fy_cov_native = records[..., 52:56].copy() if raw_schema == RAW_SCHEMA_V3 else None
-    camera_walker_penrose = records[..., 56:60].copy() if raw_schema == RAW_SCHEMA_V3 else None
-    camera_basis_diagnostics = records[..., 60:64].copy() if raw_schema == RAW_SCHEMA_V3 else None
+    has_camera_evidence = raw_schema in (RAW_SCHEMA_V3, RAW_SCHEMA_V4)
+    camera_fx_cov_native = records[..., 48:52].copy() if has_camera_evidence else None
+    camera_fy_cov_native = records[..., 52:56].copy() if has_camera_evidence else None
+    camera_walker_penrose = records[..., 56:60].copy() if has_camera_evidence else None
+    camera_basis_diagnostics = records[..., 60:64].copy() if has_camera_evidence else None
+    dynamic_meta = records[..., 64:68].copy() if raw_schema == RAW_SCHEMA_V4 else None
+    dynamic_diagnostics = records[..., 68:72].copy() if raw_schema == RAW_SCHEMA_V4 else None
 
     capture = NpgsAuditCapture(
         raw_path=raw_path,
@@ -220,6 +231,8 @@ def load_native_audit(
         camera_fy_cov_native=camera_fy_cov_native,
         camera_walker_penrose=camera_walker_penrose,
         camera_basis_diagnostics=camera_basis_diagnostics,
+        dynamic_meta=dynamic_meta,
+        dynamic_diagnostics=dynamic_diagnostics,
     )
     _validate_native_summary(capture)
     return capture
@@ -336,6 +349,8 @@ def _write_hdf5(
             "camera_fy_cov_native": capture.camera_fy_cov_native,
             "camera_walker_penrose": capture.camera_walker_penrose,
             "camera_basis_diagnostics": capture.camera_basis_diagnostics,
+            "dynamic_meta": capture.dynamic_meta,
+            "dynamic_diagnostics": capture.dynamic_diagnostics,
         }
         for name, values in state_datasets.items():
             if values is not None:
@@ -370,7 +385,10 @@ def _build_summary(
             for order in range(DISK_ORDERS)
         ],
         "canonical_state_present": capture.initial_ingoing_x is not None,
-        "camera_polarization_evidence_present": capture.camera_fx_cov_native is not None,
+        "camera_polarization_evidence_present": bool(
+            capture.metadata["claims"].get("camera_polarization_evidence_emitted", False)
+        ) and capture.camera_fx_cov_native is not None,
+        "dynamic_metric_evidence_present": capture.dynamic_meta is not None,
         "max_steps": int(np.max(capture.steps)),
         "max_raw_hamiltonian_abs": float(np.max(capture.h_max_raw_abs)),
         "max_projected_hamiltonian_abs": float(np.max(capture.h_max_projected_abs)),
@@ -382,6 +400,12 @@ def _build_summary(
             np.max(capture.l_spin_axis_drift_abs)
         ),
         "max_carter_drift_abs": float(np.max(capture.q_drift_abs)),
+        "max_dynamic_hamiltonian_abs": float(
+            np.max(np.abs(capture.dynamic_diagnostics[..., 2]))
+        ) if capture.dynamic_diagnostics is not None else None,
+        "max_dynamic_p_t_change_abs": float(
+            np.max(np.abs(capture.dynamic_diagnostics[..., 3]))
+        ) if capture.dynamic_diagnostics is not None else None,
         "max_escape_direction_norm_error": float(np.max(escape_norm_error))
         if escape_norm_error.size
         else None,
@@ -414,7 +438,7 @@ def _validate_metadata(metadata: Mapping[str, Any]) -> None:
         raise ValueError("Native audit event mapping is missing 'escape'.")
     if "disk_transfer_slots_valid" not in metadata["claims"]:
         raise ValueError("Native audit claims omit disk_transfer_slots_valid.")
-    if raw_schema in (RAW_SCHEMA_V2, RAW_SCHEMA_V3):
+    if raw_schema in (RAW_SCHEMA_V2, RAW_SCHEMA_V3, RAW_SCHEMA_V4):
         contract = metadata.get("canonical_state_contract")
         if not isinstance(contract, Mapping):
             raise ValueError("Native audit canonical-state metadata is missing canonical_state_contract.")
@@ -424,9 +448,18 @@ def _validate_metadata(metadata: Mapping[str, Any]) -> None:
             raise ValueError("Native audit canonical state component order is not (x,y,z,t).")
         if contract.get("momentum_variance") != "covariant":
             raise ValueError("Native audit momentum must be covariant.")
-    if raw_schema == RAW_SCHEMA_V3:
-        if metadata["claims"].get("camera_polarization_evidence_emitted") is not True:
-            raise ValueError("Native audit v3 must declare camera polarization evidence emission.")
+    if raw_schema in (RAW_SCHEMA_V3, RAW_SCHEMA_V4):
+        dynamic = bool(metadata["parameters"].get("bbh_enabled", False))
+        if not dynamic and metadata["claims"].get("camera_polarization_evidence_emitted") is not True:
+            raise ValueError("Stationary native audit v3/v4 must declare camera polarization evidence emission.")
+    if raw_schema == RAW_SCHEMA_V4:
+        if metadata["claims"].get("dynamic_metric_evidence_emitted") is not True:
+            raise ValueError("Native audit v4 must declare dynamic metric evidence emission.")
+        provider = metadata.get("metric_provider")
+        if not isinstance(provider, Mapping):
+            raise ValueError("Native audit v4 is missing metric_provider metadata.")
+        if bool(metadata["parameters"].get("bbh_enabled", False)) == bool(provider.get("stationary", True)):
+            raise ValueError("Native audit v4 BBH mode disagrees with metric-provider stationarity.")
 
 
 def _validate_native_summary(capture: NpgsAuditCapture) -> None:

@@ -67,3 +67,24 @@ def test_visual_studio_project_compiles_native_metric_provider() -> None:
     assert 'Physics\\Metric\\KerrStationaryProvider.cpp' in project
     assert 'Physics\\Metric\\IMetricProvider.h' in project
     assert 'Shaders\\Common\\MetricProvider.glsl' in project
+
+
+def test_synthetic_stereo_can_measure_dynamic_bbh_provider() -> None:
+    main = (NPGS / "Sources/Program/main.cpp").read_text(encoding="utf-8")
+    application = (NPGS / "Sources/Program/Application.cpp").read_text(
+        encoding="utf-8"
+    )
+    sink = (
+        NPGS / "Sources/Engine/Core/Runtime/XR/SyntheticStereoSink.h"
+    ).read_text(encoding="utf-8")
+
+    for token in (
+        "--stereo-bbh",
+        "--stereo-bbh-separation-M",
+        "--stereo-bbh-time-M",
+        "--stereo-bbh-worldtube-factor",
+    ):
+        assert token in main
+    assert "BbhEnabled" in sink
+    assert "StereoConfig.BbhEnabled" in application
+    assert "BlackHoleArgs.BbhMeta = glm::ivec4(1" in application

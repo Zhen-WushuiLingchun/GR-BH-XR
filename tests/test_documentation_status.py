@@ -42,14 +42,13 @@ def test_bbh_dynamic_track_has_versioned_plan_and_fail_closed_status() -> None:
     assert plan_path.is_file()
     assert note_path.is_file()
     assert "ACTIVE_PLAN" in plan
-    assert "no BBH implementation is accepted yet" in plan
+    assert "Tasks 0-5 are accepted" in plan
     assert "real_time_metric_evaluation" in plan
     assert "nr_snapshot_truth" in plan
     assert "apparent horizons or explicit worldtubes" in plan
     assert "docs/plans/2026-08-10-bbh-dynamic-spacetime-xr.md" in status
-    assert "Task 5a CPU approximation" in status
-    assert "no dynamic native renderer yet" in status
-    assert "No dynamic NPGS ray path" in status
+    assert "Tasks 0-6" in status
+    assert "minimal fixed-orbit dynamic NPGS ray path" in status
     assert "simulated stereo" in targets
     assert "both-invalid rays" in targets
     assert "waveform-only assets" in note

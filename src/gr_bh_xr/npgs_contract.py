@@ -78,7 +78,8 @@ FEATURE_GATES: Mapping[Feature, FeatureGate] = {
         GateStatus.CANDIDATE, "depth acquisition alone does not validate RGB registration"
     ),
     Feature.BBH_GRAVITATIONAL_WAVES: FeatureGate(
-        GateStatus.BLOCKED, "no public NPGS BBH/GW source was present at the reviewed upstream ref"
+        GateStatus.CANDIDATE,
+        "a locally implemented fixed-orbit approximate BBH tracer is audited; NR/GW and dynamic XR claims remain open",
     ),
 }
 

@@ -15,7 +15,7 @@ import numpy as np
 
 from .geodesic_kn import momentum_direction_kn, trace_state_kn
 from .metric_kn import KerrNewmanParams, ks_hamiltonian, ks_invariants
-from .npgs_audit import RAW_SCHEMA_V2, RAW_SCHEMA_V3, load_native_audit
+from .npgs_audit import RAW_SCHEMA_V2, RAW_SCHEMA_V3, RAW_SCHEMA_V4, load_native_audit
 from .types import TraceConfig
 from .validate_npgs_kerr import (
     CPU_EVENT_CODES,
@@ -64,7 +64,7 @@ def validate_npgs_kerr_newman_capture(
 
     capture = load_native_audit(raw_path, metadata_path=metadata_path)
     metadata = capture.metadata
-    if metadata["schema"] not in (RAW_SCHEMA_V2, RAW_SCHEMA_V3) or capture.initial_ingoing_x is None:
+    if metadata["schema"] not in (RAW_SCHEMA_V2, RAW_SCHEMA_V3, RAW_SCHEMA_V4) or capture.initial_ingoing_x is None:
         raise ValueError("The Kerr-Newman gate requires raw-v2 canonical states.")
     parameters = metadata["parameters"]
     charge_ratio = float(parameters["charge_Q_over_M"])

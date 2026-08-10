@@ -9,6 +9,7 @@ from gr_bh_xr.npgs_audit import (
     RAW_SCHEMA_V1,
     RAW_SCHEMA_V2,
     RAW_SCHEMA_V3,
+    RAW_SCHEMA_V4,
     SCHEMA,
     convert_native_audit,
     load_native_audit,
@@ -144,6 +145,30 @@ def _write_v3_capture(tmp_path: Path) -> tuple[Path, Path]:
     return raw, metadata_path
 
 
+def _write_v4_capture(tmp_path: Path, *, dynamic: bool = False) -> tuple[Path, Path]:
+    raw, metadata_path = _write_v3_capture(tmp_path)
+    v3 = np.fromfile(raw, dtype="<f4").reshape(2, 2, 64)
+    records = np.zeros((2, 2, 72), dtype="<f4")
+    records[..., :64] = v3
+    records[..., 64:68] = [0.0, -5.0, 1.0 if dynamic else 0.0, 1.0]
+    records[..., 68:72] = [0.0, 1.0e-6, 2.0e-6, 3.0e-4]
+    records.tofile(raw)
+    metadata = json.loads(metadata_path.read_text(encoding="utf8"))
+    metadata.update(schema=RAW_SCHEMA_V4, record_float_count=72, record_bytes=288)
+    metadata["parameters"]["bbh_enabled"] = dynamic
+    metadata["claims"]["dynamic_metric_evidence_emitted"] = True
+    metadata["metric_provider"] = {
+        "provider_id": "bbh" if dynamic else "kerr_newman_stationary",
+        "stationary": not dynamic,
+    }
+    if dynamic:
+        metadata["claims"]["camera_polarization_evidence_emitted"] = False
+        metadata["claims"]["shared_trace_ray"] = False
+        metadata["claims"]["disk_transfer_slots_valid"] = False
+    metadata_path.write_text(json.dumps(metadata), encoding="utf8")
+    return raw, metadata_path
+
+
 def test_load_native_audit_validates_and_converts_native_units(tmp_path: Path) -> None:
     raw, metadata = _write_capture(tmp_path)
     capture = load_native_audit(raw, metadata_path=metadata)
@@ -188,6 +213,20 @@ def test_load_native_audit_v3_preserves_camera_polarization_evidence(tmp_path: P
     )
     np.testing.assert_allclose(
         capture.camera_basis_diagnostics, np.broadcast_to([1, 1, 0, 1], (2, 2, 4))
+    )
+
+
+def test_load_native_audit_v4_preserves_dynamic_metric_evidence(tmp_path: Path) -> None:
+    raw, metadata = _write_v4_capture(tmp_path, dynamic=True)
+    capture = load_native_audit(raw, metadata_path=metadata)
+
+    assert capture.records.shape == (2, 2, 72)
+    np.testing.assert_allclose(
+        capture.dynamic_meta, np.broadcast_to([0, -5, 1, 1], (2, 2, 4))
+    )
+    np.testing.assert_allclose(
+        capture.dynamic_diagnostics,
+        np.broadcast_to([0, 1.0e-6, 2.0e-6, 3.0e-4], (2, 2, 4)),
     )
 
 

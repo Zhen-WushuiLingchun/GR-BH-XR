@@ -1,5 +1,31 @@
 # Development Log
 
+## 2026-08-10 - Task 6 audited native dynamic BBH tracing
+
+- Ported the accepted equal-mass, nonspinning fixed-orbit superposed
+  Kerr-Schild approximation to the shared NPGS GLSL metric interface.
+- Added a full four-dimensional RK4 branch with non-frozen `p_t`, worldtube and
+  escape events, raw-v4 dynamic diagnostics, and exact canonical launch/final
+  states for independent replay.
+- Replaced generic `mat4 inverse` calls with the exact rank-two Woodbury inverse
+  of the two Kerr-Schild updates. A direct f64 algebra test anchors equivalence.
+- The 33x33 native map contains `18/1071/0` capture/escape/invalid pixels. The
+  33-ray f64 replay gives event agreement `1.0`, direction median/RMS
+  `1.83e-5/5.51e-5 rad`, no one-sided invalids, and maximum `Delta p_t`
+  disagreement `3.15e-5`. Reconstructing each launch ray from the declared
+  camera basis gives a maximum `1.73e-7 rad` discrepancy, independently
+  validating the negative-affine sign and camera-to-BBH coordinate path.
+- Added an HDF5 refinement schedule from event and escape-direction gradients,
+  explicitly avoiding RGB edge detection, and wired the dynamic provider into
+  the synthetic sequential-stereo timing path.
+- This is prescribed approximate-metric evaluation plus real ray integration,
+  not an Einstein evolution. Capture is an explicit `2.4 m_i` worldtube, not
+  an event-horizon claim.
+- Sequential dynamic stereo p95 was `2137.67/2655.53/3392.45/3811.41 ms` at
+  per-eye `1600x1728/1832x1920/2064x2208/2464x2592`. This decisively fails the
+  XR real-time gate and forces a later keyframe/foveated/surrogate decision;
+  it is not hidden behind the much faster stationary NPGS figures.
+
 ## 2026-08-10 - Task 5d merger-to-remnant transition
 
 - Added the Combi-Ressler Appendix-B smooth interpolation for mass and

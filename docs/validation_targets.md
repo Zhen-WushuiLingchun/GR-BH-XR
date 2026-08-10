@@ -1196,7 +1196,10 @@ The active implementation and dependency order are frozen in
 `docs/plans/2026-08-10-bbh-dynamic-spacetime-xr.md`. The corresponding
 literature baseline is
 `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`.
-The track is planned, not implemented or accepted.
+Tasks 0 through 5 are implemented and accepted as CPU/reference foundations.
+Task 6 has an accepted minimal equal-mass, nonspinning fixed-orbit native
+provider and remains a `physics_approximation`; ADM/NR and dynamic XR/MR gates
+remain open.
 
 Required checks:
 
@@ -1260,6 +1263,12 @@ Before an approximate BBH result is accepted:
   separation/time dependence are persisted rather than inferred from RGB;
 - performance claims use measured dynamic-metric stereo p95, not the existing
   static 4K mono frame rate.
+
+The first accepted native slice is fixed to separation `20M`, phase/time zero,
+equal masses, zero spin, and a `2.4 m_i` excision worldtube. Its 33x33 gate must
+retain stable event agreement `>=98%`, escaped-direction median `<1e-4 rad`,
+RMS `<5e-4 rad`, and zero one-sided invalids. Refinement candidates must be
+derived from event or physical transfer-buffer gradients, never RGB edges.
 
 Before dynamic BBH MR is accepted:
 

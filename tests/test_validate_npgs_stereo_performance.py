@@ -52,3 +52,21 @@ def test_parser_rejects_conflicting_configuration() -> None:
     )
     with pytest.raises(ValueError, match="conflicting"):
         parse_stereo_log(lines)
+
+
+def test_parser_records_dynamic_bbh_timing_configuration() -> None:
+    lines = _log()
+    lines[0] = lines[0].replace(
+        "taa=per_eye_disabled",
+        "bbh=1 bbh_separation_M=20 bbh_phase_rad=0.25 "
+        "bbh_time_M=4 bbh_worldtube_factor=2.4 taa=per_eye_disabled",
+    )
+
+    config, samples = parse_stereo_log(lines)
+    result = summarize_stereo_performance(config, samples)
+
+    assert config.bbh is True
+    assert config.bbh_separation_M == pytest.approx(20.0)
+    assert config.bbh_phase_rad == pytest.approx(0.25)
+    assert config.bbh_time_M == pytest.approx(4.0)
+    assert "does not solve the Einstein equations" in result["claim_boundary"]

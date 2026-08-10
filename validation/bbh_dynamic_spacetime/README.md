@@ -256,3 +256,84 @@ weight symmetry error `1.11e-16`, and inverse-derivative disagreement
 `3.35e-9`. At the sampled bridge point, the Hamiltonian constraint rises from
 `7.81e-5` before transition to `5.57e-4` mid-transition, then falls to
 `6.46e-7` at the exact post-merger Kerr endpoint.
+
+## Task 6: Native Dynamic BBH Tracing
+
+The native provider ports the accepted Task 5a slice only: equal masses,
+zero spin, fixed circular separation `20M`, and superposed instantaneously
+boosted Schwarzschild Kerr-Schild terms. Native NPGS uses component order
+`(x,y,z,t)`, signature `(+,+,+,-)`, and `M_internal=0.5`. Its dynamic branch
+integrates all four canonical momenta, including `p_t`; stationary Kerr
+conservation fields and disk/polarization claims fail closed in this mode.
+
+Generate and compare the formal small gate with:
+
+```powershell
+$exe = "$env:LOCALAPPDATA\GRBHXR\native-build-root\runtime\NPGS\x64\Release\NPGS.exe"
+$native = "$env:LOCALAPPDATA\GRBHXR\native-build-root\runtime\NPGS\NPGS"
+Push-Location $native
+& $exe --width 33 --height 33 `
+  --audit-out "F:\学习和研究\GR-BH-XR\outputs\bbh_dynamic\bbh_sep20_wt24_33.bin" `
+  --inclination-deg 60 --r-obs 100 --fov-deg 30 --quality 1 `
+  --bbh --bbh-separation-M 20 --bbh-phase-rad 0 --bbh-time-M 0 `
+  --bbh-worldtube-factor 2.4
+Pop-Location
+$env:PYTHONPATH='src'
+python -m gr_bh_xr.validate_npgs_bbh `
+  --raw outputs/bbh_dynamic/bbh_sep20_wt24_33.bin --samples 33 `
+  --out outputs/bbh_dynamic/bbh_crosscheck_33.json `
+  --h5 outputs/bbh_dynamic/bbh_crosscheck_33.h5
+```
+
+Observed evidence on 2026-08-10 after the exact rank-two Woodbury inverse
+optimization:
+
+- native map: `18 capture`, `1071 escape`, `0 invalid`;
+- all-resolved and stable event agreement: `1.0`;
+- 26 stable escaped directions: median `1.83e-5 rad`, RMS `5.51e-5 rad`,
+  maximum `1.61e-4 rad`;
+- one-sided invalid counts: `0/0`, both-invalid count: `0`;
+- CPU f64 `max|H|=1.40e-7`; native escaped median/max raw
+  `|H|=6.70e-6/1.19e-4`;
+- maximum native-versus-f64 `Delta p_t` disagreement: `3.15e-5`.
+- maximum launch-direction disagreement against the independently reconstructed
+  audit-camera ray: `1.73e-7 rad`. This closes the camera-basis and negative-
+  affine-sign ambiguity separately from endpoint replay.
+
+The HDF5 additionally stores an `audit_refinement_level` derived only from
+event-code discontinuities and escape-direction angular gradients. Level 2 is
+the capture/escape boundary; level 1 is a large direction-gradient region.
+This is an auditable refinement schedule, not RGB edge detection. On the 33x33
+gate it selects 957 pixels, including 72 level-2 boundary pixels. The low
+resolution deliberately over-selects; production tiling must tune the gradient
+threshold at the target angular resolution.
+
+Capture means crossing an explicit `2.4 m_i` excision worldtube. It is not an
+event horizon or an apparent-horizon reconstruction. A factor exactly `2`
+places f32 stages too close to each individual Schwarzschild horizon; `2.4`
+is therefore the validated fail-closed rendering boundary for this slice.
+
+The visual path now accepts the same provider through `--stereo-bbh 1` and
+logs the binary parameters in `NPGS_STEREO_CONFIG`. Synthetic stereo remains a
+desktop timing gate, not an OpenXR headset result. The metric is prescribed in
+real time and rays are integrated in four dimensions; Einstein's equations are
+not solved in the frame loop.
+
+The first dynamic sequential-stereo matrix used 2 warmup and 10 measured
+pairs per extent, disk and polarization disabled. GPU stereo-pair p95 values
+were:
+
+| Per-eye extent | Dynamic BBH p95 | Equivalent rate |
+| --- | ---: | ---: |
+| 1600x1728 | 2137.67 ms | 0.47 Hz |
+| 1832x1920 | 2655.53 ms | 0.38 Hz |
+| 2064x2208 | 3392.45 ms | 0.29 Hz |
+| 2464x2592 | 3811.41 ms | 0.26 Hz |
+
+These runs reject the naive full-resolution dynamic path by orders of
+magnitude. They are sufficient for a fail decision, not a high-precision
+performance characterization. A 320x320 smoke run improved from 605.36 ms to
+398.81 ms p95 after replacing general matrix inversion with the exact
+Woodbury form, but remains non-real-time. No BBH 72/90 Hz claim is allowed;
+Task 10 must select keyframes, foveated/progressive tracing, or a validated
+transfer-buffer surrogate.

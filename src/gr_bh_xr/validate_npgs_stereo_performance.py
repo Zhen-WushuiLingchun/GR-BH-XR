@@ -18,7 +18,12 @@ _CONFIG_RE = re.compile(
     r"mode=(?P<mode>\w+)\s+eye_width=(?P<width>\d+)\s+"
     r"eye_height=(?P<height>\d+)\s+ipd_m=(?P<ipd>[-+0-9.eE]+)\s+"
     r"meters_per_M=(?P<meters>[-+0-9.eE]+)\s+disk=(?P<disk>[01])\s+"
-    r"polarization=(?P<polarization>[01])\s+taa=(?P<taa>\w+)\s*$"
+    r"polarization=(?P<polarization>[01])\s+"
+    r"(?:bbh=(?P<bbh>[01])\s+bbh_separation_M=(?P<bbh_sep>[-+0-9.eE]+)\s+"
+    r"bbh_phase_rad=(?P<bbh_phase>[-+0-9.eE]+)\s+"
+    r"bbh_time_M=(?P<bbh_time>[-+0-9.eE]+)\s+"
+    r"bbh_worldtube_factor=(?P<bbh_worldtube>[-+0-9.eE]+)\s+)?"
+    r"taa=(?P<taa>\w+)\s*$"
 )
 _SAMPLE_RE = re.compile(
     r"^NPGS_STEREO_GPU\s+pair=(?P<pair>\d+)\s+eye=(?P<eye>[01])\s+"
@@ -39,6 +44,11 @@ class StereoConfig:
     disk: bool
     polarization: bool
     taa: str
+    bbh: bool = False
+    bbh_separation_M: float = 20.0
+    bbh_phase_rad: float = 0.0
+    bbh_time_M: float = 0.0
+    bbh_worldtube_factor: float = 2.4
 
 
 @dataclass(frozen=True)
@@ -70,6 +80,11 @@ def parse_stereo_log(lines: Iterable[str]) -> tuple[StereoConfig, list[EyeSample
                 disk=match["disk"] == "1",
                 polarization=match["polarization"] == "1",
                 taa=match["taa"],
+                bbh=match["bbh"] == "1" if match["bbh"] is not None else False,
+                bbh_separation_M=float(match["bbh_sep"] or 20.0),
+                bbh_phase_rad=float(match["bbh_phase"] or 0.0),
+                bbh_time_M=float(match["bbh_time"] or 0.0),
+                bbh_worldtube_factor=float(match["bbh_worldtube"] or 2.4),
             )
             if config is not None and config != parsed:
                 raise ValueError("stereo log contains conflicting configurations")
@@ -104,6 +119,15 @@ def parse_stereo_log(lines: Iterable[str]) -> tuple[StereoConfig, list[EyeSample
         raise ValueError("stereo IPD must be finite and nonnegative")
     if not math.isfinite(config.meters_per_M) or config.meters_per_M <= 0.0:
         raise ValueError("meters_per_M must be finite and positive")
+    if config.bbh and (
+        not math.isfinite(config.bbh_separation_M)
+        or config.bbh_separation_M <= 4.0
+        or not math.isfinite(config.bbh_phase_rad)
+        or not math.isfinite(config.bbh_time_M)
+        or not math.isfinite(config.bbh_worldtube_factor)
+        or config.bbh_worldtube_factor <= 2.0
+    ):
+        raise ValueError("dynamic BBH stereo configuration is outside its validated domain")
     return config, samples
 
 
@@ -197,7 +221,13 @@ def summarize_stereo_performance(
         },
         "claim_boundary": (
             "Synthetic sequential stereo measures two native eye renders without an OpenXR runtime. "
-            "It is performance evidence, not a headset refresh-rate result; OpenXR total-frame gates remain unset."
+            "It is performance evidence, not a headset refresh-rate result; OpenXR total-frame gates remain unset. "
+            + (
+                "The dynamic mode integrates the prescribed approximate BBH metric in four-dimensional phase space; "
+                "it does not solve the Einstein equations."
+                if config.bbh
+                else "The stationary mode does not measure dynamic-metric cost."
+            )
         ),
     }
 

@@ -9,6 +9,11 @@ param(
     [ValidateRange(1.0e-9, 1.0e30)] [double]$MetersPerM = 1.0,
     [ValidateSet(0, 1)] [int]$Disk = 1,
     [ValidateSet(0, 1)] [int]$Polarization = 0,
+    [ValidateSet(0, 1)] [int]$Bbh = 0,
+    [ValidateRange(4.000001, 1000.0)] [double]$BbhSeparationM = 20.0,
+    [double]$BbhPhaseRad = 0.0,
+    [double]$BbhTimeM = 0.0,
+    [ValidateRange(2.000001, 100.0)] [double]$BbhWorldtubeFactor = 2.4,
     [string]$JsonOut
 )
 
@@ -29,8 +34,8 @@ if (-not (Test-Path -LiteralPath $Python)) {
 }
 if (-not $JsonOut) {
     $JsonOut = Join-Path $PhysicalRoot (
-        "outputs\bbh_stereo\npgs_stereo_{0}x{1}_disk{2}_pol{3}.json" -f `
-        $EyeWidth, $EyeHeight, $Disk, $Polarization)
+        "outputs\bbh_stereo\npgs_stereo_{0}x{1}_disk{2}_pol{3}_bbh{4}.json" -f `
+        $EyeWidth, $EyeHeight, $Disk, $Polarization, $Bbh)
 }
 $JsonOut = [System.IO.Path]::GetFullPath($JsonOut, $PhysicalRoot)
 $OutputDirectory = Split-Path -Parent $JsonOut
@@ -47,7 +52,12 @@ $Arguments = @(
     "--stereo-ipd-m", "$IpdMeters",
     "--meters-per-M", "$MetersPerM",
     "--stereo-disk", "$Disk",
-    "--stereo-polarization", "$Polarization"
+    "--stereo-polarization", "$Polarization",
+    "--stereo-bbh", "$Bbh",
+    "--stereo-bbh-separation-M", "$BbhSeparationM",
+    "--stereo-bbh-phase-rad", "$BbhPhaseRad",
+    "--stereo-bbh-time-M", "$BbhTimeM",
+    "--stereo-bbh-worldtube-factor", "$BbhWorldtubeFactor"
 )
 $Process = Start-Process -FilePath $Executable -ArgumentList $Arguments `
     -WorkingDirectory $WorkingDirectory -RedirectStandardOutput $StdoutPath `
@@ -115,6 +125,11 @@ $Result | Add-Member -NotePropertyName evidence -NotePropertyValue ([ordered]@{
     processVram = "unavailable: current Windows WDDM tooling does not provide reliable per-process attribution"
     dynamicResolution = $false
     vrs = $false
+    dynamicMetric = [bool]$Bbh
+    bbhSeparationM = $BbhSeparationM
+    bbhPhaseRad = $BbhPhaseRad
+    bbhTimeM = $BbhTimeM
+    bbhWorldtubeFactor = $BbhWorldtubeFactor
     multiview = "not implemented; this result is sequential stereo"
 })
 $Result | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $JsonOut -Encoding utf8
