@@ -1,6 +1,6 @@
 # Current Implementation Status
 
-Updated: 2026-08-06
+Updated: 2026-08-10
 
 This file is the canonical status summary. Dated plans describe the intent at
 the time they were written; `docs/development_log.md` records chronological
@@ -16,12 +16,12 @@ evidence. Neither should be used alone to infer the current runtime.
 | Unity Task 9 live tracer | Live single-Kerr integration | Cartesian Kerr-Schild rays are integrated in Unity compute in bounded batches. A completed map is hard-swapped after several display frames; this is not a newly converged full-resolution per-eye solution every headset frame. |
 | Unity Tasks 7-8 roam/descent | Worldline-keyframe playback | Uses audited finite-observer and rain-frame keyframes. Playback is distinct from unrestricted six-degree-of-freedom tracing. |
 | Unity Task 10 MR | Experimental, unaccepted | Camera/depth integration code exists, but calibrated RGB delivery and registration have not been demonstrated on the device. Enumeration, compilation, or depth acquisition alone is not acceptance. |
-| Native NPGS fork | Accepted for neutral exterior Kerr/Kerr-Newman rays, Kerr `Q=0` disk transfer, and geometric polarization transport at quality 2; broader migration candidate | Complete official history is pinned through the GPL fork. Exact native states pass independent CPU f64 event/direction/disk gates, and raw v3 camera bases plus the complete Walker-Penrose scalar pass direct f64 parallel transport. Polarized emission/Stokes, charged-disk physics, maximal extension, OpenXR, and MR remain independently blocked. |
+| Native NPGS fork | Accepted for neutral exterior Kerr/Kerr-Newman rays, Kerr `Q=0` disk transfer, and geometric polarization transport at quality 2; native XR/MR interfaces are candidates | Complete official history is pinned through the GPL fork. Exact native states pass independent CPU f64 event/direction/disk gates, and raw v3 camera bases plus the complete Walker-Penrose scalar pass direct f64 parallel transport. OpenXR/Vulkan ownership, stereo-view, calibrated-camera, and depth provenance contracts now compile, but no native OpenXR session or delivered MR camera frame has passed a device gate. |
 
-The repository suite passed `254` tests on 2026-08-06 after the Task 9/10
-baseline was fast-forwarded to `main`, complete Unity `.meta` coverage was
-restored, and the native NPGS Kerr, Kerr-Newman, disk-transfer, and raw-v3
-polarization-geometry gates were added.
+The repository suite passed `271` tests on 2026-08-10 after the centralized
+NPGS integration/MR contracts were added. The preceding Task 9/10 baseline,
+complete Unity `.meta` coverage, native Kerr/Kerr-Newman/disk gates, and raw-v3
+polarization-geometry gates remain in the same full regression.
 
 ## NPGS Native Migration
 
@@ -29,9 +29,22 @@ The selected future runtime is a native fork of NPGS rather than a Unity port
 of its GPL shader. The public upstream baseline reviewed for this decision is
 `baopinshui/NPGS@a039e6417b28d53cbd413ee8f6d64543e755aa3e`.
 The current pinned integration revision is
-`Zhen-WushuiLingchun/NPGS@c0e27144e1b5a00824738c1ca39e66a9c91a894f`.
-The complete public ref set was refreshed on 2026-08-06; no public BBH/GW
+`Zhen-WushuiLingchun/NPGS@6c9a3aaf76ccc52b8c67e25d4eb7141bea06502d`.
+The complete public ref set was refreshed on 2026-08-10; no public BBH/GW
 source was found.
+
+### Reuse And Compatibility Matrix
+
+| Capability | Decision | Reason |
+| --- | --- | --- |
+| Native Vulkan renderer, prepass/composite/TAA, shared Kerr/Kerr-Newman tracer | Reuse NPGS directly | This is the higher-performance runtime and its accepted slices already pass independent replay gates. |
+| Neutral Kerr/Kerr-Newman ray geometry, Kerr disk crossings, Walker-Penrose geometry | Accepted NPGS implementation | Native quality-2 evidence meets the existing CPU-f64 thresholds. GR-BH-XR keeps the oracle and audit artifacts, not a competing production implementation. |
+| Python f64 BL/KS solvers, HDF5 validators, Page-Thorne/blackbody model | Retain in GR-BH-XR | These provide independent scientific definitions and validated emission physics that NPGS must consume rather than self-certify. |
+| Native Page-Thorne rendering and Stokes transport | Not yet merged | Page-Thorne assets are validated but not wired into native NPGS; geometric polarization does not establish emissivity, absorption, Faraday, or Stokes correctness. |
+| Charged disk matter | Blocked | Neutral photons in a charged spacetime do not define a charged-plasma disk model. |
+| Maximal extension | Visual/mathematical only | Exact stationary Kerr-Newman continuation is not an astrophysical collapse-interior prediction. |
+| Native OpenXR and MR | Interface complete, runtime candidate | The render-sink and measured-frame contracts exist without changing desktop GLFW. Session/swapchain and real camera-frame delivery remain device gates. |
+| BBH/GW | Blocked | No public implementation exists at the refreshed upstream refs; showcase output is not source or validation evidence. |
 
 The migration does not treat NPGS screenshots or feature claims as scientific
 validation. GR-BH-XR retains its Python f64 reference solvers, audit schemas,
@@ -47,8 +60,10 @@ renderer is checked. NPGS becomes the default runtime only after:
 4. native camera-basis and Walker-Penrose geometric transport match direct f64
    parallel transport (**passed on 2026-08-06; Stokes/emission remain open**);
 5. its fast path has a reproducible same-hardware performance baseline;
-6. native OpenXR passes stereo, world-lock, control, and headset frame-time
-   gates.
+6. native OpenXR interface/build contract passes (**passed on 2026-08-10**),
+   then stereo, world-lock, control, and headset frame-time device gates pass;
+7. a fresh calibrated camera frame with measured angular coverage passes the
+   native MR provenance gate before any passthrough-pixel claim.
 
 Until those gates pass, NPGS is an integration candidate and the Unity runtime
 remains the Quest regression oracle. After native PCVR parity, Unity will be
@@ -81,9 +96,11 @@ Current status should therefore be read by capability, not by number:
   maximal extension are not.
 - NPGS Kerr `Q=0` disk-transfer parity has passed; charged-disk physics and
   Page-Thorne integration remain open.
-- Native Vulkan/OpenXR PCVR integration.
-- Device proof of calibrated MR RGB delivery before any passthrough-lensing
-  claim.
+- Native Vulkan/OpenXR session, swapchain, and PCVR device integration. The
+  source-level ownership/stereo interface gate is complete.
+- Device proof of fresh calibrated MR RGB delivery before any
+  passthrough-lensing claim. Environment depth remains an independent input and
+  cannot substitute for RGB evidence.
 - BBH/GW work remains deferred. No public BBH/GW source branch was available
   in the reviewed NPGS repository; showcase media is not implementation
   evidence.

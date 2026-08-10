@@ -19,6 +19,40 @@ from here.
 
 ## Log
 
+### 2026-08-10 - Native NPGS OpenXR and MR interface contracts
+
+- Goal: complete the device-independent NPGS runtime boundary before physical
+  headset work, and repair the passthrough definition so placeholder textures,
+  extension enumeration, or depth-only acquisition cannot pass as live lensed
+  room radiance.
+- Changed files / components: fork commit `6c9a3aa` adds separate desktop and
+  OpenXR render-sink contracts, asymmetric stereo views, explicit
+  `meters_per_M`, injected extension probing, calibrated color/depth records,
+  and bounded passthrough claim decisions. GR-BH-XR adds
+  `gr-bh-xr.npgs.integration.v1`, `gr-bh-xr.npgs.mr-frame.v1`, fail-closed
+  audit metadata integration, tests, source notes, and validation documents.
+- Academic reason: using NPGS directly for its validated fast physics does not
+  remove the need to distinguish accepted ray geometry from unvalidated
+  emission, XR lifecycle, MR delivery, or BBH/GW claims.
+- Physical correspondence: native coordinates remain ingoing Cartesian
+  Kerr-Schild `(x,y,z,t)` with covariant momentum, spin `+y`, native
+  `M=0.5`, and normalized `M=1`. Each XR eye supplies its own tracked origin and
+  asymmetric FOV. A passthrough frame must include calibrated intrinsics and a
+  rigid capture pose before its pixels can define incident room radiance.
+- Assumptions and conventions: a forward camera supports only a forward-cone
+  claim. Cached rear radiance is time-frozen, and environment depth is an
+  independent optional measurement rather than proof of RGB delivery.
+- Validation: the NPGS Release build completed with zero errors; a 640x480
+  desktop smoke run preserved the GLFW path. The focused integration suite
+  passed `31` tests and the complete repository suite passed `271` tests in
+  `153.07 s`. The manifest CLI wrote the reviewed feature matrix successfully.
+- References: official OpenXR 1.1 and `XR_KHR_vulkan_enable2`, indexed in
+  `references/references.md`; NPGS upstream remained at `a039e64` on the
+  2026-08-10 public-ref refresh.
+- Open issues / next steps: implement the real OpenXR session and stereo
+  swapchain sink, then bind a supported camera API and persist one delivered
+  frame satisfying the MR contract. No device acceptance is claimed here.
+
 ### 2026-08-06 - NPGS camera polarization and Walker-Penrose gate
 
 - Goal: Reuse NPGS's native polarization path while independently determining

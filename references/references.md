@@ -156,6 +156,33 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
 - Limitations / open questions: Verify behavior on local hardware and current
   SDK.
 
+### Khronos OpenXR 1.1 And Vulkan Enable2
+
+- Source path: `references/source_notes/2026-08-10-npgs-openxr-mr-contract.md`.
+- PDF path: Not applicable; official living specification.
+- Code review path: `runtime/NPGS/docs/GRBHXR_OPENXR.md`.
+- BibTeX key: Not applicable.
+- Stable locators:
+  https://registry.khronos.org/OpenXR/specs/1.1/html/xrspec.html and
+  https://registry.khronos.org/OpenXR/specs/1.1/man/html/XR_KHR_vulkan_enable2.html
+- Accessed: 2026-08-10
+- Search date: 2026-08-10
+- Search terms: OpenXR 1.1 Vulkan enable2 instance device ownership swapchain
+- Why added: Defines the native NPGS OpenXR/Vulkan ownership boundary and the
+  session/swapchain work that must follow the interface-only migration slice.
+- Short summary: `XR_KHR_vulkan_enable2` supplies the OpenXR-controlled Vulkan
+  requirements and creation path. Per-view pose/FOV and swapchain images come
+  from OpenXR rather than the existing GLFW desktop lifecycle.
+- Relevant equations / assumptions / methods: Each eye has an asymmetric FOV
+  and tracked pose; tracked translations are converted to geometric units only
+  through an explicit `meters_per_M` scale.
+- Project use: Native render-sink contract, stereo-ray definition, and the
+  fail-closed requirement that OpenXR-owned handles are not presented as
+  NPGS-owned desktop handles.
+- Limitations / open questions: Interface conformance is not a device/session
+  acceptance result; runtime extension enumeration, swapchain submission,
+  frame timing, and headset evidence remain separate gates.
+
 ### Unity OpenXR Meta Camera / Passthrough
 
 - Source path: `references/source_notes/2026-06-28-physics-auditable-renderer-sources.md`
@@ -547,10 +574,13 @@ Git. Restricted, license-unclear, oversized, or temporary PDFs should go under
   while the GR-BH-XR Python solvers remain independent validation authorities.
 - Reviewed commits: initial `40acedaebf31743ef44dad428117d39b8f22f324`;
   migration baseline `a039e6417b28d53cbd413ee8f6d64543e755aa3e`.
-- Public-ref refresh: 2026-08-06. Official `master`, tag, and prerelease
+- Public-ref refresh: 2026-08-10. Official `master`, tag, and prerelease
   `v-114514-test` resolve to the migration baseline. Closed draft PR #1 contains
   Windows CI/dependency wiring only and was not merged into the integration
   branch.
+- Current reviewed fork commit:
+  `6c9a3aaf76ccc52b8c67e25d4eb7141bea06502d`, adding native OpenXR/Vulkan
+  render-input and measured MR-frame contracts without replacing desktop GLFW.
 - Limitations / open questions: The repository is engineering evidence, not a
   peer-reviewed benchmark. Neutral exterior Kerr-Newman rays passed an
   independent f64 event/direction gate on 2026-08-06; polarization, maximal

@@ -103,3 +103,59 @@ def test_repository_includes_gpl_v3_text() -> None:
     license_text = (ROOT / "LICENSE").read_text(encoding="utf8")
     assert "GNU GENERAL PUBLIC LICENSE" in license_text
     assert "Version 3, 29 June 2007" in license_text
+
+
+def test_npgs_native_xr_contract_is_device_independent_and_fail_closed() -> None:
+    npgs = ROOT / "runtime" / "NPGS" / "NPGS"
+    manifest = (npgs / "vcpkg.json").read_text(encoding="utf8")
+    render_contract = (
+        npgs / "Sources" / "Engine" / "Core" / "Runtime" / "XR" / "RenderContract.h"
+    ).read_text(encoding="utf8")
+    openxr_header = (
+        npgs / "Sources" / "Engine" / "Core" / "Runtime" / "XR" / "OpenXrRuntime.h"
+    ).read_text(encoding="utf8")
+    openxr_source = (
+        npgs / "Sources" / "Engine" / "Core" / "Runtime" / "XR" / "OpenXrRuntime.cpp"
+    ).read_text(encoding="utf8")
+    application = (npgs / "Sources" / "Program" / "Application.cpp").read_text(encoding="utf8")
+
+    assert '"name": "openxr-loader"' in manifest
+    assert '"vulkan"' in manifest
+    assert "RequiredViewCount = 2" in render_contract
+    assert "FViewFovTangents" in render_contract
+    assert "MetersPerM" in render_contract
+    assert "OpenXrOwned" in render_contract
+    assert "OpenXR render sink requires OpenXR-owned Vulkan handles" in (
+        npgs / "Sources" / "Engine" / "Core" / "Runtime" / "XR" / "RenderContract.cpp"
+    ).read_text(encoding="utf8")
+    assert "PFN_xrEnumerateInstanceExtensionProperties" in openxr_header
+    assert "EnumerateExtensions(nullptr" in openxr_source
+    assert "xrEnumerateInstanceExtensionProperties(nullptr" not in openxr_source
+    assert "glfwCreateWindowSurface" in application
+    assert "_VulkanContext->CreateDevice(0)" in application
+
+
+def test_npgs_mr_contract_requires_measured_calibrated_frame_provenance() -> None:
+    source = (
+        ROOT
+        / "runtime"
+        / "NPGS"
+        / "NPGS"
+        / "Sources"
+        / "Engine"
+        / "Core"
+        / "Runtime"
+        / "XR"
+        / "MixedRealityContract.cpp"
+    ).read_text(encoding="utf8")
+    docs = (ROOT / "runtime" / "NPGS" / "docs" / "GRBHXR_OPENXR.md").read_text(
+        encoding="utf8"
+    )
+
+    assert "!Fresh || !Calibrated" in source
+    assert "NativeImage == 0" in source
+    assert '"forward_camera_only"' in source
+    assert '"calibrated_full_sphere"' in source
+    assert "cannot provide the radiance behind the observer" in " ".join(docs.lower().split())
+    normalized_docs = " ".join(docs.split())
+    assert "Depth acquisition does not prove RGB delivery" in normalized_docs

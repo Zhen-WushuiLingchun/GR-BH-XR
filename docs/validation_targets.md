@@ -1006,17 +1006,42 @@ This gate does not validate NPGS's magnetic-field proxy, polarized emissivity,
 Faraday coefficients, Stokes integration, or final polarized images. See
 `validation/npgs_polarization/README.md`.
 
-Native XR gate (open):
+Native XR interface gate (passed on 2026-08-10) and device gate (open):
 
 - OpenXR owns Vulkan instance/device requirements through
   `XR_KHR_vulkan_enable2`;
+- the native source exposes separate desktop/OpenXR render sinks, exactly two
+  ordered views, asymmetric per-eye FOV tangents, per-eye rigid poses, and a
+  positive `meters_per_M` conversion;
+- an OpenXR sink rejects NPGS-owned Vulkan handles, while the existing GLFW
+  desktop path remains unchanged;
+- OpenXR extension enumeration is injected through a loader function table so
+  source/build validation does not pretend to create a working session;
 - stereo swapchains, predicted poses, reference spaces, per-eye origins,
   world-lock, controls, and the draggable settings panel pass desktop and Quest
   evidence gates;
 - stable 72 Hz is required on Quest PCVR and 90 Hz remains the target.
 
+Native MR input gate (interface passed; device evidence open):
+
+- use schema `gr-bh-xr.npgs.mr-frame.v1` and require a fresh, calibrated color
+  frame with positive sequence/capture/receive times, a real native image,
+  calibrated intrinsics, a unit-quaternion capture pose, and explicit color
+  encoding;
+- reject placeholder textures, stale frames, guessed calibration, missing
+  camera pose, and receive times before capture;
+- environment depth is a separately validated optional record; acquiring depth
+  does not prove RGB delivery or color/depth registration;
+- `forward_camera_only` and `forward_camera_plus_cached_environment` remain
+  bounded to a forward-camera scientific claim because unobserved rear
+  radiance is still synthetic or stale;
+- only an explicitly calibrated full-sphere radiance input may pass a
+  full-sphere passthrough-lensing claim;
+- fallback sky, stretched camera images, and compositor underlays may be used
+  as display modes but never as evidence that live room pixels were lensed.
+
 See `validation/npgs_native_baseline/README.md` and
-`validation/npgs_kerr_newman/README.md`.
+`validation/npgs_native_xr/README.md`.
 
 Native Kerr disk-transfer gate (passed on 2026-08-06):
 

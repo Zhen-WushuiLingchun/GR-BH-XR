@@ -15,6 +15,13 @@ from typing import Any, Mapping
 import h5py
 import numpy as np
 
+from .npgs_contract import (
+    SCHEMA as INTEGRATION_SCHEMA,
+    accepted_features,
+    integration_manifest,
+    validate_native_integration_metadata,
+)
+
 
 RAW_SCHEMA_V1 = "gr-bh-xr.npgs.audit.raw.v1"
 RAW_SCHEMA_V2 = "gr-bh-xr.npgs.audit.raw.v2"
@@ -275,6 +282,10 @@ def _write_hdf5(
         handle.attrs["audit_shader_sha256"] = source["audit_shader_sha256"]
         handle.attrs["device_json"] = json.dumps(metadata["device"], sort_keys=True)
         handle.attrs["claims_json"] = json.dumps(metadata["claims"], sort_keys=True)
+        handle.attrs["integration_contract_schema"] = INTEGRATION_SCHEMA
+        handle.attrs["accepted_integration_features_json"] = json.dumps(
+            [feature.value for feature in accepted_features(metadata)]
+        )
         handle.attrs["parameters_json"] = json.dumps(parameters, sort_keys=True)
         handle.attrs["source_metadata_json"] = json.dumps(metadata, sort_keys=True)
 
@@ -375,6 +386,11 @@ def _build_summary(
         if escape_norm_error.size
         else None,
         "claims": metadata["claims"],
+        "integration_contract_schema": INTEGRATION_SCHEMA,
+        "accepted_integration_features": [
+            feature.value for feature in accepted_features(metadata)
+        ],
+        "integration_status": integration_manifest()["features"],
     }
 
 
@@ -393,6 +409,7 @@ def _validate_metadata(metadata: Mapping[str, Any]) -> None:
     for key in ("parameters", "device", "claims", "event_codes", "failure_codes"):
         if not isinstance(metadata.get(key), Mapping):
             raise ValueError(f"Native audit metadata is missing object {key!r}.")
+    validate_native_integration_metadata(metadata)
     if "escape" not in metadata["event_codes"]:
         raise ValueError("Native audit event mapping is missing 'escape'.")
     if "disk_transfer_slots_valid" not in metadata["claims"]:

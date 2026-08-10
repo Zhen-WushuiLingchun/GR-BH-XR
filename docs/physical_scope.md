@@ -206,6 +206,22 @@ The shadow / critical curve / lensing ring / photon ring distinction follows
 
 ## XR Scope
 
+### Native NPGS XR/MR status
+
+The native NPGS migration now has an interface-complete but device-unaccepted
+XR/MR boundary. It defines OpenXR-owned Vulkan resources, asymmetric per-eye
+rays, tracked eye origins, `meters_per_M`, and a measured MR-frame record. This
+does not mean a native OpenXR session, swapchain, or passthrough feed has run.
+
+For native MR, a claim is accepted only from a fresh calibrated camera frame
+with a real native image, capture pose, intrinsics, timestamps, color encoding,
+and declared angular coverage. Depth is an independent optional measurement;
+it cannot stand in for missing RGB. A forward camera plus a cached environment
+still supports only a forward-camera claim because the cached rear radiance is
+not live. These rules repair the earlier failure mode in which enumeration,
+placeholder textures, or depth acquisition could be mistaken for delivered
+passthrough pixels.
+
 Quest 3 is introduced first as a PCVR viewer for the validated static Kerr
 transfer-map renderer:
 

@@ -1,6 +1,6 @@
 # Native NPGS Migration
 
-Updated: 2026-08-06
+Updated: 2026-08-10
 
 ## Decision
 
@@ -10,7 +10,7 @@ reference, validation, and documentation repository; the fork is pinned as the
 `runtime/NPGS` submodule.
 
 The reviewed public upstream snapshot is
-`a039e6417b28d53cbd413ee8f6d64543e755aa3e`. On 2026-08-06, a fresh
+`a039e6417b28d53cbd413ee8f6d64543e755aa3e`. On 2026-08-10, a fresh
 `git ls-remote`, GitHub branch query, tag query, and release query found:
 
 - `master` at that SHA;
@@ -56,6 +56,11 @@ vcpkg/CMake tool acquisition path is not Unicode-safe, so the bootstrap creates
 and all native build paths go through that alias. It is not a second source
 copy and is never committed.
 
+The current pinned fork revision is
+`Zhen-WushuiLingchun/NPGS@6c9a3aaf76ccc52b8c67e25d4eb7141bea06502d`.
+It adds device-independent native OpenXR/Vulkan and MR input contracts while
+leaving the existing GLFW desktop lifecycle unchanged.
+
 ## What Is Reused
 
 - NPGS native Vulkan renderer, prepass/composite/TAA architecture, observer
@@ -69,6 +74,37 @@ NPGS's jet, heat-haze, inner-horizon, antiverse, and polarization outputs remain
 visual or exploratory until the corresponding independent gates exist. The
 stationary Kerr-Newman maximal extension is a mathematical spacetime model, not
 a claim about a perturbed astrophysical Cauchy horizon.
+
+## Integration Contract And MR Repair
+
+`gr-bh-xr.npgs.integration.v1` is the centralized compatibility matrix. Native
+audit conversion now fails closed on coordinate/mass drift and writes only the
+features supported by both native metadata and independent gates. It prevents
+accepted Kerr/Kerr-Newman geometry from silently legitimizing Stokes transport,
+charged-disk matter, maximal-extension astrophysics, OpenXR, MR, or BBH/GW.
+
+The native fork exposes separate desktop and OpenXR render sinks. An OpenXR
+sink requires OpenXR-owned Vulkan handles, exactly two ordered views,
+asymmetric per-eye FOV tangents, per-eye poses, and a positive
+`meters_per_M`. Extension enumeration is injected through an OpenXR function
+table so the normal desktop executable does not accidentally own or initialize
+an XR lifecycle.
+
+The passthrough repair is definition-level rather than a fallback-texture hack.
+`gr-bh-xr.npgs.mr-frame.v1` and the matching C++ contract require a fresh frame,
+monotonic sequence, capture/receive timestamps, native image, calibrated
+intrinsics, rigid capture pose, color encoding, and measured radiance coverage.
+Environment depth is optional and independently validated. A forward camera,
+even when combined with a cached room map, can support only a
+`forward_camera_only` claim; only an explicitly calibrated full-sphere source
+can claim full-sphere radiance. No real camera frame or depth registration has
+yet passed this contract on a device.
+
+This is compatible with the existing accepted NPGS physics because the
+measurement contract supplies initial view rays and background radiance; it
+does not replace the shared Kerr/Kerr-Newman geodesic core. GR-BH-XR retains
+the CPU f64 oracle, Page-Thorne/LUT emission model, HDF5 audit format, and
+fail-closed claim policy.
 
 ## Reproducible Native Baseline
 
@@ -265,6 +301,9 @@ horizon-guard boundary.
    runtime. **Kerr `Q=0` first/second crossings passed on 2026-08-06; charged
    disk and Page-Thorne emission remain open.**
 6. Add native OpenXR/Vulkan rendering and pass desktop plus Quest PCVR gates.
+   **The ownership/stereo/MR-input interface and Release-build gate passed on
+   2026-08-10; session creation, swapchain submission, and device evidence
+   remain open.**
 7. Only then archive the Unity frontend outside the default branch.
 
 ## Licensing Boundary

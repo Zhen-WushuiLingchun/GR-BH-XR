@@ -136,6 +136,10 @@ def _write_v3_capture(tmp_path: Path) -> tuple[Path, Path]:
     metadata = json.loads(metadata_path.read_text(encoding="utf8"))
     metadata.update(schema=RAW_SCHEMA_V3, record_float_count=64, record_bytes=256)
     metadata["claims"]["camera_polarization_evidence_emitted"] = True
+    metadata["claims"]["camera_polarization_model"] = (
+        "complete Boyer-Lindquist Walker-Penrose scalar; "
+        "emission/Stokes model not validated"
+    )
     metadata_path.write_text(json.dumps(metadata), encoding="utf8")
     return raw, metadata_path
 
@@ -228,12 +232,15 @@ def test_convert_native_audit_writes_final_hdf5_and_json(tmp_path: Path) -> None
     assert summary["event_counts"] == {"capture": 1, "escape": 3, "invalid": 0}
     assert summary["failure_counts"] == {"none": 4, "step_budget_exhausted": 0}
     assert summary["disk_valid_by_order"] == [0, 0]
+    assert summary["integration_contract_schema"] == "gr-bh-xr.npgs.integration.v1"
+    assert summary["accepted_integration_features"] == []
     assert json.loads(out_json.read_text(encoding="utf8"))["max_steps"] == 12
 
     with h5py.File(out_h5, "r") as handle:
         assert handle.attrs["schema"] == SCHEMA
         assert handle.attrs["M_internal"] == 0.5
         assert handle.attrs["generation_command"] == "pytest"
+        assert handle.attrs["integration_contract_schema"] == "gr-bh-xr.npgs.integration.v1"
         assert handle["raw_record_f32"].shape == (2, 2, 32)
         assert handle["escape_dir"].shape == (2, 2, 3)
         assert handle["disk_r_m"].shape == (2, 2, 2)
