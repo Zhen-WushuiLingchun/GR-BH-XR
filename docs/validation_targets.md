@@ -1,5 +1,15 @@
 # Validation Targets
 
+## BBH/XR Task 1: Native Synthetic Stereo
+
+- Require complete left/right pairs and `valid_timestamp_ratio >= 0.99`.
+- Report GPU p50/p95/p99 for each eye and summed sequential pair, plus CPU
+  submission separately.
+- Physics-render budgets are p95 `<11 ms` for 72 Hz and `<9 ms` for 90 Hz.
+- Do not set an OpenXR total-frame gate from synthetic desktop evidence.
+- A multiview claim requires actual Vulkan multiview and same-camera image
+  comparison; sequential stereo is labeled separately.
+
 Validation is part of the physics interface. A renderer output is not considered
 academic until its relevant validation path is documented.
 

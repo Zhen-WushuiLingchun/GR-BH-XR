@@ -1,5 +1,19 @@
 # Development Log
 
+## 2026-08-10 - Task 1 sequential synthetic-stereo performance gate
+
+- Added a device-independent NPGS stereo view scheduler with asymmetric FOV
+  tangents, physical left/right origins through `meters_per_M`, and a native
+  sequential render mode.
+- Added Vulkan timestamps around prepass, composite, and post processing plus
+  a fail-closed Python pair aggregator (`>=99%` valid timestamp pairs).
+- On RTX 5080 Laptop / driver 591.74, 1600x1728 per eye passed the 90 Hz physics
+  render budget in all disk/polarization combinations (p95 7.80-8.11 ms),
+  1832x1920 passed only 72 Hz (9.95-10.23 ms), and larger tested extents failed
+  the 11 ms physics budget.
+- This is not an OpenXR total-frame claim. Sequential TAA accumulation is
+  disabled to prevent cross-eye history contamination; multiview remains open.
+
 Use this log to keep academic and physics-facing context close to the code.
 For large entries, create a separate `docs/YYYY-MM-DD-topic.md` note and link it
 from here.
