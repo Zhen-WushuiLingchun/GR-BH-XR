@@ -105,6 +105,24 @@
 - Remnant mass/spin/kick are supplied evidence-bearing inputs until an
   independently validated NR fitting module exists.
 
+## BBH/XR Task 9: Dynamic OpenXR And MR Time Semantics
+
+- Dynamic rendering maps OpenXR predicted-display time to metric time and
+  binary phase through an explicit `seconds_per_M` epoch; wall-clock integers
+  are never used directly as geometric time.
+- Left and right views require distinct predicted eye origins and ordered
+  per-eye poses.
+- Camera-history selection is causal at `t_observer - Delta t_ray`; frames
+  captured after that time cannot satisfy the request.
+- Stale history, unknown color encoding, unmeasured rear/side radiance,
+  inconsistent sequence provenance, and depth not explicitly registered to
+  the selected color sequence fail closed.
+- Finite-distance room radiance requires a measured scene/depth hit and its
+  source-frame sequence. A sky-at-infinity lookup is not a finite-room model.
+- Physical GW signal and display amplification remain separate fields.
+- Pre-device acceptance is source/build/test evidence only. OpenXR device
+  refresh, world lock, RGB delivery, and depth registration stay open.
+
 Validation is part of the physics interface. A renderer output is not considered
 academic until its relevant validation path is documented.
 

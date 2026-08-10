@@ -13,6 +13,7 @@ from typing import Any, Mapping, Sequence
 
 SCHEMA = "gr-bh-xr.npgs.integration.v1"
 MR_FRAME_SCHEMA = "gr-bh-xr.npgs.mr-frame.v1"
+DYNAMIC_XR_SCHEMA = "gr-bh-xr.npgs.dynamic-xr-frame.v1"
 
 
 class GateStatus(StrEnum):
@@ -208,7 +209,12 @@ def validate_mr_frame_record(record: Mapping[str, Any]) -> str:
         raise ValueError("MR camera color encoding is missing or unsupported.")
     _validate_pose(_mapping(record, "camera_pose"), name="MR camera")
     if record.get("has_depth") is True:
-        _validate_depth_record(_mapping(record, "depth"))
+        depth = _mapping(record, "depth")
+        _validate_depth_record(depth)
+        if int(depth.get("registered_color_sequence", 0)) != int(record["sequence"]):
+            raise ValueError("MR environment depth is not registered to the selected color frame.")
+        if abs(int(depth["capture_time_ns"]) - int(record["capture_time_ns"])) > 50_000_000:
+            raise ValueError("MR environment depth and color capture times are inconsistent.")
 
     coverage = str(record.get("radiance_coverage", ""))
     if coverage == "calibrated_full_sphere":
@@ -216,6 +222,151 @@ def validate_mr_frame_record(record: Mapping[str, Any]) -> str:
     if coverage in {"forward_camera_only", "forward_camera_plus_cached_environment"}:
         return "forward_camera_only"
     raise ValueError("MR frame has no measured radiance coverage.")
+
+
+def metric_time_at_predicted_display(
+    mapping: Mapping[str, Any], predicted_display_time_ns: int
+) -> tuple[float, float, float]:
+    """Return metric time, binary phase, and display GW signal.
+
+    OpenXR time is a monotonic runtime clock. The mapping therefore needs an
+    explicit epoch and physical seconds-per-M scale rather than treating the
+    integer timestamp as a coordinate time directly.
+    """
+
+    epoch_ns = int(mapping.get("epoch_display_time_ns", 0))
+    epoch_metric_time = float(mapping.get("epoch_metric_time_M", float("nan")))
+    seconds_per_M = float(mapping.get("seconds_per_M", float("nan")))
+    omega = float(mapping.get("binary_angular_frequency_per_M", float("nan")))
+    phase0 = float(mapping.get("initial_binary_phase_rad", float("nan")))
+    physical_gw = float(mapping.get("physical_gw_signal", float("nan")))
+    visual_gain = float(mapping.get("visual_gain", float("nan")))
+    if (
+        epoch_ns <= 0
+        or predicted_display_time_ns <= 0
+        or not all(
+            isfinite(value)
+            for value in (epoch_metric_time, seconds_per_M, omega, phase0, physical_gw, visual_gain)
+        )
+        or seconds_per_M <= 0.0
+        or visual_gain < 0.0
+    ):
+        raise ValueError("Dynamic metric display-time mapping is invalid.")
+    metric_time = epoch_metric_time + (
+        1.0e-9 * (predicted_display_time_ns - epoch_ns) / seconds_per_M
+    )
+    phase = phase0 + omega * metric_time
+    return metric_time, phase, physical_gw * visual_gain
+
+
+def validate_dynamic_xr_frame(record: Mapping[str, Any]) -> dict[str, float]:
+    """Validate per-eye poses and the metric/display-time mapping."""
+
+    if record.get("schema") != DYNAMIC_XR_SCHEMA:
+        raise ValueError(f"Dynamic XR frame schema must be {DYNAMIC_XR_SCHEMA!r}.")
+    predicted = int(record.get("predicted_display_time_ns", 0))
+    metric_time, phase, display_gw = metric_time_at_predicted_display(
+        _mapping(record, "metric_time_mapping"), predicted
+    )
+    eyes = record.get("views")
+    if not isinstance(eyes, Sequence) or isinstance(eyes, (str, bytes)) or len(eyes) != 2:
+        raise ValueError("Dynamic XR frame requires exactly two views.")
+    positions = []
+    for index, eye in enumerate(eyes):
+        if not isinstance(eye, Mapping) or int(eye.get("view_index", -1)) != index:
+            raise ValueError("Dynamic XR views must be ordered left then right.")
+        pose = _mapping(eye, "predicted_pose")
+        _validate_pose(pose, name=f"dynamic XR view {index}")
+        positions.append(tuple(float(value) for value in pose["position_m"]))
+    if positions[0] == positions[1]:
+        raise ValueError("Dynamic XR eye origins must remain distinct.")
+    return {
+        "metric_time_M": metric_time,
+        "binary_phase_rad": phase,
+        "physical_gw_signal": float(
+            _mapping(record, "metric_time_mapping")["physical_gw_signal"]
+        ),
+        "display_gw_signal": display_gw,
+    }
+
+
+def select_retarded_camera_frame(
+    frames: Sequence[Mapping[str, Any]],
+    *,
+    observer_time_ns: int,
+    retarded_delay_ns: int,
+    maximum_age_ns: int,
+    require_full_sphere: bool = False,
+    require_depth: bool = False,
+) -> Mapping[str, Any]:
+    """Select the latest causal camera frame at a retarded source time."""
+
+    if (
+        observer_time_ns <= 0
+        or retarded_delay_ns < 0
+        or maximum_age_ns < 0
+        or retarded_delay_ns > observer_time_ns
+    ):
+        raise ValueError("Retarded camera-history request has invalid timing.")
+    requested = observer_time_ns - retarded_delay_ns
+    candidates = []
+    seen_sequences: dict[int, tuple[int, int, tuple[float, ...], tuple[float, ...]]] = {}
+    for frame in frames:
+        validate_mr_frame_record(frame)
+        sequence = int(frame["sequence"])
+        pose = _mapping(frame, "camera_pose")
+        provenance = (
+            int(frame["capture_time_ns"]),
+            int(frame["native_image"]),
+            tuple(float(value) for value in pose["position_m"]),
+            tuple(float(value) for value in pose["orientation_xyzw"]),
+        )
+        if sequence in seen_sequences and seen_sequences[sequence] != provenance:
+            raise ValueError("Camera history contains inconsistent provenance for one sequence.")
+        seen_sequences[sequence] = provenance
+        if int(frame["capture_time_ns"]) <= requested:
+            candidates.append(frame)
+    if not candidates:
+        raise ValueError("No causal camera frame covers the requested retarded time.")
+    selected = max(candidates, key=lambda frame: int(frame["capture_time_ns"]))
+    age = requested - int(selected["capture_time_ns"])
+    if age > maximum_age_ns:
+        raise ValueError("Camera history is stale at the requested retarded time.")
+    coverage = str(selected["radiance_coverage"])
+    if require_full_sphere and coverage != "calibrated_full_sphere":
+        raise ValueError("Requested rear/side radiance is outside measured camera coverage.")
+    if require_depth and selected.get("has_depth") is not True:
+        raise ValueError("Finite-distance room ray requires registered environment depth.")
+    return selected
+
+
+def validate_finite_scene_intersection(record: Mapping[str, Any]) -> None:
+    """Reject room radiance that has no measured finite-distance scene hit."""
+
+    if record.get("hit") is not True:
+        raise ValueError("Finite-distance room radiance requires an explicit scene hit.")
+    position = record.get("position_m")
+    normal = record.get("normal")
+    uv = record.get("color_uv")
+    if not all(
+        isinstance(value, Sequence) and not isinstance(value, (str, bytes))
+        for value in (position, normal, uv)
+    ) or len(position) != 3 or len(normal) != 3 or len(uv) != 2:
+        raise ValueError("Finite-distance scene intersection has invalid component counts.")
+    values = tuple(float(value) for value in (*position, *normal, *uv))
+    distance = float(record.get("distance_m", float("nan")))
+    if (
+        not all(isfinite(value) for value in values)
+        or not isfinite(distance)
+        or distance <= 0.0
+        or int(record.get("source_frame_sequence", 0)) <= 0
+    ):
+        raise ValueError("Finite-distance scene intersection is incomplete.")
+    if not (0.0 <= values[-2] <= 1.0 and 0.0 <= values[-1] <= 1.0):
+        raise ValueError("Finite-distance scene intersection UV lies outside the camera image.")
+    normal_squared = sum(value * value for value in values[3:6])
+    if abs(normal_squared - 1.0) > 1.0e-5:
+        raise ValueError("Finite-distance scene normal is not unit normalized.")
 
 
 def integration_manifest() -> dict[str, Any]:
@@ -270,6 +421,10 @@ def _validate_depth_record(depth: Mapping[str, Any]) -> None:
     for key in ("sequence", "capture_time_ns", "native_image", "width", "height"):
         if int(depth.get(key, 0)) <= 0:
             raise ValueError(f"MR environment depth requires positive {key}.")
+    if depth.get("registered_to_color") is not True or int(
+        depth.get("registered_color_sequence", 0)
+    ) <= 0:
+        raise ValueError("MR environment depth requires explicit color-frame registration.")
     near_m = float(depth.get("near_m", float("nan")))
     far_m = float(depth.get("far_m", float("nan")))
     if not isfinite(near_m) or not isfinite(far_m) or near_m <= 0.0 or far_m <= near_m:

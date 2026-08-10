@@ -69,3 +69,30 @@ Acceptance remains closed until a later device run records all of:
 
 Fallback imagery or a compositor passthrough underlay remains a display mode,
 not proof that live camera radiance has been bent by the geodesic renderer.
+
+## Dynamic BBH Time And Camera-History Contract
+
+The pre-device Task 9 contract extends each stereo frame with an explicit map
+from OpenXR predicted-display time to metric time and binary phase. Physical GW
+signal and `visual_gain` are stored separately. Each view retains its own
+predicted pose and eye origin; equal left/right origins fail validation.
+
+MR source selection is causal. A bounded camera history selects the newest
+calibrated frame captured no later than `observer_time - Delta t_ray`; a current
+frame cannot satisfy a delayed ray. Stale history, absent rear/side coverage,
+unknown color encoding, duplicate sequence provenance, and missing depth
+registration all fail closed. Finite room radiance additionally requires an
+explicit scene hit tied to the selected source-frame sequence.
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q `
+  tests/test_npgs_contract.py `
+  tests/test_npgs_bbh_mr_contract.py
+
+.\tools\npgs\build.ps1 -Configuration Release -SkipDependencyInstall
+```
+
+The 2026-08-10 focused Python contract suite passed `22` tests and the native
+Release build completed with zero errors. These are interface and causality
+gates only. Fresh RGB delivery, registered depth, world lock, stereo display,
+and total-frame 72/90 Hz still require an OpenXR device run.

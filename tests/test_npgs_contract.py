@@ -180,6 +180,8 @@ def test_mr_frame_validates_optional_depth_independently() -> None:
             "far_m": 8.0,
             "fresh": True,
             "calibrated": True,
+            "registered_to_color": True,
+            "registered_color_sequence": 3,
             "depth_pose": {
                 "position_m": [0.0, 1.6, 0.0],
                 "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
@@ -190,6 +192,30 @@ def test_mr_frame_validates_optional_depth_independently() -> None:
 
     record["depth"]["near_m"] = 9.0
     with pytest.raises(ValueError, match="depth range"):
+        validate_mr_frame_record(record)
+
+    record = _mr_record()
+    record.update(
+        has_depth=True,
+        depth={
+            "sequence": 7,
+            "capture_time_ns": 1_005,
+            "native_image": 11,
+            "width": 320,
+            "height": 320,
+            "near_m": 0.2,
+            "far_m": 8.0,
+            "fresh": True,
+            "calibrated": True,
+            "registered_to_color": True,
+            "registered_color_sequence": 99,
+            "depth_pose": {
+                "position_m": [0.0, 1.6, 0.0],
+                "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
+            },
+        },
+    )
+    with pytest.raises(ValueError, match="not registered"):
         validate_mr_frame_record(record)
 
 

@@ -1,5 +1,19 @@
 # Development Log
 
+## 2026-08-10 - Task 9 dynamic OpenXR/MR timing contract
+
+- Added predicted-display-time to metric-time and binary-phase mapping while
+  preserving physical and display-amplified GW signals as separate values.
+- Added a bounded causal camera history: delayed rays select frames captured at
+  or before their retarded source time. Stale, uncovered, or inconsistent
+  camera evidence fails closed.
+- Added finite-distance scene-hit provenance and explicit color/depth
+  registration. Depth cannot certify RGB delivery and cannot be silently paired
+  with another color sequence.
+- The focused Python contract suite passed `22` tests; the native Release build
+  completed with zero errors. Device RGB/depth delivery and total-frame timing
+  remain separate hardware gates.
+
 ## 2026-08-10 - Task 7 audited ADM snapshot ingestion
 
 - Added `gr-bh-xr.bbh.adm-snapshot.v1` for evolved ADM volume fields with

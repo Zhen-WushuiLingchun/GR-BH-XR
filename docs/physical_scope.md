@@ -195,6 +195,20 @@ is an exact Kerr metric, but the transition remains a prescribed approximate
 spacetime. No apparent/event horizon or NR-fit accuracy is inferred from the
 smooth interpolation alone.
 
+## Dynamic BBH XR And MR Boundary
+
+Dynamic BBH frames use the OpenXR predicted display clock only through an
+explicit mapping to geometric metric time. Binary phase and physical GW signal
+are evaluated at that mapped time; any visibility amplification is a separate
+`visual_gain` and cannot modify the metric or audit buffers.
+
+Real-room radiance is finite-distance data. A lensed room ray must intersect
+registered scene/depth geometry and select a calibrated camera frame at its
+retarded source time. Forward-only camera coverage cannot provide radiation
+from behind the observer. Missing history or angular coverage therefore fails
+closed to an explicitly labelled fallback instead of copying current pixels or
+treating them as a full-sphere environment.
+
 ## Real-Time Shader Reference Boundary
 
 Real-time GLSL/WebGL/Vulkan black-hole projects are useful engineering
