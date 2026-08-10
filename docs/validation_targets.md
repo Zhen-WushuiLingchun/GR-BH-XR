@@ -10,6 +10,19 @@
 - A multiview claim requires actual Vulkan multiview and same-camera image
   comparison; sequential stereo is labeled separately.
 
+## BBH/XR Task 2: Dynamic Hamilton Reference
+
+- Minkowski Cartesian rays must agree with straight lines to `1e-11` in f64.
+- The stationary Kerr-Schild provider must reproduce the accepted KS RHS and
+  capture/escape classifications; escaped directions use the existing f64
+  tolerance.
+- Every analytic provider derivative must be compared with an independent
+  finite-difference oracle.
+- A time-dependent metric must produce the analytic nonzero `dp_t`; generic
+  diagnostics must not label `p_t` as a conserved energy.
+- Provider-domain exits fail closed and record provider provenance and invalid
+  sample counts.
+
 Validation is part of the physics interface. A renderer output is not considered
 academic until its relevant validation path is documented.
 

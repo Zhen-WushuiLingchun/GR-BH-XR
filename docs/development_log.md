@@ -1,5 +1,20 @@
 # Development Log
 
+## 2026-08-10 - Task 2 f64 time-dependent Hamilton oracle
+
+- Added the shared `MetricSample`/provider/event contracts and a full
+  eight-dimensional DOP853 canonical solver with `dp_t` enabled.
+- Kept capture, escape, horizon, and emitter events outside metric providers so
+  future apparent-horizon and NR-domain policies remain auditable.
+- Added exact Minkowski, stationary Cartesian Kerr-Schild, and analytic
+  time-dependent scale-factor providers.  The last is a solver oracle only.
+- Focused gates pass for straight-line propagation, all inverse-metric
+  derivatives, KS capture/escape zero regression, nonzero time-dependent
+  `p_t`, Hamiltonian preservation, and fail-closed provider-domain exits.
+- Observed anchors include `max|H|=5.55e-17` in Minkowski, KS derivative
+  difference `6.09e-12`, and stationary KS event-path residuals below
+  `1.8e-11`.
+
 ## 2026-08-10 - Task 1 sequential synthetic-stereo performance gate
 
 - Added a device-independent NPGS stereo view scheduler with asymmetric FOV

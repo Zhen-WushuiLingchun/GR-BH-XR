@@ -72,3 +72,42 @@ resolution and VRS are disabled in this baseline.
 Task 1 closes the sequential-stereo measurement path. It does not validate an
 OpenXR session, Vulkan multiview, headset refresh, or a dynamic BBH metric.
 Those claims remain closed until their later plan tasks pass.
+
+## Task 2: Python f64 Dynamic Hamilton Oracle
+
+The generic reference path samples a `TimeDependentMetricProvider` at every
+DOP853 RHS evaluation and integrates all eight canonical variables.  In
+particular,
+
+```text
+dp_t/dlambda = -1/2 partial_t(g^alpha beta) p_alpha p_beta
+```
+
+is never suppressed by the generic solver.  Event surfaces are supplied by the
+caller and carry their own provenance; they are not hidden inside the metric
+provider.  The audit record contains the null-Hamiltonian residual, provider
+validity counts, interpolation-error maximum, source revision, final state, and
+initial/final `p_t`.  It deliberately has no generic `E/L_z/Q drift` fields.
+
+Focused gate:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m pytest -q tests/test_dynamic_metric.py tests/test_geodesic_dynamic.py
+```
+
+Observed f64 anchors on 2026-08-10:
+
+- Minkowski straight ray: exact final Cartesian state at the tested endpoint,
+  `max|H| = 5.55e-17`;
+- accepted stationary Kerr-Schild derivative versus an independent central
+  finite difference: maximum absolute difference `6.09e-12`;
+- stationary Kerr-Schild escape/capture zero regression: both event classes
+  agree, with dynamic-path `max|H| = 1.55e-12` and `1.71e-11` respectively;
+- analytic time-dependent scale-factor oracle: `p_t` changes by
+  `4.653741e-2` while `max|H| = 1.67e-16`;
+- a provider-domain exit fails closed with metric-provider provenance.
+
+The scale-factor provider is an analytic solver oracle, not a BBH model.  BBH
+claims remain closed until the approximate provider and its constraint gates
+pass.
