@@ -209,6 +209,23 @@ from behind the observer. Missing history or angular coverage therefore fails
 closed to an explicitly labelled fallback instead of copying current pixels or
 treating them as a full-sphere environment.
 
+## Measured BBH Runtime Selection
+
+At `1832x1920` per eye, the sequential synthetic-stereo stationary path
+measured `10.188 ms` p95 and the full dynamic BBH path measured `2655.530 ms`
+p95 on the RTX 5080 Laptop GPU. The latter remains the exact native audit path,
+not a real-time headset path. Linear foveation and progressive-update estimates
+also miss the preregistered 72 Hz physics budget at useful coverage.
+
+The selected high-end PCVR architecture is therefore time-indexed transfer
+keyframes generated from an accepted metric source. The bounded Task 8
+Einstein Toolkit pilot qualifies that architecture and its producer plumbing;
+it does not supply a complete merger keyframe asset. Until such an asset is
+generated, runtime readiness remains false. Surrogate training is also closed
+until a separate exact transfer-buffer corpus provides event, direction,
+redshift, delay, image-order, and uncertainty targets. RGB-only training is not
+accepted.
+
 ## Real-Time Shader Reference Boundary
 
 Real-time GLSL/WebGL/Vulkan black-hole projects are useful engineering

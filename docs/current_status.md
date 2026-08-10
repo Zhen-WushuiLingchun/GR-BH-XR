@@ -16,11 +16,11 @@ evidence. Neither should be used alone to infer the current runtime.
 | Unity Task 9 live tracer | Live single-Kerr integration | Cartesian Kerr-Schild rays are integrated in Unity compute in bounded batches. A completed map is hard-swapped after several display frames; this is not a newly converged full-resolution per-eye solution every headset frame. |
 | Unity Tasks 7-8 roam/descent | Worldline-keyframe playback | Uses audited finite-observer and rain-frame keyframes. Playback is distinct from unrestricted six-degree-of-freedom tracing. |
 | Unity Task 10 MR | Experimental, unaccepted | Camera/depth integration code exists, but calibrated RGB delivery and registration have not been demonstrated on the device. Enumeration, compilation, or depth acquisition alone is not acceptance. |
-| Native NPGS fork | Accepted for neutral exterior Kerr/Kerr-Newman rays, Kerr `Q=0` disk transfer, geometric polarization transport, and the minimal Task 6 dynamic-BBH slice at quality 2; native XR/MR interfaces are candidates | Complete official history is pinned through the GPL fork. Exact native states pass independent CPU f64 event/direction/disk gates, raw v3 camera bases plus the complete Walker-Penrose scalar pass direct f64 parallel transport, and raw v4 dynamic states pass the four-dimensional BBH replay gate. OpenXR/Vulkan ownership, stereo-view, calibrated-camera, and depth provenance contracts compile, but no native OpenXR session or delivered MR camera frame has passed a device gate. |
+| Native NPGS fork | Accepted for neutral exterior Kerr/Kerr-Newman rays, Kerr `Q=0` disk transfer, geometric polarization transport, the audited approximate dynamic-BBH slice, and pre-device dynamic XR/MR contracts | Complete official history is pinned through the GPL fork. Native states pass independent CPU f64 event/direction/disk/polarization and four-dimensional BBH replay gates. OpenXR predicted-time mapping, stereo poses, causal camera history, finite-room hits, and color/depth registration compile and fail closed, but no native OpenXR session or delivered MR camera frame has passed a device gate. |
 
-The repository suite passed `342` tests on 2026-08-10 after the first native
-dynamic-BBH trace and the audited synthetic ADM-snapshot ingestion contract
-were registered.
+The repository suite passed `375` tests on 2026-08-10 after the bounded
+two-resolution Einstein Toolkit pilot, dynamic XR/MR timing contract, and
+measured runtime-decision logic were registered.
 The centralized NPGS integration/MR contracts, preceding Task 9/10 baseline,
 complete Unity `.meta` coverage, native Kerr/Kerr-Newman/disk gates, and raw-v3
 polarization-geometry gates remain in the same regression.
@@ -31,7 +31,7 @@ The selected future runtime is a native fork of NPGS rather than a Unity port
 of its GPL shader. The public upstream baseline reviewed for this decision is
 `baopinshui/NPGS@a039e6417b28d53cbd413ee8f6d64543e755aa3e`.
 The current pinned integration revision is
-`Zhen-WushuiLingchun/NPGS@624669907a5e1e5842faa38eec2fb057361db8b6`.
+`Zhen-WushuiLingchun/NPGS@3d643343bc7bf59f4cd5142ddfa6ef9113ee8cec`.
 The complete public ref set was refreshed on 2026-08-10; no public BBH/GW
 source was found.
 
@@ -46,7 +46,7 @@ source was found.
 | Charged disk matter | Blocked | Neutral photons in a charged spacetime do not define a charged-plasma disk model. |
 | Maximal extension | Visual/mathematical only | Exact stationary Kerr-Newman continuation is not an astrophysical collapse-interior prediction. |
 | Native OpenXR and MR | Interface complete, runtime candidate | The render-sink and measured-frame contracts exist without changing desktop GLFW. Session/swapchain and real camera-frame delivery remain device gates. |
-| BBH/GW | Tasks 0-7 have an accepted minimal approximate native slice plus an audited synthetic ADM-volume ingestion contract; NR production and dynamic XR/MR remain open | The f64 oracle and native GLSL path integrate the full dynamic Hamilton system for an equal-mass, nonspinning, fixed-circular superposed-KS metric. PN inspiral, generic spin and merger endpoints are accepted on CPU, while the native slice remains fixed-orbit and labelled `physics_approximation`. ADM v1 reconstructs the metric and derivatives with explicit AMR/error/checksum provenance, but no production NR evolution or physical merger/GW claim exists yet. |
+| BBH/GW | Tasks 0-10 bounded gates are accepted; complete merger assets and device claims remain open | The f64 oracle and native GLSL path integrate the full dynamic Hamilton system for an equal-mass superposed-KS approximation. PN inspiral, generic spin, and remnant transition are accepted with explicit approximation labels. A pinned `ET_2026_05` low/high `0..1M` pilot produced constraint, apparent-horizon, Psi4, ADM+K, and 98-pair optical evidence. It qualifies the NR/keyframe pipeline, not a converged merger waveform, event horizon, or ready keyframe asset. |
 
 The migration does not treat NPGS screenshots or feature claims as scientific
 validation. GR-BH-XR retains its Python f64 reference solvers, audit schemas,
@@ -106,11 +106,12 @@ Current status should therefore be read by capability, not by number:
 - Device proof of fresh calibrated MR RGB delivery before any
   passthrough-lensing claim. Environment depth remains an independent input and
   cannot substitute for RGB evidence.
-- BBH/GW implementation is active. The simulated-stereo baseline, Python f64
-  time-dependent Hamiltonian oracle, native provider interface, analytic TT
-  plane-GW gates, constraint-audited CPU SKS/PN/spin/remnant layers, and a
-  minimal fixed-orbit dynamic NPGS ray path are accepted. No ADM snapshot
-  provider, offline NR pilot, or dynamic OpenXR/MR timing gate is accepted. No
-  public BBH/GW source branch was available in the
-  reviewed NPGS repository; showcase media is not implementation evidence.
-  See `docs/plans/2026-08-10-bbh-dynamic-spacetime-xr.md`.
+- BBH/GW bounded implementation Tasks 0-10 are accepted. The measured native
+  full-resolution dynamic path is `2655.530 ms` p95 at `1832x1920` per eye and
+  is therefore an offline audit kernel. The selected PCVR architecture is
+  time-indexed NR transfer keyframes, but a complete merger keyframe asset is
+  not yet produced and surrogate training prerequisites remain false. No
+  public BBH/GW source branch was available in the reviewed NPGS repository;
+  showcase media is not implementation evidence. See
+  `docs/plans/2026-08-10-bbh-dynamic-spacetime-xr.md` and
+  `docs/bbh_runtime_decision.md`.

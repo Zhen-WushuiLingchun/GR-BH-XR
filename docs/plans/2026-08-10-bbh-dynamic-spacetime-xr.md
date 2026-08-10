@@ -24,8 +24,10 @@ Toolkit/CarpetX for later offline evolutions.
 ## Status And Authority
 
 - Plan date: 2026-08-10.
-- Status: `ACTIVE_PLAN`; Tasks 0-7 are accepted through the synthetic ADM
-  snapshot-ingestion gate. Tasks 8-10 remain open.
+- Status: `IMPLEMENTED_WITH_OPEN_PRODUCTION_GATES`; Tasks 0-10 have independent
+  commits and their bounded acceptance checks pass. A complete merger
+  keyframe asset, native OpenXR device refresh, calibrated MR delivery, and any
+  surrogate training corpus remain separate open production gates.
 - Canonical source note:
   `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`.
 - Existing single-hole regression baseline: `docs/current_status.md`.
@@ -619,15 +621,12 @@ The BBH/XR track is not complete until all applicable gates pass:
   metric-domain validity are solved.
 - Neural final-image generation without audit buffers.
 
-## Immediate Execution Slice
+## Completion Record
 
-The next implementation session should perform exactly:
-
-1. finish Task 0 by reading/indexing the full core papers and freezing the
-   equations;
-2. implement Task 1 synthetic stereo performance gate;
-3. implement Task 2 Python f64 dynamic Hamilton oracle;
-4. stop for review before changing the NPGS shader core.
-
-This ordering produces a hardware decision and a scientific oracle before the
-first BBH rendering code is written.
+Tasks 0-10 were completed as independent commits. The selected runtime decision
+is evidence-driven: full-resolution dynamic NPGS tracing remains the offline
+audit path, while time-indexed NR transfer keyframes are the qualified PCVR
+architecture. The bounded `0..1M` Task 8 pilot proves the pinned production and
+ingestion path but is not a complete merger asset, converged waveform, event
+horizon, or surrogate training corpus. Device-only OpenXR/MR gates remain open
+until hardware evidence is recorded.

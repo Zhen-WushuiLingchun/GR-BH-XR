@@ -123,6 +123,26 @@
 - Pre-device acceptance is source/build/test evidence only. OpenXR device
   refresh, world lock, RGB delivery, and depth registration stay open.
 
+## BBH/XR Task 10: Measured Runtime Architecture Decision
+
+- Runtime selection consumes versioned stationary/dynamic synthetic-stereo
+  timing records at the same per-eye extent and an independently accepted NR
+  manifest. Missing or inconsistent evidence fails closed.
+- Measured full-resolution dynamic p95 must be `<11 ms` before it can be called
+  a 72 Hz physics path and `<9 ms` before it can be called a 90 Hz physics path.
+- Foveated and progressive values are estimates until their implementations
+  are timed. They cannot override a failed measured full-resolution gate.
+- The accepted bounded NR pilot may qualify the keyframe architecture but not
+  set `keyframe_runtime_ready` without a separate time-indexed asset claim.
+- Surrogate training remains disabled until an exact transfer-buffer dataset
+  is separately accepted. Required outputs include event, escape direction,
+  redshift, time delay, image order, and uncertainty; final RGB alone is not an
+  accepted target.
+- Observed 2026-08-10 representative values were `10.188 ms` stationary and
+  `2655.530 ms` dynamic p95 at `1832x1920` per eye. Full dynamic tracing is an
+  offline audit path; the selected PCVR architecture is time-indexed keyframes,
+  with runtime asset readiness still false.
+
 Validation is part of the physics interface. A renderer output is not considered
 academic until its relevant validation path is documented.
 

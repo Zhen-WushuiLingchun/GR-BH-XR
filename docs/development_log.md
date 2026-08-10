@@ -1,5 +1,18 @@
 # Development Log
 
+## 2026-08-10 - Task 10 measured BBH runtime decision
+
+- Combined the measured `1832x1920`-per-eye synthetic-stereo timing records
+  with the accepted Task 8 manifest in a versioned, executable decision tool.
+- The stationary path measured `10.188 ms` p95 while full dynamic BBH tracing
+  measured `2655.530 ms` p95. Full-resolution dynamic tracing is therefore an
+  offline audit kernel, not a 72/90 Hz XR path.
+- The bounded NR pilot qualifies a time-indexed keyframe architecture, but no
+  complete merger keyframe asset exists yet. Surrogate training remains closed
+  because the pilot is not an accepted exact training corpus.
+- Foveated and progressive costs remain explicitly labelled estimates. Native
+  OpenXR total-frame refresh remains a device-only gate.
+
 ## 2026-08-10 - Task 9 dynamic OpenXR/MR timing contract
 
 - Added predicted-display-time to metric-time and binary-phase mapping while
@@ -13,6 +26,21 @@
 - The focused Python contract suite passed `22` tests; the native Release build
   completed with zero errors. Device RGB/depth delivery and total-frame timing
   remain separate hardware gates.
+
+## 2026-08-10 - Task 8 bounded Einstein Toolkit BBH pilot
+
+- Pinned Einstein Toolkit `ET_2026_05` plus the exact build option list,
+  thorn list, component revisions, and six local compatibility/audit patches.
+- An optimized Release `linear_wave_z4c` preflight compared `36` files with
+  zero failures before either BBH run was accepted.
+- Completed low/high fixed-box equal-mass nonspinning runs over `0..1M`. The
+  finer final Hamiltonian/momentum/Z4 L2 ratios were
+  `0.320814/0.0398197/0.00747885`; both individual apparent horizons and `25`
+  finite Psi4 modes were retained.
+- Converted disconnected CarpetX openPMD chunks into independent audited ADM
+  patches containing `alpha`, `beta^i`, `gamma_ij`, and `K_ij`. The frozen-slice
+  `7x7`, two-time gate resolved all `98` low/high ray pairs with event agreement
+  `1.0`; this is a bounded pipeline pilot, not a converged merger waveform.
 
 ## 2026-08-10 - Task 7 audited ADM snapshot ingestion
 
