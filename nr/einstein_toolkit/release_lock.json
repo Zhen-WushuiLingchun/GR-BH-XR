@@ -1,0 +1,26 @@
+{
+  "et_release": "ET_2026_05",
+  "release_name": "Hypatia",
+  "release_date": "2026-07-10",
+  "getcomponents_sha256": "cad1ce1a7505089beb91afa8474076a83645abb9f88d9248a773d1f4babd836e",
+  "thornlist_sha256": "5aacbf0b2d82bbc8e9b2bc8444c7da99b2cda31d9a25ebda7465a771d22fa708",
+  "build_thornlist_sha256": "d174745ce8bf2ffbcf77d1d8e8eec268caa24522455ba32fa4806e83a62a8d77",
+  "build_optionlist_sha256": "fae95aea0019771c616f40dd79018687a098bb6d6c9a2c9d76d46a2bf3d001d8",
+  "manifest_commit": "427fa3934ec42c0b2b0ef6340e94a7c9ba4b6ac3",
+  "component_commits": {
+    "Cactus": "ae66cd2e788678be490586d191542beb3fb0c6aa",
+    "CarpetX": "ab62b9bceb620f8da761c52eaeb4d6e00edbc3be",
+    "Cottonmouth": "7b3a6b19bb6278d7ae9205bce817042c253a9591",
+    "SpacetimeX": "e89fe1d3ee47adaf881f051c502fac61e4a4c0f9",
+    "ExternalLibraries-ssht": "8d465b66382f97a7d205b0d6f8ef0710ef822424"
+  },
+  "local_patches": {
+    "ahfinderdirect-final-expansion-diagnostic.patch": "9af353ccf600deb48562cb8a14c3eed8d6e91acc7210d566ffae89464bc21b1b",
+    "ahfinderdirect-metric-diagnostic.patch": "94e227084c03ff8201242849cf5467c9c5e0b214748754b50c7425c03f7e9b19",
+    "ahfinderx-gcc-std-qualification.patch": "ef7d7a769f4926450b5a97963e94d10a9fadd08db0ce48b1ef01dad72f4d2bbc",
+    "carpetx-driver-interpolate-per-call-order.patch": "b6bacf78e99ba8bd51da01da1096c6181a2812872871f334b85674bc84bac52f",
+    "multipole-carpetx-prolongation-none.patch": "abe58a1b0a0b1e62284dcb58631311f24a7c539e9e1e38f3fa6caabf8ccc47a7",
+    "sphericalsurface-lazy-reduction-handles.patch": "1169d65899fb0ce299c70c2b40ce06b54dadf8fabd6112fea6f0caa45ae7a8e1"
+  },
+  "checkout_command": "./GetComponents --shallow https://bitbucket.org/einsteintoolkit/manifest/raw/ET_2026_05/einsteintoolkit.th"
+}

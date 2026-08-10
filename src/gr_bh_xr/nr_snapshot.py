@@ -68,6 +68,10 @@ class ADMSnapshotLevel:
     describe the closed coordinate region in which this level may supply a
     complete multilinear stencil.  Raw array extent outside that region is
     guard data and is never selected silently.
+
+    ``extrinsic_curvature`` is optional for backward-compatible v1 analytic
+    assets.  Numerical-relativity producer gates may require it explicitly;
+    when present it follows the convention declared in snapshot metadata.
     """
 
     level_id: int
@@ -80,6 +84,7 @@ class ADMSnapshotLevel:
     shift: np.ndarray
     gamma_cov: np.ndarray
     spatial_error_bound: np.ndarray
+    extrinsic_curvature: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         for name in ("origin", "spacing", "valid_lower", "valid_upper"):
@@ -90,6 +95,11 @@ class ADMSnapshotLevel:
         lapse = np.asarray(self.lapse, dtype=np.float64)
         shift = np.asarray(self.shift, dtype=np.float64)
         gamma = np.asarray(self.gamma_cov, dtype=np.float64)
+        extrinsic = (
+            None
+            if self.extrinsic_curvature is None
+            else np.asarray(self.extrinsic_curvature, dtype=np.float64)
+        )
         error = np.asarray(self.spatial_error_bound, dtype=np.float64)
         if lapse.ndim != 4 or min(lapse.shape[1:]) < 2:
             raise ValueError("lapse must have shape (nt,nx,ny,nz) with each grid axis >=2.")
@@ -97,11 +107,26 @@ class ADMSnapshotLevel:
             raise ValueError("shift must have shape lapse.shape+(3,).")
         if gamma.shape != lapse.shape + (3, 3):
             raise ValueError("gamma_cov must have shape lapse.shape+(3,3).")
+        if extrinsic is not None and extrinsic.shape != lapse.shape + (3, 3):
+            raise ValueError(
+                "extrinsic_curvature must have shape lapse.shape+(3,3) when present."
+            )
+        if extrinsic is not None and not np.allclose(
+            extrinsic,
+            np.swapaxes(extrinsic, -1, -2),
+            rtol=0.0,
+            atol=1.0e-12,
+        ):
+            raise ValueError("extrinsic_curvature must be symmetric in i,j.")
         if error.shape != (lapse.shape[0],):
             raise ValueError("spatial_error_bound must contain one value per time slice.")
         if not np.all(np.isfinite(lapse)) or np.any(lapse <= 0.0):
             raise ValueError("lapse samples must be positive and finite.")
-        if not np.all(np.isfinite(shift)) or not np.all(np.isfinite(gamma)):
+        if (
+            not np.all(np.isfinite(shift))
+            or not np.all(np.isfinite(gamma))
+            or (extrinsic is not None and not np.all(np.isfinite(extrinsic)))
+        ):
             raise ValueError("ADM field arrays must be finite.")
         if not np.all(np.isfinite(error)) or np.any(error < 0.0):
             raise ValueError("spatial_error_bound must be finite and nonnegative.")
@@ -118,6 +143,7 @@ class ADMSnapshotLevel:
         object.__setattr__(self, "lapse", lapse)
         object.__setattr__(self, "shift", shift)
         object.__setattr__(self, "gamma_cov", gamma)
+        object.__setattr__(self, "extrinsic_curvature", extrinsic)
         object.__setattr__(self, "spatial_error_bound", error)
 
     @property
@@ -236,6 +262,17 @@ def write_nr_snapshot(path: Path | str, snapshot: NRADMSnapshot) -> Path:
                 dataset_path = f"levels/{level.level_id}/{field_name}"
                 handle.create_dataset(dataset_path, data=values, compression="gzip", shuffle=True)
                 checksums[f"/{dataset_path}"] = _array_digest(values)
+            if level.extrinsic_curvature is not None:
+                dataset_path = f"levels/{level.level_id}/extrinsic_curvature"
+                handle.create_dataset(
+                    dataset_path,
+                    data=level.extrinsic_curvature,
+                    compression="gzip",
+                    shuffle=True,
+                )
+                checksums[f"/{dataset_path}"] = _array_digest(
+                    level.extrinsic_curvature
+                )
         handle.attrs["checksums_json"] = json.dumps(checksums, sort_keys=True)
     return output
 
@@ -283,6 +320,11 @@ def load_nr_snapshot(path: Path | str, *, verify_checksums: bool = True) -> NRAD
                     shift=read(f"levels/{name}/shift"),
                     gamma_cov=read(f"levels/{name}/gamma_cov"),
                     spatial_error_bound=read(f"levels/{name}/spatial_error_bound"),
+                    extrinsic_curvature=(
+                        read(f"levels/{name}/extrinsic_curvature")
+                        if "extrinsic_curvature" in group
+                        else None
+                    ),
                 )
             )
     return NRADMSnapshot(

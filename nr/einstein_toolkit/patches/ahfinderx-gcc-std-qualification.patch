@@ -1,0 +1,31 @@
+diff --git a/AHFinderX/src/ahfinder.cxx b/AHFinderX/src/ahfinder.cxx
+index fe23651..0ff738e 100644
+--- a/AHFinderX/src/ahfinder.cxx
++++ b/AHFinderX/src/ahfinder.cxx
+@@ -24,6 +24,7 @@
+ 
+ namespace AHFinder {
+ using namespace Arith;
++using std::array;
+ 
+ template <typename T> using vec3 = vec<T, 3>;
+ template <typename T> using mat3 = mat<T, 3>;
+@@ -603,7 +604,8 @@ step(const cGH *const cctkGH, const vec3<T> &pos, const T &radius,
+ 
+   // Limit step size to 10% of the current radius
+   const T h00 = real(hlm()(0, 0));
+-  delta_hlm()(0, 0) = clamp(real(delta_hlm()(0, 0)), -0.1 * h00, 0.1 * h00);
++  delta_hlm()(0, 0) =
++      std::clamp(real(delta_hlm()(0, 0)), -0.1 * h00, 0.1 * h00);
+ 
+   return delta_hlm;
+ }
+@@ -631,7 +633,7 @@ void solve(const cGH *const cctkGH, vec3<T> &pos, T &radius,
+                maximum(hij));
+     if (0) {
+       const int lmax = hlm.geom.lmax;
+-      for (int l = 0; l <= min(4, lmax); ++l) {
++      for (int l = 0; l <= std::min(4, lmax); ++l) {
+         using std::abs, std::max, std::min;
+         T r = 0.0, rmin = 1.0 / 0.0, rmax = -1.0 / 0.0;
+         for (int m = -l; m <= +l; ++m) {

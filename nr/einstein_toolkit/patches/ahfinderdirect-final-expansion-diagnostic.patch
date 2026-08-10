@@ -1,0 +1,18 @@
+diff --git a/src/driver/Newton.cc b/src/driver/Newton.cc
+index 6254574..58051df 100644
+--- a/src/driver/Newton.cc
++++ b/src/driver/Newton.cc
+@@ -661,6 +661,13 @@ namespace AHFinderDirect
+ 	if (horizon_is_genuine)
+ 	   then AH_data_ptr->found_flag = found_this_horizon;
+ 
++	if (found_this_horizon && ! I_am_pretracking
++	    && verbose_info.print_physics_details)
++	   then CCTK_VInfo(CCTK_THORNSTRING,
++			     "   final Theta rms-norm %.17g, infinity-norm %.17g",
++			     double(Theta_norms.rms_norm()),
++			     double(Theta_norms.infinity_norm()));
++
+ 	if (found_this_horizon && ! I_am_pretracking)
+ 	   then {
+ 		struct BH_diagnostics& BH_diagnostics

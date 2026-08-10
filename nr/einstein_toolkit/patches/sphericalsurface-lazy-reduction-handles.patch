@@ -1,0 +1,32 @@
+diff --git a/src/setup.cc b/src/setup.cc
+index 86c5a7a..4809887 100644
+--- a/src/setup.cc
++++ b/src/setup.cc
+@@ -319,13 +319,21 @@ extern "C" void SphericalSurface_SetupRes (CCTK_ARGUMENTS)
+   
+   static bool first_call = true;
+   
+-  int min_reduction_handle = CCTK_ReductionArrayHandle("minimum");
+-  int max_reduction_handle = CCTK_ReductionArrayHandle("maximum");
++  bool any_auto_res = false;
++  for (int n = 0; n < nsurfaces; ++n)
++    any_auto_res = any_auto_res || auto_res[n];
++
++  int min_reduction_handle = -1;
++  int max_reduction_handle = -1;
++  if (any_auto_res) {
++    min_reduction_handle = CCTK_ReductionArrayHandle("minimum");
++    max_reduction_handle = CCTK_ReductionArrayHandle("maximum");
+ 
+-  if (min_reduction_handle < 0)
+-     CCTK_WARN(0, "Cannot get reduction handle for minimum operation.");
+-  if (max_reduction_handle < 0)
+-     CCTK_WARN(0, "Cannot get reduction handle for maximum operation.");
++    if (min_reduction_handle < 0)
++      CCTK_WARN(0, "Cannot get reduction handle for minimum operation.");
++    if (max_reduction_handle < 0)
++      CCTK_WARN(0, "Cannot get reduction handle for maximum operation.");
++  }
+   
+   for (int n=0; n<nsurfaces; ++n) 
+   {

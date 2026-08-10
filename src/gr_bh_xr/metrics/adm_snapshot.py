@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 from pathlib import Path
 
@@ -24,6 +24,26 @@ class ADMInterpolationProvenance:
 @dataclass(frozen=True)
 class ADMMetricSnapshotProvider:
     snapshot: NRADMSnapshot
+    _levels_by_priority: tuple[ADMSnapshotLevel, ...] = field(
+        init=False, repr=False
+    )
+    _valid_lower: np.ndarray = field(init=False, repr=False)
+    _valid_upper: np.ndarray = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        levels = tuple(
+            sorted(
+                self.snapshot.levels,
+                key=lambda level: (float(np.prod(level.spacing)), -level.level_id),
+            )
+        )
+        object.__setattr__(self, "_levels_by_priority", levels)
+        object.__setattr__(
+            self, "_valid_lower", np.stack([level.valid_lower for level in levels])
+        )
+        object.__setattr__(
+            self, "_valid_upper", np.stack([level.valid_upper for level in levels])
+        )
 
     @classmethod
     def from_hdf5(
@@ -118,13 +138,12 @@ class ADMMetricSnapshotProvider:
     def _select_level(
         self, xyz: np.ndarray
     ) -> tuple[ADMSnapshotLevel, tuple[int, int, int], np.ndarray] | None:
-        levels = sorted(
-            self.snapshot.levels,
-            key=lambda level: (float(np.prod(level.spacing)), -level.level_id),
+        candidates = np.flatnonzero(
+            np.all(xyz >= self._valid_lower, axis=1)
+            & np.all(xyz <= self._valid_upper, axis=1)
         )
-        for level in levels:
-            if np.any(xyz < level.valid_lower) or np.any(xyz > level.valid_upper):
-                continue
+        for index in candidates:
+            level = self._levels_by_priority[int(index)]
             coordinate = (xyz - level.origin) / level.spacing
             shape = np.asarray(level.grid_shape)
             if np.any(coordinate < 0.0) or np.any(coordinate > shape - 1):

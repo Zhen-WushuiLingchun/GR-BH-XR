@@ -1,0 +1,49 @@
+diff --git a/Multipole/interface.ccl b/Multipole/interface.ccl
+index ba7859f..12d6084 100644
+--- a/Multipole/interface.ccl
++++ b/Multipole/interface.ccl
+@@ -9,7 +9,7 @@ REQUIRES FUNCTION IO_TruncateOutputFiles
+ 
+ public:
+ 
+-CCTK_REAL harmonics type=GF timelevels=1
++CCTK_REAL harmonics type=GF timelevels=1 tags='Prolongation="none" checkpoint="no"'
+ {
+   harmonic_re, harmonic_im
+ } "Spherical harmonics"
+diff --git a/Multipole/schedule.ccl b/Multipole/schedule.ccl
+index c7b7acb..70f273f 100644
+--- a/Multipole/schedule.ccl
++++ b/Multipole/schedule.ccl
+@@ -1,8 +1,16 @@
+ #schedule.ccl for thorn Multipole
+ 
++STORAGE: harmonics[1]
++
++schedule Multipole_SetHarmonic at CCTK_BASEGRID after SpatialCoordinates
++{
++  Reads: Grid::coordinates(everywhere)
++  Writes: Multipole::harmonics(everywhere)
++  LANG: C
++} "Initialize the Multipole scratch harmonics on every active grid"
++
+ if (enable_test)
+ {
+-  STORAGE: harmonics[1]
+   STORAGE: test_integration_convergence_orders
+   STORAGE: test_integration_results
+   STORAGE: test_integration_symmetries
+@@ -17,13 +26,6 @@ schedule Multipole_Calc at CCTK_ANALYSIS after (calc_np,PsiKadelia,Accelerator
+ 
+ if (enable_test)
+ {
+-    schedule Multipole_SetHarmonic at CCTK_INITIAL
+-    {
+-      Reads: Grid::coordinates(everywhere)
+-      Writes: Multipole::harmonics(interior)
+-      LANG: C
+-    } "Populate grid functions with spherical harmonics"
+-
+     schedule Multipole_TestOrthonormality at CCTK_INITIAL
+     {
+       LANG: C

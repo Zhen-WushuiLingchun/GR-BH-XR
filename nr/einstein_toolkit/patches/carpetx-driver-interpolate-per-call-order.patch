@@ -1,0 +1,128 @@
+diff --git a/src/interp.hxx b/src/interp.hxx
+index 9ec539f..db2557d 100644
+--- a/src/interp.hxx
++++ b/src/interp.hxx
+@@ -121,6 +121,7 @@ public:
+   void Interpolate(CCTK_ATTRIBUTE_UNUSED const cGH *restrict const cctkGH,
+                    const CCTK_INT nvars, const CCTK_INT *restrict const varinds,
+                    const CCTK_INT *restrict const operations,
++                   const CCTK_INT requested_order,
+                    const std::vector<Arith::vect<Arith::vect<bool, 3>, 2> >
+                        &allowed_boundaries, //  [patch][face][direction]
+                    const CCTK_POINTER resultptrs_) const;
+diff --git a/src/interpolate.cxx b/src/interpolate.cxx
+index ec993ad..442dc91 100644
+--- a/src/interpolate.cxx
++++ b/src/interpolate.cxx
+@@ -397,12 +397,19 @@ extern "C" CCTK_INT CarpetX_DriverInterpolate(
+                 local_interp_handle, carpetx_interp_handle);
+   }
+ 
+-  // This verifies that the order in param_table_handle matches the order of the
+-  // runtime parameter from CarpetX
++  // External interpolators may request a different order than the CarpetX
++  // evolution-grid default. In Release builds the former assert-only check was
++  // compiled out, so the request was silently ignored.
+   CCTK_INT order;
+   int n_elems = Util_TableGetInt(param_table_handle, &order, "order");
+-  assert(n_elems == 1);
+-  assert(order == interpolation_order);
++  if (n_elems != 1)
++    CCTK_VERROR("Interpolation parameter table must contain one integer "
++                "'order' entry; Util_TableGetInt returned %d",
++                n_elems);
++  if (order < 0 || order > 4)
++    CCTK_VERROR("Requested interpolation order %d is unsupported; expected "
++                "an order in [0,4]",
++                int(order));
+ 
+   std::vector<CCTK_INT> varinds;
+   varinds.resize(N_output_arrays);
+@@ -428,11 +435,19 @@ extern "C" CCTK_INT CarpetX_DriverInterpolate(
+ 
+   const CCTK_POINTER resultptrs = (CCTK_POINTER)output_arrays;
+   const bool allow_boundaries = true;
+-  CarpetX_Interpolate(
+-      cctkGH, N_interp_points, static_cast<const CCTK_REAL *>(coords[0]),
+-      static_cast<const CCTK_REAL *>(coords[1]),
+-      static_cast<const CCTK_REAL *>(coords[2]), N_output_arrays,
+-      varinds.data(), operations.data(), allow_boundaries, resultptrs);
++  const cGH *restrict const gh = static_cast<const cGH *>(cctkGH);
++  const InterpolationSetup setup(
++      gh, N_interp_points, static_cast<const CCTK_REAL *>(coords[0]),
++      static_cast<const CCTK_REAL *>(coords[1]),
++      static_cast<const CCTK_REAL *>(coords[2]));
++  const int npatches = ghext->num_patches();
++  const vect<vect<bool, dim>, 2> uniform{
++      {{allow_boundaries, allow_boundaries, allow_boundaries},
++       {allow_boundaries, allow_boundaries, allow_boundaries}}};
++  const std::vector<vect<vect<bool, dim>, 2> > allowed_boundaries(npatches,
++                                                                  uniform);
++  setup.Interpolate(gh, N_output_arrays, varinds.data(), operations.data(),
++                    order, allowed_boundaries, resultptrs);
+ 
+   return 0;
+ }
+@@ -654,6 +670,7 @@ void CarpetX::InterpolationSetup::Interpolate(
+     CCTK_ATTRIBUTE_UNUSED const cGH *restrict const cctkGH,
+     const CCTK_INT nvars, const CCTK_INT *restrict const varinds,
+     const CCTK_INT *restrict const operations,
++    const CCTK_INT requested_order,
+     const std::vector<Arith::vect<Arith::vect<bool, 3>, 2> >
+         &allowed_boundaries, //  [patch][face][direction]
+     const CCTK_POINTER resultptrs_) const {
+@@ -739,7 +756,7 @@ void CarpetX::InterpolationSetup::Interpolate(
+           case 0b000: {
+             // Vertex centering
+ 
+-            switch (interpolation_order) {
++            switch (requested_order) {
+             case 0: {
+               const interpolator<CCTK_REAL, 0, 0b000> interp{
+                   grid,  gi,   vi,     patch,
+@@ -784,7 +801,7 @@ void CarpetX::InterpolationSetup::Interpolate(
+             default:
+               CCTK_VERROR("Interpolation order %d for centering [%d,%d,%d] not "
+                           "yet supported",
+-                          int(interpolation_order), groupdata.indextype[0],
++                          int(requested_order), groupdata.indextype[0],
+                           groupdata.indextype[1], groupdata.indextype[2]);
+             } // switch interpolation_order
+             break;
+@@ -793,7 +810,7 @@ void CarpetX::InterpolationSetup::Interpolate(
+           case 0b111: {
+             // Cell centering
+ 
+-            switch (interpolation_order) {
++            switch (requested_order) {
+             case 0: {
+               const interpolator<CCTK_REAL, 0, 0b111> interp{
+                   grid,  gi,   vi,     patch,
+@@ -838,7 +855,7 @@ void CarpetX::InterpolationSetup::Interpolate(
+             default:
+               CCTK_VERROR("Interpolation order %d for centering [%d,%d,%d] not "
+                           "yet supported",
+-                          int(interpolation_order), groupdata.indextype[0],
++                          int(requested_order), groupdata.indextype[0],
+                           groupdata.indextype[1], groupdata.indextype[2]);
+             } // switch interpolation_order
+             break;
+@@ -950,6 +966,8 @@ extern "C" void CarpetX_Interpolate(const CCTK_POINTER_TO_CONST cctkGH_,
+                                     const CCTK_INT *restrict const operations,
+                                     const CCTK_INT allow_boundaries,
+                                     const CCTK_POINTER resultptrs_) {
++  DECLARE_CCTK_PARAMETERS;
++
+   const cGH *restrict const cctkGH = static_cast<const cGH *>(cctkGH_);
+ 
+   const InterpolationSetup setup(cctkGH, npoints, globalsx, globalsy, globalsz);
+@@ -966,7 +984,7 @@ extern "C" void CarpetX_Interpolate(const CCTK_POINTER_TO_CONST cctkGH_,
+   const std::vector<vect<vect<bool, dim>, 2> > allowed_boundaries(npatches,
+                                                                   uniform);
+-  setup.Interpolate(cctkGH, nvars, varinds, operations, allowed_boundaries,
+-                    resultptrs_);
++  setup.Interpolate(cctkGH, nvars, varinds, operations, interpolation_order,
++                    allowed_boundaries, resultptrs_);
+ }
+ 
+ } // namespace CarpetX

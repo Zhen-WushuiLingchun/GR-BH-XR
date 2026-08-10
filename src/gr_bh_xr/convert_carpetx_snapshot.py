@@ -62,6 +62,17 @@ def convert_carpetx_snapshot(
             for i in range(3):
                 for j in range(3):
                     gamma[..., i, j] = gamma_components[i][j]
+            extrinsic_spec = spec.get("extrinsic_curvature")
+            extrinsic = None
+            if extrinsic_spec is not None:
+                extrinsic_components = [
+                    [_read_dataset(handle, str(path)) for path in row]
+                    for row in extrinsic_spec
+                ]
+                extrinsic = np.empty(lapse.shape + (3, 3), dtype=np.float64)
+                for i in range(3):
+                    for j in range(3):
+                        extrinsic[..., i, j] = extrinsic_components[i][j]
             error_spec = spec.get("spatial_error_bound")
             if isinstance(error_spec, str):
                 spatial_error = _read_dataset(handle, error_spec)
@@ -84,6 +95,7 @@ def convert_carpetx_snapshot(
                     shift=shift,
                     gamma_cov=gamma,
                     spatial_error_bound=spatial_error,
+                    extrinsic_curvature=extrinsic,
                 )
             )
         temporal_spec = field_map.get("temporal_error_bound")

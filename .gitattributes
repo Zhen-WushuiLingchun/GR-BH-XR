@@ -13,3 +13,9 @@
 *.fbx binary
 *.blend binary
 *.unitypackage binary
+
+# Preserve byte-identical upstream/release evidence. Several pinned ET patches
+# and the official thorn list contain source-style whitespace by construction;
+# their SHA-256 digests are part of the numerical-relativity producer lock.
+nr/einstein_toolkit/patches/*.patch -text whitespace=-blank-at-eol,-space-before-tab
+nr/einstein_toolkit/thornlists/*.th -text whitespace=-blank-at-eol

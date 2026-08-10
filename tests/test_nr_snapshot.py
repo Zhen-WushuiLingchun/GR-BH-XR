@@ -1,4 +1,5 @@
 import json
+import importlib.util
 from pathlib import Path
 
 import h5py
@@ -21,6 +22,20 @@ from gr_bh_xr.nr_snapshot import (
     write_nr_snapshot,
 )
 from gr_bh_xr.types import MetricParams
+
+
+NR_RAY_SCRIPT = (
+    Path(__file__).parents[1]
+    / "nr"
+    / "einstein_toolkit"
+    / "validate_nr_pilot_rays.py"
+)
+NR_RAY_SPEC = importlib.util.spec_from_file_location(
+    "validate_nr_pilot_rays", NR_RAY_SCRIPT
+)
+assert NR_RAY_SPEC is not None and NR_RAY_SPEC.loader is not None
+NR_RAY_MODULE = importlib.util.module_from_spec(NR_RAY_SPEC)
+NR_RAY_SPEC.loader.exec_module(NR_RAY_MODULE)
 
 
 def _single_level_snapshot(provider, axes, *, times=(-0.5, 0.5), error=0.0):
@@ -189,6 +204,9 @@ def test_explicit_carpetx_field_map_conversion(tmp_path: Path) -> None:
                 handle.create_dataset(
                     f"gamma_{i}{j}", data=np.full(shape, 1.0 if i == j else 0.0)
                 )
+                handle.create_dataset(
+                    f"extrinsic_{i}{j}", data=np.full(shape, 0.1 * (i + j + 1))
+                )
     field_map = {
         "times": "/time",
         "temporal_error_bound": [0.0],
@@ -205,6 +223,9 @@ def test_explicit_carpetx_field_map_conversion(tmp_path: Path) -> None:
                 "gamma_cov": [
                     [f"/gamma_{i}{j}" for j in range(3)] for i in range(3)
                 ],
+                "extrinsic_curvature": [
+                    [f"/extrinsic_{i}{j}" for j in range(3)] for i in range(3)
+                ],
                 "spatial_error_bound": [0.0, 0.0],
             }
         ],
@@ -220,6 +241,36 @@ def test_explicit_carpetx_field_map_conversion(tmp_path: Path) -> None:
         metadata = json.loads(handle.attrs["metadata_json"])
         assert metadata["conversion"]["tool"] == "gr_bh_xr.convert_carpetx_snapshot"
         assert len(metadata["conversion"]["input_sha256"]) == 64
+        assert "levels/0/extrinsic_curvature" in handle
+    loaded = load_nr_snapshot(out)
+    assert loaded.levels[0].extrinsic_curvature is not None
+    assert loaded.levels[0].extrinsic_curvature.shape == shape + (3, 3)
     sample = ADMMetricSnapshotProvider.from_hdf5(out).sample(0.5, np.zeros(3))
     assert sample.validity == "valid"
     np.testing.assert_array_equal(sample.g_cov, np.diag([-1.0, 1.0, 1.0, 1.0]))
+
+
+def test_frozen_nr_slice_camera_and_ray_gate_match_identical_flat_snapshots(
+    tmp_path: Path,
+) -> None:
+    snapshot = _single_level_snapshot(
+        MinkowskiMetricProvider(), np.linspace(-2.0, 2.0, 5), times=(0.0, 1.0)
+    )
+    low = write_nr_snapshot(tmp_path / "low.h5", snapshot)
+    high = write_nr_snapshot(tmp_path / "high.h5", snapshot)
+    report, buffers = NR_RAY_MODULE.validate_nr_pilot_rays(
+        low,
+        high,
+        grid=3,
+        screen_half_width=0.1,
+        observer_radius_M=0.5,
+        capture_radius_M=0.1,
+        escape_radius_M=1.5,
+        max_lambda=5.0,
+    )
+
+    assert report["accepted"]
+    assert report["event_agreement"] == 1.0
+    assert report["counts"]["invalid_or_budget_pairs"] == 0
+    assert report["escape_direction_error_rad"]["max"] < 3.0e-8
+    assert buffers["ray_coordinates"].shape == (18, 3)

@@ -1,0 +1,26 @@
+diff --git a/src/gr/expansion.cc b/src/gr/expansion.cc
+index c24b88e..af86e8c 100644
+--- a/src/gr/expansion.cc
++++ b/src/gr/expansion.cc
+@@ -1539,10 +1539,19 @@ CCTK_VWarn(warn_level, __LINE__, __FILE__, CCTK_THORNSTRING,
+ "\n"
+ "   compute_Theta(): Theta_D = $g^{ij} s_i s_j$ = %g <= 0\n"
+ "                    at %s patch rho=%g sigma=%g!\n"
+-"                    (i.e. the interpolated g_ij isn't positive definite)",
++"                    interpolated g_ij={%g,%g,%g,%g,%g,%g}\n"
++"                    det(g_ij)=%g\n"
++"                    (i.e. the interpolated g_ij isn't positive definite)",
+ 	   double(Theta_D),
+-	   p.name(), double(rho), double(sigma));
++	   p.name(), double(rho), double(sigma),
++	   double(g_dd_11), double(g_dd_12), double(g_dd_13),
++	   double(g_dd_22), double(g_dd_23), double(g_dd_33),
++	   double(g_dd_11 * g_dd_22 * g_dd_33
++	          - g_dd_11 * g_dd_23 * g_dd_23
++	          - g_dd_12 * g_dd_12 * g_dd_33
++	          + 2.0 * g_dd_12 * g_dd_13 * g_dd_23
++	          - g_dd_13 * g_dd_13 * g_dd_22));
+ 			return false;			// *** ERROR RETURN ***
+ 			}
+ 
+                 assert (compute_info.surface_selection == selection_definition);
