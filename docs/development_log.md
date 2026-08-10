@@ -1,5 +1,25 @@
 # Development Log
 
+## 2026-08-10 - Task 7 audited ADM snapshot ingestion
+
+- Added `gr-bh-xr.bbh.adm-snapshot.v1` for evolved ADM volume fields with
+  mandatory producer/gauge/formulation/units/constraint provenance and
+  per-dataset SHA-256 verification.
+- Reconstructed the four-metric and all Hamiltonian inverse-metric derivatives
+  from trilinearly interpolated `alpha`, `beta^i`, and `gamma_ij`, with linear
+  time interpolation and stored spatial/temporal error bounds.
+- Added explicit AMR parent and validity-box selection. The finest complete
+  stencil is used; guard regions fall back to a declared parent and uncovered
+  coordinates return `outside_domain`.
+- The synthetic gate records Minkowski metric/derivative errors
+  `4.44e-16/3.33e-16`, plane-GW metric/derivative convergence ratios
+  `3.996/1.979`, and Kerr node/inverse-identity errors `3.33e-16`.
+- Added an explicit CarpetX/openPMD-like field-map converter with source-file
+  checksum. It refuses to guess thorn names, gauge, or component order.
+- Waveform-only SXS-shaped input is rejected with the structured reason
+  `waveform_only_asset`; no waveform mode is misrepresented as a near-zone
+  four-dimensional metric.
+
 ## 2026-08-10 - Task 6 audited native dynamic BBH tracing
 
 - Ported the accepted equal-mass, nonspinning fixed-orbit superposed

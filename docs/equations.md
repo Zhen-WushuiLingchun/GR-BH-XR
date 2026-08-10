@@ -602,3 +602,46 @@ future-global and may only be reconstructed offline. Any superposed
 Kerr-Schild or PN-to-remnant BBH provider is labelled
 `physics_approximation`; real-time evaluation of that provider is not a
 real-time solution of the Einstein equations.
+
+## ADM Snapshot Reconstruction
+
+The versioned NR-volume path stores lapse `alpha`, contravariant shift
+`beta^i`, and spatial metric `gamma_ij` in Cartesian `(t,x,y,z)` coordinates
+with signature `(-,+,+,+)`. It reconstructs
+
+```text
+beta_i = gamma_ij beta^j,
+g_00 = -alpha^2 + beta_i beta^i,
+g_0i = beta_i,
+g_ij = gamma_ij,
+
+g^00 = -1/alpha^2,
+g^0i = beta^i/alpha^2,
+g^ij = gamma^ij - beta^i beta^j/alpha^2.
+```
+
+Schema `gr-bh-xr.bbh.adm-snapshot.v1` uses cell-local trilinear spatial
+interpolation and piecewise-linear coordinate-time interpolation. Derivatives
+are derivatives of those interpolants, not separately guessed arrays. With
+`q=alpha^-2`, the inverse-metric derivatives used by the Hamiltonian are
+
+```text
+partial_mu q = -2 alpha^-3 partial_mu alpha,
+partial_mu gamma^-1 = -gamma^-1 (partial_mu gamma) gamma^-1,
+
+partial_mu g^00 = -partial_mu q,
+partial_mu g^0i = (partial_mu q) beta^i + q partial_mu beta^i,
+partial_mu g^ij = partial_mu gamma^ij
+  - (partial_mu q) beta^i beta^j
+  - q[(partial_mu beta^i) beta^j + beta^i (partial_mu beta^j)].
+```
+
+Each AMR level declares a coordinate validity box for complete interpolation
+stencils. The consumer selects the finest valid level and may fall back to an
+explicit parent; it returns `outside_domain` rather than crossing an invalid
+refinement boundary. Spatial and temporal interpolation-error bounds are
+stored by the producer and added in the returned metric sample. Gauge,
+formulation, producer commit, constraint history, units, and per-dataset
+SHA-256 values are mandatory provenance. Asymptotic waveform modes alone do
+not provide these near-zone fields and are rejected with
+`waveform_only_asset`.

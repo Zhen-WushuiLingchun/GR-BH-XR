@@ -1196,10 +1196,14 @@ The active implementation and dependency order are frozen in
 `docs/plans/2026-08-10-bbh-dynamic-spacetime-xr.md`. The corresponding
 literature baseline is
 `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`.
-Tasks 0 through 5 are implemented and accepted as CPU/reference foundations.
-Task 6 has an accepted minimal equal-mass, nonspinning fixed-orbit native
-provider and remains a `physics_approximation`; ADM/NR and dynamic XR/MR gates
-remain open.
+Tasks 0 through 7 are implemented and accepted through the synthetic ADM
+snapshot-ingestion gate. Task 6 has an accepted minimal equal-mass,
+nonspinning fixed-orbit native provider and remains a
+`physics_approximation`. Task 7 establishes the versioned NR-volume contract
+but is not a production Einstein evolution; the Task 8 NR pilot and dynamic
+XR/MR gates remain open.
+The accepted ingestion schema is `gr-bh-xr.bbh.adm-snapshot.v1`; its measured
+synthetic gate is documented in `validation/bbh_nr_snapshot/README.md`.
 
 Required checks:
 
@@ -1218,6 +1222,10 @@ Required checks:
 - numerical-relativity snapshot inputs record formulation, gauge, grid and
   refinement metadata, interpolation order, constraint history, producer
   commit, and checksums;
+- ADM snapshot interpolation must recover Minkowski to `1e-14`, show metric
+  convergence ratio `>3` and derivative convergence ratio `>1.7` on the
+  linear-GW gate, preserve sampled Kerr nodes to `1e-12`, select AMR levels
+  only within declared validity boxes, and reject waveform-only assets;
 - single-Kerr static transfer maps are not reused as physical evidence for
   BBH, multi-black-hole, or gravitational-wave lensing; those systems need
   time-dependent transfer maps, offline/cache playback, adaptive tracing, or

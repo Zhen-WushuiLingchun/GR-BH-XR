@@ -18,8 +18,9 @@ evidence. Neither should be used alone to infer the current runtime.
 | Unity Task 10 MR | Experimental, unaccepted | Camera/depth integration code exists, but calibrated RGB delivery and registration have not been demonstrated on the device. Enumeration, compilation, or depth acquisition alone is not acceptance. |
 | Native NPGS fork | Accepted for neutral exterior Kerr/Kerr-Newman rays, Kerr `Q=0` disk transfer, geometric polarization transport, and the minimal Task 6 dynamic-BBH slice at quality 2; native XR/MR interfaces are candidates | Complete official history is pinned through the GPL fork. Exact native states pass independent CPU f64 event/direction/disk gates, raw v3 camera bases plus the complete Walker-Penrose scalar pass direct f64 parallel transport, and raw v4 dynamic states pass the four-dimensional BBH replay gate. OpenXR/Vulkan ownership, stereo-view, calibrated-camera, and depth provenance contracts compile, but no native OpenXR session or delivered MR camera frame has passed a device gate. |
 
-The repository suite passed `335` tests on 2026-08-10 after the first native
-dynamic-BBH trace and its fail-closed audit contract were registered.
+The repository suite passed `342` tests on 2026-08-10 after the first native
+dynamic-BBH trace and the audited synthetic ADM-snapshot ingestion contract
+were registered.
 The centralized NPGS integration/MR contracts, preceding Task 9/10 baseline,
 complete Unity `.meta` coverage, native Kerr/Kerr-Newman/disk gates, and raw-v3
 polarization-geometry gates remain in the same regression.
@@ -45,7 +46,7 @@ source was found.
 | Charged disk matter | Blocked | Neutral photons in a charged spacetime do not define a charged-plasma disk model. |
 | Maximal extension | Visual/mathematical only | Exact stationary Kerr-Newman continuation is not an astrophysical collapse-interior prediction. |
 | Native OpenXR and MR | Interface complete, runtime candidate | The render-sink and measured-frame contracts exist without changing desktop GLFW. Session/swapchain and real camera-frame delivery remain device gates. |
-| BBH/GW | Tasks 0-6 have an accepted minimal approximate native slice; NR and dynamic XR/MR remain open | The f64 oracle and native GLSL path integrate the full dynamic Hamilton system for an equal-mass, nonspinning, fixed-circular superposed-KS metric. PN inspiral, generic spin and merger endpoints are accepted on CPU, but the native slice remains fixed-orbit and labelled `physics_approximation`; ADM snapshots, NR production, dynamic OpenXR timing, and physical GW claims remain open. |
+| BBH/GW | Tasks 0-7 have an accepted minimal approximate native slice plus an audited synthetic ADM-volume ingestion contract; NR production and dynamic XR/MR remain open | The f64 oracle and native GLSL path integrate the full dynamic Hamilton system for an equal-mass, nonspinning, fixed-circular superposed-KS metric. PN inspiral, generic spin and merger endpoints are accepted on CPU, while the native slice remains fixed-orbit and labelled `physics_approximation`. ADM v1 reconstructs the metric and derivatives with explicit AMR/error/checksum provenance, but no production NR evolution or physical merger/GW claim exists yet. |
 
 The migration does not treat NPGS screenshots or feature claims as scientific
 validation. GR-BH-XR retains its Python f64 reference solvers, audit schemas,

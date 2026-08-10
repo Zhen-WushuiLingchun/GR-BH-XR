@@ -20,8 +20,11 @@ from .plane_gw import (
     plane_gw_first_order_time_delay,
     plane_gw_initial_state,
 )
+from .adm_snapshot import ADMInterpolationProvenance, ADMMetricSnapshotProvider
 
 __all__ = [
+    "ADMInterpolationProvenance",
+    "ADMMetricSnapshotProvider",
     "BinaryHoleState",
     "BinaryTrajectory",
     "FixedCircularBinaryOrbit",

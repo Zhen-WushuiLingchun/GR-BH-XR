@@ -24,8 +24,8 @@ Toolkit/CarpetX for later offline evolutions.
 ## Status And Authority
 
 - Plan date: 2026-08-10.
-- Status: `ACTIVE_PLAN`; Tasks 0-5 are accepted and Task 6 has an accepted
-  minimal native slice pending completion of its full performance report.
+- Status: `ACTIVE_PLAN`; Tasks 0-7 are accepted through the synthetic ADM
+  snapshot-ingestion gate. Tasks 8-10 remain open.
 - Canonical source note:
   `references/source_notes/2026-08-10-bbh-dynamic-spacetime-foundations.md`.
 - Existing single-hole regression baseline: `docs/current_status.md`.
