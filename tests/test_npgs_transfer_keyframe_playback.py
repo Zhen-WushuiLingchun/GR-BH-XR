@@ -33,12 +33,21 @@ SMOKE_SCRIPT = (
 )
 
 
-def test_native_playback_is_bounded_and_wired_to_dedicated_shader() -> None:
+def test_native_playback_prefetch_is_fence_safe_and_wired_to_dedicated_shader() -> None:
     implementation = PLAYBACK.read_text(encoding="utf-8")
     application = (NPGS / "Sources/Program/Application.cpp").read_text(encoding="utf-8")
     config = (NPGS / "Tools/ShaderCompiler/CompileShaders.cfg").read_text(encoding="utf-8")
-    assert "SlotCount = 2" in (PLAYBACK.with_suffix(".h")).read_text(encoding="utf-8")
-    assert "WaitIdle" in implementation
+    header = (PLAYBACK.with_suffix(".h")).read_text(encoding="utf-8")
+    assert "LogicalSlotCount = 2" in header
+    assert "SlotCount = 3" in header
+    load_slot = implementation[
+        implementation.index("void FTransferKeyframePlayback::LoadSlot") :
+        implementation.index("std::uint32_t FTransferKeyframePlayback::EnsureResident")
+    ]
+    assert "WaitIdle" not in load_slot
+    assert "SlotIsReferenced" in load_slot
+    assert "std::async(std::launch::async" in implementation
+    assert "ReadFrame(FrameIndex)" in implementation
     assert "ResidentResourceChanged" in implementation
     assert "ReadVerifiedTransferAsset" in implementation
     for role in (
@@ -52,17 +61,20 @@ def test_native_playback_is_bounded_and_wired_to_dedicated_shader() -> None:
         assert role in implementation
     assert "RequiredCompositeSamplers = 21" in application
     assert "RequestedMetricTime < Sequence.ExpectedStartMetricTimeM" in application
-    assert "Sequence.Frames.size() > Runtime::XR::FTransferKeyframePlayback::SlotCount" in application
+    assert "Sequence.Frames.size() > Runtime::XR::FTransferKeyframePlayback::LogicalSlotCount" in application
+    assert "ReleaseFrameReferences(CurrentFrame)" in application
+    assert "WriteDynamicDescriptors" in application
     playback_clock = application[
         application.index("double RequestedMetricTime"):
-        application.index("if (TransferPlayback->Update(MetricTime))")
+        application.index("TransferPlayback->Update(MetricTime);")
     ]
     assert "std::clamp" not in playback_clock
     assert "BlackHole_transfer_prepass.frag.spv" in config
     assert "BlackHole_transfer_composite.frag.spv" in config
     smoke = SMOKE_SCRIPT.read_text(encoding="utf-8")
-    assert "slot=0 frame=2" in smoke
-    assert "resident_frames=2" in smoke
+    assert "slot=2 frame=2" in smoke
+    assert "slot=0 frame=3" in smoke
+    assert "resident_frames=3" in smoke
     assert "extrapolation is forbidden" in smoke
 
 
@@ -184,25 +196,30 @@ def test_native_residency_output_parser_preserves_swap_measurements() -> None:
     parsed = parse_native_output(
         "\n".join(
             (
-                "NPGS_TRANSFER_RESIDENT slot=0 frame=0 metric_time_M=0 bytes=4992 upload_ms=1.25",
-                "NPGS_TRANSFER_RESIDENT slot=1 frame=1 metric_time_M=1 bytes=4992 upload_ms=1.5",
+                "NPGS_TRANSFER_RESIDENT slot=0 frame=0 metric_time_M=0 bytes=4992 io_hash_ms=0.25 upload_ms=1.25 total_ms=1.5",
+                "NPGS_TRANSFER_RESIDENT slot=1 frame=1 metric_time_M=1 bytes=4992 io_hash_ms=0.3 upload_ms=1.5 total_ms=1.8",
                 "NPGS_TRANSFER_PLAYBACK_READY face_size=4 resident_frames=2 resident_bytes=9984",
-                "NPGS_TRANSFER_RESIDENT slot=0 frame=2 metric_time_M=2 bytes=4992 upload_ms=1.75",
-                "NPGS_TRANSFER_PLAYBACK_OK left=1 right=2 alpha=0.5 resident_frames=2 resident_bytes=9984",
+                "NPGS_TRANSFER_PREFETCH frame=2 bytes=4992 io_hash_ms=0.35",
+                "NPGS_TRANSFER_RESIDENT slot=2 frame=2 metric_time_M=2 bytes=4992 io_hash_ms=0.35 upload_ms=1.75 total_ms=2.1",
+                "NPGS_TRANSFER_PLAYBACK_OK left=1 right=2 alpha=0.5 resident_frames=3 resident_bytes=14976",
             )
         )
     )
     assert [(entry["slot"], entry["frame"]) for entry in parsed["uploads"]] == [
         (0, 0),
         (1, 1),
-        (0, 2),
+        (2, 2),
     ]
     assert parsed["uploads"][2]["upload_ms"] == 1.75
+    assert parsed["uploads"][2]["io_hash_ms"] == 0.35
+    assert parsed["prefetches"] == [
+        {"frame": 2, "bytes": 4992, "io_hash_ms": 0.35}
+    ]
     assert parsed["ready"]["resident_bytes"] == 9984
     assert parsed["final"] == {
         "left": 1,
         "right": 2,
         "alpha": 0.5,
-        "resident_frames": 2,
-        "resident_bytes": 9984,
+        "resident_frames": 3,
+        "resident_bytes": 14976,
     }

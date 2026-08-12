@@ -1,5 +1,27 @@
 # Development Log
 
+### 2026-08-12 - Task 11 fence-safe prefetch and residency split
+
+- Goal: remove device-wide idle and disk/hash work from transfer-keyframe
+  transitions, while retaining a fail-closed physical bracket and measuring
+  the remaining Vulkan upload cost honestly.
+- Changes: expanded residency to two logical/three physical slots; added a CPU
+  read-and-SHA prefetch worker; changed transfer bindings to per-frame
+  descriptors; tracked descriptor-to-slot references after each in-flight
+  fence; and added a four-frame `0/1 -> 1/2 -> 2/3` recycle smoke. I/O/hash,
+  Vulkan upload, and peak residency are now separate gate fields.
+- Validation: Release compiled with zero errors. The four-frame smoke loaded
+  slot 2 before recycling slot 0 and exited with bracket `2/3`, alpha `0.5`,
+  three resident frames, and no runtime `WaitIdle` in slot replacement. On the
+  RTX 5080 Laptop GPU, transition upload p95 was `5.23/12.09/38.79 ms` for
+  face `256/512/1024`; prefetched I/O+hash p95 was
+  `19.49/89.70/348.26 ms`; peak residency was `58.5/234/936 MiB`.
+- Decision: CPU prefetch and fence-safe retirement are accepted. Face 256 is a
+  hitch-free candidate for the isolated upload budget, but 512 and 1024 remain
+  rejected for 72/90 Hz because Vulkan image upload is still synchronous.
+  Incremental or asynchronous GPU staging is the next required runtime step;
+  no OpenXR performance claim is made.
+
 ### 2026-08-12 - Task 11 native physical readback and residency benchmark
 
 - Goal: verify the actual Vulkan shader output against the Python transfer

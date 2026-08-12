@@ -1,4 +1,4 @@
-"""Benchmark native NPGS transfer-keyframe residency and synchronous swaps."""
+"""Benchmark native NPGS transfer-keyframe prefetch and Vulkan uploads."""
 
 from __future__ import annotations
 
@@ -19,11 +19,16 @@ except ImportError:  # Direct script execution.
     from build_native_playback_fixture import build_fixture
 
 
-SUMMARY_SCHEMA = "gr-bh-xr.validation.npgs-transfer-residency.v1"
+SUMMARY_SCHEMA = "gr-bh-xr.validation.npgs-transfer-residency.v2"
 RESIDENT_RE = re.compile(
     r"NPGS_TRANSFER_RESIDENT slot=(?P<slot>\d+) frame=(?P<frame>\d+) "
     r"metric_time_M=(?P<time>[-+0-9.eE]+) bytes=(?P<bytes>\d+) "
-    r"upload_ms=(?P<upload>[-+0-9.eE]+)"
+    r"io_hash_ms=(?P<io_hash>[-+0-9.eE]+) "
+    r"upload_ms=(?P<upload>[-+0-9.eE]+) total_ms=(?P<total>[-+0-9.eE]+)"
+)
+PREFETCH_RE = re.compile(
+    r"NPGS_TRANSFER_PREFETCH frame=(?P<frame>\d+) bytes=(?P<bytes>\d+) "
+    r"io_hash_ms=(?P<io_hash>[-+0-9.eE]+)"
 )
 READY_RE = re.compile(
     r"NPGS_TRANSFER_PLAYBACK_READY face_size=(?P<face>\d+) "
@@ -43,7 +48,9 @@ def parse_native_output(output: str) -> dict[str, Any]:
             "frame": int(match.group("frame")),
             "metric_time_M": float(match.group("time")),
             "bytes": int(match.group("bytes")),
+            "io_hash_ms": float(match.group("io_hash")),
             "upload_ms": float(match.group("upload")),
+            "total_ms": float(match.group("total")),
         }
         for match in RESIDENT_RE.finditer(output)
     ]
@@ -51,8 +58,17 @@ def parse_native_output(output: str) -> dict[str, Any]:
     ok_match = OK_RE.search(output)
     if ready_match is None or ok_match is None:
         raise ValueError("native playback output is missing READY or OK markers")
+    prefetches = [
+        {
+            "frame": int(match.group("frame")),
+            "bytes": int(match.group("bytes")),
+            "io_hash_ms": float(match.group("io_hash")),
+        }
+        for match in PREFETCH_RE.finditer(output)
+    ]
     return {
         "uploads": uploads,
+        "prefetches": prefetches,
         "ready": {
             "face_size": int(ready_match.group("face")),
             "resident_frames": int(ready_match.group("frames")),
@@ -104,7 +120,8 @@ def run_benchmark(
         frame_bytes = _frame_bytes(
             case_dir / "fixture" / "frame_0" / "full_sky_transfer_metadata.json"
         )
-        expected_resident_bytes = 2 * frame_bytes
+        expected_ready_bytes = 2 * frame_bytes
+        expected_final_bytes = 3 * frame_bytes
         runs: list[dict[str, Any]] = []
 
         for iteration in range(iterations):
@@ -146,7 +163,7 @@ def run_benchmark(
             if [(entry["slot"], entry["frame"]) for entry in uploads] != [
                 (0, 0),
                 (1, 1),
-                (0, 2),
+                (2, 2),
             ]:
                 raise RuntimeError(f"unexpected upload sequence for face {face_size}: {uploads}")
             if any(entry["bytes"] != frame_bytes for entry in uploads):
@@ -154,15 +171,15 @@ def run_benchmark(
             if parsed["ready"] != {
                 "face_size": face_size,
                 "resident_frames": 2,
-                "resident_bytes": expected_resident_bytes,
+                "resident_bytes": expected_ready_bytes,
             }:
                 raise RuntimeError(f"unexpected READY marker for face {face_size}: {parsed['ready']}")
             if parsed["final"] != {
                 "left": 1,
                 "right": 2,
                 "alpha": 0.5,
-                "resident_frames": 2,
-                "resident_bytes": expected_resident_bytes,
+                "resident_frames": 3,
+                "resident_bytes": expected_final_bytes,
             }:
                 raise RuntimeError(f"unexpected final bracket for face {face_size}: {parsed['final']}")
             runs.append(
@@ -170,39 +187,51 @@ def run_benchmark(
                     "iteration": iteration,
                     "wall_ms": wall_ms,
                     "uploads": uploads,
-                    "replacement_upload_ms": uploads[2]["upload_ms"],
+                    "prefetches": parsed["prefetches"],
+                    "transition_io_hash_ms": uploads[2]["io_hash_ms"],
+                    "transition_upload_ms": uploads[2]["upload_ms"],
+                    "transition_total_ms": uploads[2]["total_ms"],
                 }
             )
 
         upload_values = [
             entry["upload_ms"] for run in runs for entry in run["uploads"]
         ]
-        replacement_values = [run["replacement_upload_ms"] for run in runs]
-        replacement_p95 = _percentile(replacement_values, 95.0)
+        transition_values = [run["transition_upload_ms"] for run in runs]
+        transition_p95 = _percentile(transition_values, 95.0)
         cases.append(
             {
                 "face_size": face_size,
                 "frame_bytes": frame_bytes,
-                "resident_bytes": expected_resident_bytes,
-                "resident_mib": expected_resident_bytes / (1024.0 * 1024.0),
+                "ready_resident_bytes": expected_ready_bytes,
+                "peak_resident_bytes": expected_final_bytes,
+                "peak_resident_mib": expected_final_bytes / (1024.0 * 1024.0),
                 "iterations": iterations,
                 "upload_ms": {
                     "p50": _percentile(upload_values, 50.0),
                     "p95": _percentile(upload_values, 95.0),
                     "max": max(upload_values),
                 },
-                "replacement_upload_ms": {
-                    "p50": _percentile(replacement_values, 50.0),
-                    "p95": replacement_p95,
-                    "max": max(replacement_values),
+                "transition_upload_ms": {
+                    "p50": _percentile(transition_values, 50.0),
+                    "p95": transition_p95,
+                    "max": max(transition_values),
+                },
+                "transition_io_hash_ms": {
+                    "p50": _percentile(
+                        [run["transition_io_hash_ms"] for run in runs], 50.0
+                    ),
+                    "p95": _percentile(
+                        [run["transition_io_hash_ms"] for run in runs], 95.0
+                    ),
                 },
                 "process_wall_ms": {
                     "p50": _percentile([run["wall_ms"] for run in runs], 50.0),
                     "p95": _percentile([run["wall_ms"] for run in runs], 95.0),
                 },
                 "hitch_free_candidate": {
-                    "72_hz_physics_budget_11ms": replacement_p95 < 11.0,
-                    "90_hz_physics_budget_9ms": replacement_p95 < 9.0,
+                    "72_hz_physics_budget_11ms": transition_p95 < 11.0,
+                    "90_hz_physics_budget_9ms": transition_p95 < 9.0,
                 },
                 "runs": runs,
             }
@@ -226,10 +255,11 @@ def run_benchmark(
         "gpu_evidence": "Read the Renderer line in each persisted native log.",
         "cases": cases,
         "claim_boundary": (
-            "Upload timings measure the current synchronous native Vulkan resource "
-            "creation path. They are not render GPU timestamps and do not establish "
-            "OpenXR frame rate. A false hitch-free candidate requires asynchronous "
-            "staging or prefetch before production playback."
+            "Asset bytes are read and hashed by the CPU prefetch worker. The measured "
+            "transition upload remains synchronous Vulkan image creation on the render "
+            "thread; it is not a render GPU timestamp and does not establish OpenXR "
+            "frame rate. A false hitch-free candidate still requires asynchronous GPU "
+            "staging before production playback."
         ),
     }
 

@@ -140,11 +140,12 @@ def _write_frame(
         (1.0, 0.0, 0.0, 1.0),
         (0.0, 1.0, 0.0, 1.0),
         (0.0, 0.0, 1.0, 1.0),
+        (0.0, -1.0, 0.0, 1.0),
     )
-    coverages = (0.5, 1.0, 0.75)
-    radii = (6.0, 10.0, 14.0)
-    redshifts = (0.8, 1.2, 0.9)
-    phis = tuple(math.radians(value) for value in (179.0, -179.0, -150.0))
+    coverages = (0.5, 1.0, 0.75, 0.6)
+    radii = (6.0, 10.0, 14.0, 18.0)
+    redshifts = (0.8, 1.2, 0.9, 1.0)
+    phis = tuple(math.radians(value) for value in (179.0, -179.0, -150.0, -120.0))
     direction = np.array(directions[index], dtype="<f4")
     event = _constant_cube(face_size, np.array([48, 132, 255, 255]), "u1")
     escape = _constant_cube(face_size, direction, "<f4")
@@ -231,10 +232,15 @@ def _write_frame(
 
 
 def build_fixture(
-    output_dir: Path, *, face_size: int = 4, spatial_probe: bool = False
+    output_dir: Path,
+    *,
+    face_size: int = 4,
+    spatial_probe: bool = False,
+    frame_count: int = 3,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
-    frame_count = 3
+    if frame_count < 3 or frame_count > 4:
+        raise ValueError("native playback fixture supports three or four frames")
     for index in range(frame_count):
         _write_frame(
             output_dir, index, face_size=face_size, spatial_probe=spatial_probe
@@ -279,6 +285,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--face-size", type=int, default=4)
+    parser.add_argument("--frames", type=int, choices=(3, 4), default=3)
     parser.add_argument(
         "--spatial-probe",
         action="store_true",
@@ -292,6 +299,7 @@ def main() -> None:
             args.out_dir,
             face_size=args.face_size,
             spatial_probe=args.spatial_probe,
+            frame_count=args.frames,
         )
     )
 

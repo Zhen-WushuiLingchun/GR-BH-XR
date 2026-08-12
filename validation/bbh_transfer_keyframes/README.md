@@ -138,10 +138,13 @@ stellar catalog assets are then unresolved.
 The NPGS integration now consumes an accepted manifest through a bounded
 two-frame Vulkan resident set. Each physical slot contains the six required
 v3 cubemaps. The event texture is point sampled; continuous physical buffers
-use their declared float formats and linear spatial sampling. A bracket change
-waits for in-flight GPU work before replacing an image and rewriting the A/B
-descriptors, so no submitted frame can sample a destroyed resource. This is a
-correctness-first double buffer; asynchronous uploads are not yet claimed.
+use their declared float formats and linear spatial sampling. Two logical
+bracket endpoints map onto three physical slots. Asset reads and SHA-256 checks
+run on a CPU prefetch worker; after the current frame fence completes, only
+that frame's descriptor set is updated. A physical slot is recycled only when
+neither in-flight frame references it, so normal playback no longer needs a
+device-wide `WaitIdle` during replacement. Vulkan image construction/upload is
+still synchronous on the render thread and is measured separately below.
 
 Temporal interpolation occurs per texel in dedicated transfer shader variants,
 before visual shading. It uses the same fail-closed event, normalized escape
@@ -170,18 +173,22 @@ pwsh -NoProfile -File `
   validation/bbh_transfer_keyframes/scripts/run_native_playback_smoke.ps1
 ```
 
-The accepted 2026-08-12 smoke emitted:
+The accepted 2026-08-12 four-frame smoke emitted the lifecycle:
 
 ```text
 NPGS_TRANSFER_RESIDENT slot=0 frame=0 bytes=4992
 NPGS_TRANSFER_RESIDENT slot=1 frame=1 bytes=4992
-NPGS_TRANSFER_RESIDENT slot=0 frame=2 bytes=4992
-NPGS_TRANSFER_PLAYBACK_OK left=1 right=2 alpha=0.5 resident_frames=2 resident_bytes=9984
+NPGS_TRANSFER_PREFETCH frame=2 bytes=4992
+NPGS_TRANSFER_RESIDENT slot=2 frame=2 bytes=4992
+NPGS_TRANSFER_PREFETCH frame=3 bytes=4992
+NPGS_TRANSFER_RESIDENT slot=0 frame=3 bytes=4992
+NPGS_TRANSFER_PLAYBACK_OK left=2 right=3 alpha=0.5 resident_frames=3 resident_bytes=14976
 ```
 
-The fixture is intentionally not a BBH result. It has three frames so the
-smoke must replace slot 0 while retaining frame 1 (`0/1 -> 1/2`) without ever
-holding more than two frames. Its first interval is a compact interpolation
+The fixture is intentionally not a BBH result. It has four frames so the smoke
+must traverse `0/1 -> 1/2 -> 2/3`, first filling the standby slot and then
+recycling slot 0 only after its frame reference is fence-safe. Its first
+interval is a compact interpolation
 probe with escape direction `+X -> +Y`, disk radius `6M -> 10M`, redshift
 `0.8 -> 1.2`, coverage `0.5 -> 1.0`, and azimuth `+179 -> -179 deg`. That
 midpoint must produce the normalized diagonal direction, `r=8M`, `g=1`,
@@ -211,27 +218,30 @@ returned before initializing its output, producing random values and one NaN.
 The shared GLSL evaluator now zero-initializes invalid outputs, so visual and
 audit paths retain the same deterministic fail-closed semantics.
 
-### Real-size residency and swap benchmark
+### Real-size prefetch and transition-upload benchmark
 
-Run the current synchronous two-slot path at display-relevant cubemap sizes:
+Run the three-slot prefetch path at display-relevant cubemap sizes:
 
 ```powershell
 $env:PYTHONPATH='src'
 python validation/bbh_transfer_keyframes/scripts/benchmark_native_playback_residency.py `
-  --out-dir outputs/task11/native_residency_benchmark `
+  --out-dir outputs/task11/native_prefetch_residency_benchmark `
   --face-sizes 256 512 1024 --iterations 3
 ```
 
 The accepted RTX 5080 Laptop GPU result was:
 
-| Face size | Frame bytes | Two-slot residency | Replacement upload p95 |
-| ---: | ---: | ---: | ---: |
-| 256 | 20,447,232 | 39 MiB | 33.34 ms |
-| 512 | 81,788,928 | 156 MiB | 113.50 ms |
-| 1024 | 327,155,712 | 624 MiB | 442.02 ms |
+| Face size | Frame bytes | Peak three-slot residency | Prefetched I/O+hash p95 | Render-thread upload p95 |
+| ---: | ---: | ---: | ---: | ---: |
+| 256 | 20,447,232 | 58.5 MiB | 19.49 ms | 5.23 ms |
+| 512 | 81,788,928 | 234 MiB | 89.70 ms | 12.09 ms |
+| 1024 | 327,155,712 | 936 MiB | 348.26 ms | 38.79 ms |
 
-All byte counts, slot transitions, and final brackets matched their manifests,
-but every replacement exceeded the 9/11 ms physics budgets for 90/72 Hz.
-These timings measure synchronous resource creation/upload and are not render
-GPU timestamps. They reject frame-loop replacement; production playback must
-prefetch or asynchronously stage and fence-retire future frames.
+The old combined 256/512/1024 replacement p95 values were
+`33.34/113.50/442.02 ms`. CPU prefetch removes the dominant disk/hash work from
+the transition and fence-safe per-frame descriptors remove device-wide idle.
+The remaining Vulkan upload passes the 9/11 ms budgets only at face 256; face
+512 narrowly fails and face 1024 fails decisively. These are render-thread
+resource-upload timings, not render GPU timestamps or OpenXR frame rates.
+Production display-resolution playback therefore still requires incremental
+or asynchronous GPU staging; this commit does not claim hitch-free XR swaps.
