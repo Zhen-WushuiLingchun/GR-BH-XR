@@ -46,7 +46,94 @@ def _constant_cube(face_size: int, value: np.ndarray, dtype: str) -> np.ndarray:
     return cube
 
 
-def _write_frame(root: Path, index: int, *, face_size: int) -> None:
+def _spatial_probe_cubes(index: int, face_size: int) -> dict[str, np.ndarray]:
+    face = np.arange(6, dtype=np.float32)[:, None, None]
+    yy, xx = np.indices((face_size, face_size), dtype=np.float32)
+    xx = xx[None, ...]
+    yy = yy[None, ...]
+    linear = (
+        np.arange(6, dtype=np.int32)[:, None, None] * face_size * face_size
+        + np.arange(face_size, dtype=np.int32)[None, :, None] * face_size
+        + np.arange(face_size, dtype=np.int32)[None, None, :]
+    )
+
+    raw_direction = np.stack(
+        [
+            np.broadcast_to(0.45 + 0.11 * face + 0.03 * xx, linear.shape),
+            np.broadcast_to(-0.55 + 0.07 * yy - 0.02 * face, linear.shape),
+            np.broadcast_to(0.95 + 0.025 * xx + 0.015 * yy, linear.shape),
+        ],
+        axis=-1,
+    ).astype(np.float64)
+    angle = 0.37 * index
+    cos_angle = math.cos(angle)
+    sin_angle = math.sin(angle)
+    rotated = raw_direction.copy()
+    rotated[..., 0] = cos_angle * raw_direction[..., 0] - sin_angle * raw_direction[..., 1]
+    rotated[..., 1] = sin_angle * raw_direction[..., 0] + cos_angle * raw_direction[..., 1]
+    rotated /= np.linalg.norm(rotated, axis=-1, keepdims=True)
+
+    event = np.empty((*linear.shape, 4), dtype="u1")
+    event[...] = np.array([48, 132, 255, 255], dtype="u1")
+    event[linear % 7 == 0] = np.array([0, 0, 0, 255], dtype="u1")
+    if index == 1:
+        event[linear % 7 == 1] = np.array([0, 0, 0, 255], dtype="u1")
+
+    escape_coverage = np.clip(
+        0.35 + 0.1 * index + 0.04 * ((linear + index) % 5), 0.0, 0.95
+    ).astype(np.float32)
+    escape = np.zeros((*linear.shape, 4), dtype="<f4")
+    is_escape = np.all(event == np.array([48, 132, 255, 255], dtype="u1"), axis=-1)
+    escape[..., :3] = rotated.astype(np.float32) * escape_coverage[..., None]
+    escape[..., 3] = escape_coverage
+    escape[~is_escape] = 0.0
+
+    base_phi = math.radians(174.0 if index == 0 else -174.0 + 8.0 * (index - 1))
+    phi = base_phi + 0.005 * linear.astype(np.float64)
+    radius0 = 5.5 + 3.0 * index + 0.2 * face + 0.025 * xx + 0.015 * yy
+    redshift0_value = 0.7 + 0.35 * index + 0.01 * face + 0.002 * xx
+    coverage0 = np.clip(
+        0.45 + 0.08 * index + 0.03 * ((linear + 2) % 4), 0.0, 0.95
+    ).astype(np.float32)
+    valid0 = linear % 5 != 2
+    coverage0 = np.where(valid0, coverage0, 0.0)
+    disk0 = np.zeros((*linear.shape, 4), dtype="<f2")
+    disk0[..., 0] = radius0 * coverage0
+    disk0[..., 1] = np.sin(phi) * coverage0
+    disk0[..., 2] = np.cos(phi) * coverage0
+    disk0[..., 3] = coverage0
+    redshift0 = np.zeros_like(disk0)
+    redshift0[..., 0] = redshift0_value * coverage0
+
+    phi1 = -0.8 + 0.19 * index + 0.011 * linear.astype(np.float64)
+    radius1 = 9.0 + 2.0 * index + 0.15 * face + 0.02 * yy
+    redshift1_value = 0.55 + 0.25 * index + 0.008 * face
+    coverage1 = np.clip(
+        0.3 + 0.1 * index + 0.025 * ((linear + 1) % 6), 0.0, 0.9
+    ).astype(np.float32)
+    valid1 = linear % 4 == 0
+    coverage1 = np.where(valid1, coverage1, 0.0)
+    disk1 = np.zeros((*linear.shape, 4), dtype="<f2")
+    disk1[..., 0] = radius1 * coverage1
+    disk1[..., 1] = np.sin(phi1) * coverage1
+    disk1[..., 2] = np.cos(phi1) * coverage1
+    disk1[..., 3] = coverage1
+    redshift1 = np.zeros_like(disk1)
+    redshift1[..., 0] = redshift1_value * coverage1
+
+    return {
+        "event_cube_rgba8.bytes": event,
+        "escape_dir_unity_cube_rgba32f.bytes": escape,
+        "disk_order0_transfer_cube_rgba16f.bytes": disk0,
+        "disk_order0_redshift_cube_rgba16f.bytes": redshift0,
+        "disk_order1_transfer_cube_rgba16f.bytes": disk1,
+        "disk_order1_redshift_cube_rgba16f.bytes": redshift1,
+    }
+
+
+def _write_frame(
+    root: Path, index: int, *, face_size: int, spatial_probe: bool = False
+) -> None:
     frame_dir = root / f"frame_{index}"
     frame_dir.mkdir(parents=True, exist_ok=True)
     directions = (
@@ -79,22 +166,34 @@ def _write_frame(root: Path, index: int, *, face_size: int) -> None:
     disk1 = np.zeros((6, face_size, face_size, 4), dtype="<f2")
     redshift1 = np.zeros_like(disk1)
 
-    files = {
-        "event_cube_rgba8.bytes": event,
-        "escape_dir_unity_cube_rgba32f.bytes": escape,
-        "disk_order0_transfer_cube_rgba16f.bytes": disk0,
-        "disk_order0_redshift_cube_rgba16f.bytes": redshift0,
-        "disk_order1_transfer_cube_rgba16f.bytes": disk1,
-        "disk_order1_redshift_cube_rgba16f.bytes": redshift1,
-    }
+    files = (
+        _spatial_probe_cubes(index, face_size)
+        if spatial_probe
+        else {
+            "event_cube_rgba8.bytes": event,
+            "escape_dir_unity_cube_rgba32f.bytes": escape,
+            "disk_order0_transfer_cube_rgba16f.bytes": disk0,
+            "disk_order0_redshift_cube_rgba16f.bytes": redshift0,
+            "disk_order1_transfer_cube_rgba16f.bytes": disk1,
+            "disk_order1_redshift_cube_rgba16f.bytes": redshift1,
+        }
+    )
     for filename, array in files.items():
         array.tofile(frame_dir / filename)
 
     sizes = {
-        "eventCubeRgba8": int(event.nbytes),
-        "escapeDirUnityCubeRgba32f": int(escape.nbytes),
-        "diskTransferCubesRgba16f": [int(disk0.nbytes), int(disk1.nbytes)],
-        "diskRedshiftCubesRgba16f": [int(redshift0.nbytes), int(redshift1.nbytes)],
+        "eventCubeRgba8": int(files["event_cube_rgba8.bytes"].nbytes),
+        "escapeDirUnityCubeRgba32f": int(
+            files["escape_dir_unity_cube_rgba32f.bytes"].nbytes
+        ),
+        "diskTransferCubesRgba16f": [
+            int(files["disk_order0_transfer_cube_rgba16f.bytes"].nbytes),
+            int(files["disk_order1_transfer_cube_rgba16f.bytes"].nbytes),
+        ],
+        "diskRedshiftCubesRgba16f": [
+            int(files["disk_order0_redshift_cube_rgba16f.bytes"].nbytes),
+            int(files["disk_order1_redshift_cube_rgba16f.bytes"].nbytes),
+        ],
     }
     _write_json(
         frame_dir / "full_sky_transfer_metadata.json",
@@ -114,6 +213,7 @@ def _write_frame(root: Path, index: int, *, face_size: int) -> None:
             ],
             "bytes": sizes,
             "fixturePhysics": {
+                "spatialProbe": spatial_probe,
                 "escapeDirection": direction.tolist(),
                 "diskOrder0": {
                     "radiusM": radius,
@@ -130,11 +230,15 @@ def _write_frame(root: Path, index: int, *, face_size: int) -> None:
     )
 
 
-def build_fixture(output_dir: Path, *, face_size: int = 4) -> Path:
+def build_fixture(
+    output_dir: Path, *, face_size: int = 4, spatial_probe: bool = False
+) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     frame_count = 3
     for index in range(frame_count):
-        _write_frame(output_dir, index, face_size=face_size)
+        _write_frame(
+            output_dir, index, face_size=face_size, spatial_probe=spatial_probe
+        )
     _write_json(
         output_dir / "sequence_gate.json",
         {"schema": TRANSFER_SEQUENCE_GATE_SCHEMA, "passed": True, "fixtureOnly": True},
@@ -175,10 +279,21 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--face-size", type=int, default=4)
+    parser.add_argument(
+        "--spatial-probe",
+        action="store_true",
+        help="write per-face/per-texel values for exact Vulkan readback validation",
+    )
     args = parser.parse_args()
     if args.face_size <= 0:
         raise ValueError("--face-size must be positive")
-    print(build_fixture(args.out_dir, face_size=args.face_size))
+    print(
+        build_fixture(
+            args.out_dir,
+            face_size=args.face_size,
+            spatial_probe=args.spatial_probe,
+        )
+    )
 
 
 if __name__ == "__main__":

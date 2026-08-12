@@ -1308,6 +1308,17 @@ runtime it must pass all of the following:
   upload both slots, render the midpoint bracket, report resident frame/byte
   counts, and exit zero. Requests outside the accepted metric-time interval
   must fail rather than clamp or extrapolate.
+- A native SSBO readback probe must use the same physical evaluator as the
+  visual path and compare all six cubemap faces against the independent Python
+  oracle. Event and validity mismatches and non-finite outputs must be zero;
+  escape-direction error must remain `<5e-4 rad` and continuous fields within
+  `5e-4` absolute on the deterministic spatial fixture.
+- Production 72/90 Hz playback may not synchronously replace a transfer frame
+  inside the render loop unless replacement p95 is below the corresponding
+  `11/9 ms` physics budget. Otherwise future brackets must be prefetched or
+  asynchronously staged and retired by fences. The 2026-08-12 synchronous
+  RTX 5080 measurements (`33.34/113.50/442.02 ms` at 256/512/1024 per face)
+  explicitly fail this performance gate even though physical readback passes.
 
 See `validation/bbh_transfer_keyframes/README.md`.
 

@@ -188,4 +188,50 @@ midpoint must produce the normalized diagonal direction, `r=8M`, `g=1`,
 coverage `0.75`, and an azimuth close to the `pi` branch rather than zero. The
 smoke proves native upload/binding/render execution and slot replacement; the
 Python contract supplies the exact midpoint value oracle. A production merger
-sequence and shader-output readback remain separate evidence.
+sequence remains separate evidence.
+
+### Exact Vulkan readback gate
+
+The spatial probe fixture varies event class, escape direction, coverage,
+disk radius, circular azimuth, and redshift over every face and texel. The
+native fragment shader calls the same `TransferEvaluatePhysicalSample` used by
+the visual path and writes its physical values to an SSBO. Run the complete
+fixture/native/Python comparison with:
+
+```powershell
+pwsh -NoProfile -File `
+  validation/bbh_transfer_keyframes/scripts/run_native_playback_probe.ps1
+```
+
+The accepted 8x8-per-face run produced 384 records. It had zero texel, event,
+escape-validity, disk-validity, or non-finite mismatches; maximum escape
+direction error was `7.5981e-8 rad`; maximum disk physical difference was
+`1.0455e-6`. During development the probe found that invalid disk interpolation
+returned before initializing its output, producing random values and one NaN.
+The shared GLSL evaluator now zero-initializes invalid outputs, so visual and
+audit paths retain the same deterministic fail-closed semantics.
+
+### Real-size residency and swap benchmark
+
+Run the current synchronous two-slot path at display-relevant cubemap sizes:
+
+```powershell
+$env:PYTHONPATH='src'
+python validation/bbh_transfer_keyframes/scripts/benchmark_native_playback_residency.py `
+  --out-dir outputs/task11/native_residency_benchmark `
+  --face-sizes 256 512 1024 --iterations 3
+```
+
+The accepted RTX 5080 Laptop GPU result was:
+
+| Face size | Frame bytes | Two-slot residency | Replacement upload p95 |
+| ---: | ---: | ---: | ---: |
+| 256 | 20,447,232 | 39 MiB | 33.34 ms |
+| 512 | 81,788,928 | 156 MiB | 113.50 ms |
+| 1024 | 327,155,712 | 624 MiB | 442.02 ms |
+
+All byte counts, slot transitions, and final brackets matched their manifests,
+but every replacement exceeded the 9/11 ms physics budgets for 90/72 Hz.
+These timings measure synchronous resource creation/upload and are not render
+GPU timestamps. They reject frame-loop replacement; production playback must
+prefetch or asynchronously stage and fence-retire future frames.

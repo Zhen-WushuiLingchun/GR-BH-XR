@@ -1,5 +1,27 @@
 # Development Log
 
+### 2026-08-12 - Task 11 native physical readback and residency benchmark
+
+- Goal: verify the actual Vulkan shader output against the Python transfer
+  contract, then measure whether bounded keyframe replacement can occur inside
+  an XR frame budget at realistic cubemap sizes.
+- Changes: extracted a shared GLSL physical evaluator used by visual playback
+  and a dedicated SSBO probe; added spatially varying six-face fixtures, raw
+  Python comparison, and a 256/512/1024 residency/swap benchmark. The probe
+  found and fixed uninitialized invalid-disk outputs, including one NaN that
+  visual validity gating had hidden.
+- Validation: the accepted 8x8-per-face RTX 5080 probe compared 384 texels with
+  zero event/validity mismatches and no non-finite values. Maximum escape
+  direction error was `7.5981e-8 rad`; maximum disk difference was
+  `1.0455e-6`. Three-run synchronous replacement p95 was `33.34 ms` at 256,
+  `113.50 ms` at 512, and `442.02 ms` at 1024 per face; two-slot residency was
+  `39/156/624 MiB`.
+- Decision: per-texel physical interpolation is accepted. Synchronous
+  frame-loop replacement is rejected for 72/90 Hz; production keyframe
+  playback requires asynchronous staging/prefetch and fence-based retirement.
+  These upload measurements are not OpenXR render timestamps and do not close
+  the production merger-asset gate.
+
 ### 2026-08-12 - Task 11 native Vulkan transfer-keyframe playback
 
 - Goal: turn the accepted time-indexed transfer manifest into a bounded NPGS
