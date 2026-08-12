@@ -16,9 +16,9 @@ evidence. Neither should be used alone to infer the current runtime.
 | Unity Task 9 live tracer | Live single-Kerr integration | Cartesian Kerr-Schild rays are integrated in Unity compute in bounded batches. A completed map is hard-swapped after several display frames; this is not a newly converged full-resolution per-eye solution every headset frame. |
 | Unity Tasks 7-8 roam/descent | Worldline-keyframe playback | Uses audited finite-observer and rain-frame keyframes. Playback is distinct from unrestricted six-degree-of-freedom tracing. |
 | Unity Task 10 MR | Experimental, unaccepted | Camera/depth integration code exists, but calibrated RGB delivery and registration have not been demonstrated on the device. Enumeration, compilation, or depth acquisition alone is not acceptance. |
-| Native NPGS fork | Accepted for neutral exterior Kerr/Kerr-Newman rays, Kerr `Q=0` disk transfer, geometric polarization transport, the audited approximate dynamic-BBH slice, and pre-device dynamic XR/MR contracts | Complete official history is pinned through the GPL fork. Native states pass independent CPU f64 event/direction/disk/polarization and four-dimensional BBH replay gates. OpenXR predicted-time mapping, stereo poses, causal camera history, finite-room hits, and color/depth registration compile and fail closed, but no native OpenXR session or delivered MR camera frame has passed a device gate. |
+| Native NPGS fork | Accepted for neutral exterior Kerr/Kerr-Newman rays, Kerr `Q=0` disk transfer, geometric polarization transport, the audited approximate dynamic-BBH slice, pre-device dynamic XR/MR contracts, and bounded time-indexed Vulkan playback mechanics | Complete official history is pinned through the GPL fork. Native states pass independent CPU f64 event/direction/disk/polarization and four-dimensional BBH replay gates. The keyframe player validates and rehashes v3 assets, keeps a two-frame bracket resident, and interpolates physical texels before shading. No production merger sequence, native OpenXR session, or delivered MR camera frame has passed its final gate. |
 
-The repository suite passed `385` tests on 2026-08-12 after the bounded
+The repository suite passed `391` tests on 2026-08-12 after the bounded
 two-resolution Einstein Toolkit pilot, dynamic XR/MR timing contract,
 measured runtime-decision logic, and time-indexed transfer asset contract were
 registered.
@@ -32,7 +32,7 @@ The selected future runtime is a native fork of NPGS rather than a Unity port
 of its GPL shader. The public upstream baseline reviewed for this decision is
 `baopinshui/NPGS@a039e6417b28d53cbd413ee8f6d64543e755aa3e`.
 The current pinned integration revision is
-`Zhen-WushuiLingchun/NPGS@4e9dfa43779fa954ace1cbb59153ab21610ca250`.
+`Zhen-WushuiLingchun/NPGS@a5d847cd68e52f31b93272d09cbd9cf936310ee7`.
 The complete public ref set was refreshed on 2026-08-10; no public BBH/GW
 source was found.
 
@@ -123,6 +123,8 @@ Current status should therefore be read by capability, not by number:
   playback data-contract gap, not the production-asset gate: no complete
   inspiral-merger-ringdown sequence has yet earned `runtimeAssetReady=true`.
 - Native NPGS now repeats the runtime-critical manifest, gate, layout, byte,
-  SHA-256, and bounded-bracket checks through
-  `--validate-transfer-keyframes`. It is a pre-upload integrity boundary; no
-  production BBH Vulkan keyframe player or complete merger asset is claimed.
+  SHA-256, and bounded-bracket checks, then rehashes delayed frame bytes during
+  two-slot Vulkan residency. Dedicated shader variants interpolate event,
+  escape-direction, and `m=0/1` disk quantities per texel before visual
+  shading. The deterministic three-frame smoke passed a real `0/1 -> 1/2`
+  slot replacement, but no complete production merger asset is claimed.

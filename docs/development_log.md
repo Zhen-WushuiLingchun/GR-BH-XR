@@ -1,5 +1,34 @@
 # Development Log
 
+### 2026-08-12 - Task 11 native Vulkan transfer-keyframe playback
+
+- Goal: turn the accepted time-indexed transfer manifest into a bounded NPGS
+  playback path without blending discrete ray classes or falling back to RGB
+  frame interpolation.
+- Changes: added a two-slot Vulkan residency manager for the six required v3
+  cubemap roles, dedicated prepass/composite shader variants, descriptor
+  bindings for both bracket endpoints, physical per-texel interpolation, and
+  `--transfer-keyframes` playback/smoke CLI options. Slot replacement waits for
+  in-flight work before image destruction; asynchronous staging remains a
+  performance follow-up rather than a correctness claim.
+- Physical correspondence: event/failure classes remain discrete; escape
+  directions use guarded normalized interpolation; disk orders are
+  coverage-unpremultiplied, interpolate radius/redshift and circular azimuth,
+  then are premultiplied again. Playback time is metric coordinate time in
+  `M`; requests outside accepted coverage fail rather than extrapolate.
+- Validation: the Release C++ and all shader variants compiled. A native RTX
+  5080 Vulkan smoke loaded frames `0/1`, rendered their midpoint, replaced
+  physical slot 0 with frame 2, retained exactly two slots (`4,992` bytes per
+  frame; `9,984` resident), selected `(left=1,right=2,alpha=0.5)`, and exited
+  `0`. Every delayed load rehashes the exact bytes sent to Vulkan. An initial
+  time outside `[0,2]M` exited `1`. The fixture crosses disk
+  azimuth `+179/-179 deg`, rotates escape direction `+X -> +Y`, and changes
+  radius/redshift/coverage; the authoritative Python midpoint contract and
+  NPGS shader/source contract pass focused regression tests.
+- Claim boundary: this closes native residency and interpolation mechanics,
+  not the complete inspiral-merger-ringdown asset gate. Native disk color is
+  still a labelled visual proxy until Page-Thorne/LUT shading is connected.
+
 ### 2026-08-12 - Task 11 native NPGS transfer preflight
 
 - Goal: enforce the accepted Python time-indexed transfer contract again at

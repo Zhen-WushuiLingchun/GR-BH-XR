@@ -132,3 +132,60 @@ NPGS currently performs pre-main data initialization, so validation commands
 must use the NPGS data root as their working directory.  Launching from an
 arbitrary directory can fail before command-line dispatch because unrelated
 stellar catalog assets are then unresolved.
+
+## Native Vulkan Residency And Interpolation
+
+The NPGS integration now consumes an accepted manifest through a bounded
+two-frame Vulkan resident set. Each physical slot contains the six required
+v3 cubemaps. The event texture is point sampled; continuous physical buffers
+use their declared float formats and linear spatial sampling. A bracket change
+waits for in-flight GPU work before replacing an image and rewriting the A/B
+descriptors, so no submitted frame can sample a destroyed resource. This is a
+correctness-first double buffer; asynchronous uploads are not yet claimed.
+
+Temporal interpolation occurs per texel in dedicated transfer shader variants,
+before visual shading. It uses the same fail-closed event, normalized escape
+direction, coverage-unpremultiplied disk, circular azimuth, and same-order
+rules specified above. A metric-time request outside the accepted sequence
+exits with an error rather than clamping or extrapolating.
+
+Build the deterministic fixture and run the Release smoke with:
+
+```powershell
+$env:PYTHONPATH='src'
+python validation/bbh_transfer_keyframes/scripts/build_native_playback_fixture.py `
+  --out-dir outputs/task11/native_playback_fixture
+
+cd runtime/NPGS/NPGS
+NPGS.exe --windowed --width 64 --height 64 `
+  --transfer-keyframes <absolute-path-to-manifest.json> `
+  --transfer-time-M 0.5 --transfer-keyframe-smoke
+```
+
+The repository wrapper generates the fixture, checks all residency/swap
+markers, and verifies out-of-range rejection in one command:
+
+```powershell
+pwsh -NoProfile -File `
+  validation/bbh_transfer_keyframes/scripts/run_native_playback_smoke.ps1
+```
+
+The accepted 2026-08-12 smoke emitted:
+
+```text
+NPGS_TRANSFER_RESIDENT slot=0 frame=0 bytes=4992
+NPGS_TRANSFER_RESIDENT slot=1 frame=1 bytes=4992
+NPGS_TRANSFER_RESIDENT slot=0 frame=2 bytes=4992
+NPGS_TRANSFER_PLAYBACK_OK left=1 right=2 alpha=0.5 resident_frames=2 resident_bytes=9984
+```
+
+The fixture is intentionally not a BBH result. It has three frames so the
+smoke must replace slot 0 while retaining frame 1 (`0/1 -> 1/2`) without ever
+holding more than two frames. Its first interval is a compact interpolation
+probe with escape direction `+X -> +Y`, disk radius `6M -> 10M`, redshift
+`0.8 -> 1.2`, coverage `0.5 -> 1.0`, and azimuth `+179 -> -179 deg`. That
+midpoint must produce the normalized diagonal direction, `r=8M`, `g=1`,
+coverage `0.75`, and an azimuth close to the `pi` branch rather than zero. The
+smoke proves native upload/binding/render execution and slot replacement; the
+Python contract supplies the exact midpoint value oracle. A production merger
+sequence and shader-output readback remain separate evidence.

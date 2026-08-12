@@ -1297,6 +1297,17 @@ runtime it must pass all of the following:
 - `runtimeAssetReady=true` requires passed independent per-frame and sequence
   evidence. A bounded NR pilot or a stationary roam grid cannot satisfy this
   production claim.
+- Native Vulkan playback must keep no more than the current two-frame bracket
+  resident, bind all six required v3 roles for both endpoints, and refresh
+  descriptors whenever either physical slot changes.
+- Per-texel playback must apply event/failure discreteness, guarded normalized
+  escape-direction interpolation, coverage unpremultiplication, same-order disk
+  validity, circular azimuth, and redshift/radius interpolation before visual
+  shading. RGB frame blending is not an accepted substitute.
+- A deterministic native smoke must compile the dedicated shader variants,
+  upload both slots, render the midpoint bracket, report resident frame/byte
+  counts, and exit zero. Requests outside the accepted metric-time interval
+  must fail rather than clamp or extrapolate.
 
 See `validation/bbh_transfer_keyframes/README.md`.
 
