@@ -1,5 +1,26 @@
 # Development Log
 
+### 2026-08-12 - Task 11 time-indexed BBH transfer asset contract
+
+- Goal: turn the measured BBH runtime decision (offline time-indexed NR
+  transfer keyframes) into a versioned, fail-closed data contract before a
+  large merger asset is generated.
+- Changes: added `gr_bh_xr.transfer_keyframes`, a CLI and manifest schema for
+  strict metric-time sequences; content-addressed source/frame/gate records;
+  v3 cubemap layout and byte validation; bounded frame selection; and
+  physically guarded event, escape-direction, and disk-order interpolation.
+- Physical correspondence: time is metric coordinate time in units of `M`.
+  Discrete ray outcomes are not averaged. Disk interpolation preserves true
+  crossing order, coverage premultiplication, circular azimuth, redshift, and
+  radius semantics. Static roam grids are rejected because their parameter
+  index is not a dynamic spacetime coordinate.
+- Validation: ten focused tests cover ready/incomplete manifests, checksum
+  mutation, legacy-schema rejection, bounded bracketing, discrete-event
+  changes, unit-direction interpolation, azimuth wraparound, and missing disk
+  orders. The production BBH asset remains deliberately unclaimed.
+- Next: implement the same frame-bracket contract in native NPGS, then connect
+  decoded Vulkan resources after a production sequence exists.
+
 ## 2026-08-10 - Task 10 measured BBH runtime decision
 
 - Combined the measured `1832x1920`-per-eye synthetic-stereo timing records

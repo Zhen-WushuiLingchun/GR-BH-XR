@@ -1280,6 +1280,26 @@ Long-range real-time or interactive work must introduce one of:
 - hybrid modes that keep audit buffers for escape/capture, redshift, time
   delay, and image order rather than directly generating RGB output.
 
+The selected time-indexed transfer-map path uses schema
+`gr-bh-xr.bbh.time-indexed-transfer.v1`. Before a sequence may be bound by a
+runtime it must pass all of the following:
+
+- frame times are finite, strictly increasing, cover the declared interval,
+  and have no gap above the preregistered `maxGapM`;
+- every referenced v3 full-sky buffer, frame metadata file, source
+  specification, frame gate, and sequence gate is protected by SHA-256;
+- all frames have identical face layout and buffer inventory, including both
+  disk orders when disk rendering is claimed;
+- event/failure classes are never interpolated across a class change; escape
+  directions and disk samples interpolate only when both endpoints are valid;
+- playback outside the accepted interval fails closed rather than clamping or
+  extrapolating;
+- `runtimeAssetReady=true` requires passed independent per-frame and sequence
+  evidence. A bounded NR pilot or a stationary roam grid cannot satisfy this
+  production claim.
+
+See `validation/bbh_transfer_keyframes/README.md`.
+
 Neural acceleration must learn transfer functions or radiance fields from
 validated exact data. It must not replace the audit buffers with an untraceable
 image generator.

@@ -1,6 +1,6 @@
 # Current Implementation Status
 
-Updated: 2026-08-10
+Updated: 2026-08-12
 
 This file is the canonical status summary. Dated plans describe the intent at
 the time they were written; `docs/development_log.md` records chronological
@@ -18,9 +18,10 @@ evidence. Neither should be used alone to infer the current runtime.
 | Unity Task 10 MR | Experimental, unaccepted | Camera/depth integration code exists, but calibrated RGB delivery and registration have not been demonstrated on the device. Enumeration, compilation, or depth acquisition alone is not acceptance. |
 | Native NPGS fork | Accepted for neutral exterior Kerr/Kerr-Newman rays, Kerr `Q=0` disk transfer, geometric polarization transport, the audited approximate dynamic-BBH slice, and pre-device dynamic XR/MR contracts | Complete official history is pinned through the GPL fork. Native states pass independent CPU f64 event/direction/disk/polarization and four-dimensional BBH replay gates. OpenXR predicted-time mapping, stereo poses, causal camera history, finite-room hits, and color/depth registration compile and fail closed, but no native OpenXR session or delivered MR camera frame has passed a device gate. |
 
-The repository suite passed `375` tests on 2026-08-10 after the bounded
-two-resolution Einstein Toolkit pilot, dynamic XR/MR timing contract, and
-measured runtime-decision logic were registered.
+The repository suite passed `385` tests on 2026-08-12 after the bounded
+two-resolution Einstein Toolkit pilot, dynamic XR/MR timing contract,
+measured runtime-decision logic, and time-indexed transfer asset contract were
+registered.
 The centralized NPGS integration/MR contracts, preceding Task 9/10 baseline,
 complete Unity `.meta` coverage, native Kerr/Kerr-Newman/disk gates, and raw-v3
 polarization-geometry gates remain in the same regression.
@@ -115,3 +116,9 @@ Current status should therefore be read by capability, not by number:
   showcase media is not implementation evidence. See
   `docs/plans/2026-08-10-bbh-dynamic-spacetime-xr.md` and
   `docs/bbh_runtime_decision.md`.
+- The Task 11 time-indexed transfer asset contract is implemented in
+  `gr_bh_xr.transfer_keyframes`. It hashes frame payloads and gate evidence,
+  enforces strict metric-time coverage, rejects stationary roam grids, and
+  defines fail-closed direction/event/disk interpolation. This closes the
+  playback data-contract gap, not the production-asset gate: no complete
+  inspiral-merger-ringdown sequence has yet earned `runtimeAssetReady=true`.
