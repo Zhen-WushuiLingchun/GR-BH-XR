@@ -38,8 +38,13 @@ try {
         "NPGS_TRANSFER_RESIDENT slot=0 frame=0",
         "NPGS_TRANSFER_RESIDENT slot=1 frame=1",
         "NPGS_TRANSFER_PREFETCH frame=2",
+        "NPGS_TRANSFER_UPLOAD slot=2 frame=2 role=event role_index=0",
+        "NPGS_TRANSFER_UPLOAD slot=2 frame=2 role=disk_order1_redshift role_index=5",
         "NPGS_TRANSFER_RESIDENT slot=2 frame=2",
+        "NPGS_TRANSFER_STALL requested_metric_time_M=1.5 applied_metric_time_M=1 waiting_frame=2",
         "NPGS_TRANSFER_PREFETCH frame=3",
+        "NPGS_TRANSFER_UPLOAD slot=0 frame=3 role=event role_index=0",
+        "NPGS_TRANSFER_UPLOAD slot=0 frame=3 role=disk_order1_redshift role_index=5",
         "NPGS_TRANSFER_RESIDENT slot=0 frame=3",
         "NPGS_TRANSFER_PLAYBACK_READY face_size=4 resident_frames=2 resident_bytes=9984",
         "NPGS_TRANSFER_PLAYBACK_OK left=2 right=3 alpha=0.5 resident_frames=3 resident_bytes=14976"

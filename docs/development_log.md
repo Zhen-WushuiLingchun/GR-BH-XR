@@ -1,5 +1,33 @@
 # Development Log
 
+### 2026-08-12 - Task 11 face-sliced Vulkan keyframe upload
+
+- Goal: eliminate display-resolution transfer swaps as a single long render
+  interruption without exposing partially uploaded physical state.
+- Changes: added allocatable empty cubemaps and per-face Vulkan upload; split
+  each prefetched transfer frame into 36 slices (six roles by six faces), one
+  slice per rendered frame; withheld slot identity and descriptors until all
+  slices complete; and held the applied metric time at the last complete
+  resident boundary while a requested bracket is unavailable. Startup uses the
+  same face uploader but still loads its first two endpoints synchronously.
+- Physical correspondence: event, escape direction, both disk orders, redshift,
+  coverage, and circular azimuth remain per-texel physical fields. A partial
+  keyframe can never mix with a complete endpoint, and shader time cannot run
+  ahead of the physical data actually bound.
+- Validation: Release compiled with zero errors. The four-frame smoke completed
+  `0/1 -> 1/2 -> 2/3` with no invalid descriptors. The exact Vulkan readback
+  retained 384/384 samples, zero event/validity/non-finite mismatches, maximum
+  escape-direction error `7.5981e-8 rad`, and maximum disk-field difference
+  `1.0455e-6`. On the RTX 5080 Laptop GPU, max one-face upload p95 was
+  `0.68/1.26/3.87 ms` for face `256/512/1024`; all pass the isolated 9/11 ms
+  slice budgets, with a largest observed 1024 slice of `4.02 ms`. Total
+  36-slice upload p95 was `8.93/15.40/48.54 ms`, spread across 36 rendered
+  frames; three-slot capacity is `58.5/234/936 MiB`.
+- Decision: continuing keyframe replacement is accepted as bounded and
+  descriptor-safe at the tested sizes. These are CPU wall timings around Vulkan
+  transfer submissions, not GPU timestamps or complete OpenXR frame times.
+  Initial bracket startup and a production merger/headset sequence remain open.
+
 ### 2026-08-12 - Task 11 fence-safe prefetch and residency split
 
 - Goal: remove device-wide idle and disk/hash work from transfer-keyframe

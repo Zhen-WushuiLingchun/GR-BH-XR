@@ -19,12 +19,20 @@ except ImportError:  # Direct script execution.
     from build_native_playback_fixture import build_fixture
 
 
-SUMMARY_SCHEMA = "gr-bh-xr.validation.npgs-transfer-residency.v2"
+SUMMARY_SCHEMA = "gr-bh-xr.validation.npgs-transfer-residency.v4"
 RESIDENT_RE = re.compile(
     r"NPGS_TRANSFER_RESIDENT slot=(?P<slot>\d+) frame=(?P<frame>\d+) "
     r"metric_time_M=(?P<time>[-+0-9.eE]+) bytes=(?P<bytes>\d+) "
     r"io_hash_ms=(?P<io_hash>[-+0-9.eE]+) "
-    r"upload_ms=(?P<upload>[-+0-9.eE]+) total_ms=(?P<total>[-+0-9.eE]+)"
+    r"upload_ms=(?P<upload>[-+0-9.eE]+) "
+    r"(?:max_slice_upload_ms=(?P<max_slice>[-+0-9.eE]+) )?"
+    r"total_ms=(?P<total>[-+0-9.eE]+)"
+)
+ROLE_UPLOAD_RE = re.compile(
+    r"NPGS_TRANSFER_UPLOAD slot=(?P<slot>\d+) frame=(?P<frame>\d+) "
+    r"role=(?P<role>[a-z0-9_]+) role_index=(?P<role_index>\d+) "
+    r"face=(?P<face>\d+) "
+    r"bytes=(?P<bytes>\d+) upload_ms=(?P<upload>[-+0-9.eE]+)"
 )
 PREFETCH_RE = re.compile(
     r"NPGS_TRANSFER_PREFETCH frame=(?P<frame>\d+) bytes=(?P<bytes>\d+) "
@@ -50,6 +58,11 @@ def parse_native_output(output: str) -> dict[str, Any]:
             "bytes": int(match.group("bytes")),
             "io_hash_ms": float(match.group("io_hash")),
             "upload_ms": float(match.group("upload")),
+            "max_slice_upload_ms": (
+                float(match.group("max_slice"))
+                if match.group("max_slice") is not None
+                else float(match.group("upload"))
+            ),
             "total_ms": float(match.group("total")),
         }
         for match in RESIDENT_RE.finditer(output)
@@ -66,8 +79,21 @@ def parse_native_output(output: str) -> dict[str, Any]:
         }
         for match in PREFETCH_RE.finditer(output)
     ]
+    role_uploads = [
+        {
+            "slot": int(match.group("slot")),
+            "frame": int(match.group("frame")),
+            "role": match.group("role"),
+            "role_index": int(match.group("role_index")),
+            "face": int(match.group("face")),
+            "bytes": int(match.group("bytes")),
+            "upload_ms": float(match.group("upload")),
+        }
+        for match in ROLE_UPLOAD_RE.finditer(output)
+    ]
     return {
         "uploads": uploads,
+        "role_uploads": role_uploads,
         "prefetches": prefetches,
         "ready": {
             "face_size": int(ready_match.group("face")),
@@ -121,7 +147,7 @@ def run_benchmark(
             case_dir / "fixture" / "frame_0" / "full_sky_transfer_metadata.json"
         )
         expected_ready_bytes = 2 * frame_bytes
-        expected_final_bytes = 3 * frame_bytes
+        resident_capacity_bytes = 3 * frame_bytes
         runs: list[dict[str, Any]] = []
 
         for iteration in range(iterations):
@@ -160,36 +186,58 @@ def run_benchmark(
                 )
             parsed = parse_native_output(combined)
             uploads = parsed["uploads"]
-            if [(entry["slot"], entry["frame"]) for entry in uploads] != [
+            role_uploads = parsed["role_uploads"]
+            if [(entry["slot"], entry["frame"]) for entry in uploads[:2]] != [
                 (0, 0),
                 (1, 1),
-                (2, 2),
-            ]:
+            ] or len(uploads) != 3 or uploads[2]["frame"] != 2:
                 raise RuntimeError(f"unexpected upload sequence for face {face_size}: {uploads}")
             if any(entry["bytes"] != frame_bytes for entry in uploads):
                 raise RuntimeError(f"native byte count disagrees with manifest for face {face_size}")
+            expected_slices = [
+                (role_index, face)
+                for role_index in range(6)
+                for face in range(6)
+            ]
+            if [
+                (entry["role_index"], entry["face"]) for entry in role_uploads
+            ] != expected_slices:
+                raise RuntimeError(
+                    f"incremental role upload sequence is incomplete for face {face_size}: "
+                    f"{role_uploads}"
+                )
+            if any(
+                entry["frame"] != 2 or entry["slot"] != uploads[2]["slot"]
+                for entry in role_uploads
+            ):
+                raise RuntimeError(
+                    f"incremental role upload targeted an unexpected slot for face {face_size}"
+                )
             if parsed["ready"] != {
                 "face_size": face_size,
                 "resident_frames": 2,
                 "resident_bytes": expected_ready_bytes,
             }:
                 raise RuntimeError(f"unexpected READY marker for face {face_size}: {parsed['ready']}")
-            if parsed["final"] != {
-                "left": 1,
-                "right": 2,
-                "alpha": 0.5,
-                "resident_frames": 3,
-                "resident_bytes": expected_final_bytes,
-            }:
+            final = parsed["final"]
+            if (
+                final["left"] != 1
+                or final["right"] != 2
+                or final["alpha"] != 0.5
+                or final["resident_frames"] not in {2, 3}
+                or final["resident_bytes"] != final["resident_frames"] * frame_bytes
+            ):
                 raise RuntimeError(f"unexpected final bracket for face {face_size}: {parsed['final']}")
             runs.append(
                 {
                     "iteration": iteration,
                     "wall_ms": wall_ms,
                     "uploads": uploads,
+                    "role_uploads": role_uploads,
                     "prefetches": parsed["prefetches"],
                     "transition_io_hash_ms": uploads[2]["io_hash_ms"],
-                    "transition_upload_ms": uploads[2]["upload_ms"],
+                    "transition_total_upload_ms": uploads[2]["upload_ms"],
+                    "transition_max_slice_upload_ms": uploads[2]["max_slice_upload_ms"],
                     "transition_total_ms": uploads[2]["total_ms"],
                 }
             )
@@ -197,25 +245,58 @@ def run_benchmark(
         upload_values = [
             entry["upload_ms"] for run in runs for entry in run["uploads"]
         ]
-        transition_values = [run["transition_upload_ms"] for run in runs]
+        transition_values = [run["transition_max_slice_upload_ms"] for run in runs]
         transition_p95 = _percentile(transition_values, 95.0)
         cases.append(
             {
                 "face_size": face_size,
                 "frame_bytes": frame_bytes,
                 "ready_resident_bytes": expected_ready_bytes,
-                "peak_resident_bytes": expected_final_bytes,
-                "peak_resident_mib": expected_final_bytes / (1024.0 * 1024.0),
+                "resident_capacity_bytes": resident_capacity_bytes,
+                "resident_capacity_mib": resident_capacity_bytes / (1024.0 * 1024.0),
                 "iterations": iterations,
                 "upload_ms": {
                     "p50": _percentile(upload_values, 50.0),
                     "p95": _percentile(upload_values, 95.0),
                     "max": max(upload_values),
                 },
-                "transition_upload_ms": {
+                "transition_max_slice_upload_ms": {
                     "p50": _percentile(transition_values, 50.0),
                     "p95": transition_p95,
                     "max": max(transition_values),
+                },
+                "transition_total_upload_ms": {
+                    "p50": _percentile(
+                        [run["transition_total_upload_ms"] for run in runs], 50.0
+                    ),
+                    "p95": _percentile(
+                        [run["transition_total_upload_ms"] for run in runs], 95.0
+                    ),
+                },
+                "role_upload_ms": {
+                    role: {
+                        "p50": _percentile(
+                            [
+                                entry["upload_ms"]
+                                for run in runs
+                                for entry in run["role_uploads"]
+                                if entry["role"] == role
+                            ],
+                            50.0,
+                        ),
+                        "p95": _percentile(
+                            [
+                                entry["upload_ms"]
+                                for run in runs
+                                for entry in run["role_uploads"]
+                                if entry["role"] == role
+                            ],
+                            95.0,
+                        ),
+                    }
+                    for role in sorted({
+                        entry["role"] for run in runs for entry in run["role_uploads"]
+                    })
                 },
                 "transition_io_hash_ms": {
                     "p50": _percentile(
@@ -255,11 +336,12 @@ def run_benchmark(
         "gpu_evidence": "Read the Renderer line in each persisted native log.",
         "cases": cases,
         "claim_boundary": (
-            "Asset bytes are read and hashed by the CPU prefetch worker. The measured "
-            "transition upload remains synchronous Vulkan image creation on the render "
-            "thread; it is not a render GPU timestamp and does not establish OpenXR "
-            "frame rate. A false hitch-free candidate still requires asynchronous GPU "
-            "staging before production playback."
+            "Asset bytes are read and hashed by the CPU prefetch worker. "
+            "Each cubemap-face upload remains synchronous Vulkan transfer work on the render "
+            "thread, but all role/face slices are spread across separate rendered frames and a "
+            "partially uploaded slot is never descriptor-visible. The hitch candidate is "
+            "therefore based on max single-face wall time; it is not a render GPU timestamp "
+            "and does not establish OpenXR frame rate."
         ),
     }
 

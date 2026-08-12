@@ -135,16 +135,23 @@ stellar catalog assets are then unresolved.
 
 ## Native Vulkan Residency And Interpolation
 
-The NPGS integration now consumes an accepted manifest through a bounded
-two-frame Vulkan resident set. Each physical slot contains the six required
-v3 cubemaps. The event texture is point sampled; continuous physical buffers
-use their declared float formats and linear spatial sampling. Two logical
-bracket endpoints map onto three physical slots. Asset reads and SHA-256 checks
-run on a CPU prefetch worker; after the current frame fence completes, only
-that frame's descriptor set is updated. A physical slot is recycled only when
-neither in-flight frame references it, so normal playback no longer needs a
-device-wide `WaitIdle` during replacement. Vulkan image construction/upload is
-still synchronous on the render thread and is measured separately below.
+The NPGS integration now consumes an accepted manifest through three bounded
+physical Vulkan slots. Each complete slot contains the six required v3
+cubemaps, while two logical bracket endpoints are visible to the shader. The
+event texture is point sampled; continuous physical buffers use their declared
+float formats and linear spatial sampling. Asset reads and SHA-256 checks run
+on a CPU prefetch worker. The standby frame is then uploaded as 36 independent
+slices: six cubemap faces for each of six physical roles, one slice per rendered
+frame. A partially uploaded slot has no frame identity and is never descriptor
+visible. After the current frame fence completes, only that frame's descriptor
+set is updated. A physical slot is recycled only when neither in-flight frame
+references it, so normal playback no longer needs a device-wide `WaitIdle`.
+
+If requested metric time reaches a nonresident bracket, playback holds the
+last complete resident boundary and exposes that applied metric time to the
+shader. It never advances the clock while showing older physical texels.
+Initial construction of the first two bracket endpoints remains synchronous;
+the incremental path applies to continuing playback after startup.
 
 Temporal interpolation occurs per texel in dedicated transfer shader variants,
 before visual shading. It uses the same fail-closed event, normalized escape
@@ -173,14 +180,20 @@ pwsh -NoProfile -File `
   validation/bbh_transfer_keyframes/scripts/run_native_playback_smoke.ps1
 ```
 
-The accepted 2026-08-12 four-frame smoke emitted the lifecycle:
+The accepted 2026-08-12 four-frame smoke emitted the condensed lifecycle below;
+each `UPLOAD` range contains all six faces of all six roles:
 
 ```text
 NPGS_TRANSFER_RESIDENT slot=0 frame=0 bytes=4992
 NPGS_TRANSFER_RESIDENT slot=1 frame=1 bytes=4992
 NPGS_TRANSFER_PREFETCH frame=2 bytes=4992
+NPGS_TRANSFER_UPLOAD slot=2 frame=2 role=event role_index=0 face=0 ...
+...
+NPGS_TRANSFER_UPLOAD slot=2 frame=2 role=disk_order1_redshift role_index=5 face=5 ...
 NPGS_TRANSFER_RESIDENT slot=2 frame=2 bytes=4992
 NPGS_TRANSFER_PREFETCH frame=3 bytes=4992
+NPGS_TRANSFER_UPLOAD slot=0 frame=3 role=event role_index=0 face=0 ...
+...
 NPGS_TRANSFER_RESIDENT slot=0 frame=3 bytes=4992
 NPGS_TRANSFER_PLAYBACK_OK left=2 right=3 alpha=0.5 resident_frames=3 resident_bytes=14976
 ```
@@ -193,9 +206,10 @@ probe with escape direction `+X -> +Y`, disk radius `6M -> 10M`, redshift
 `0.8 -> 1.2`, coverage `0.5 -> 1.0`, and azimuth `+179 -> -179 deg`. That
 midpoint must produce the normalized diagonal direction, `r=8M`, `g=1`,
 coverage `0.75`, and an azimuth close to the `pi` branch rather than zero. The
-smoke proves native upload/binding/render execution and slot replacement; the
-Python contract supplies the exact midpoint value oracle. A production merger
-sequence remains separate evidence.
+smoke proves native upload/binding/render execution, partial-slot hiding,
+metric-time stalling, and fence-safe slot replacement; the Python contract
+supplies the exact midpoint value oracle. A production merger sequence remains
+separate evidence.
 
 ### Exact Vulkan readback gate
 
@@ -210,7 +224,8 @@ pwsh -NoProfile -File `
   validation/bbh_transfer_keyframes/scripts/run_native_playback_probe.ps1
 ```
 
-The accepted 8x8-per-face run produced 384 records. It had zero texel, event,
+The accepted 8x8-per-face run uses the same per-face uploader as startup and
+incremental replacement and produced 384 records. It had zero texel, event,
 escape-validity, disk-validity, or non-finite mismatches; maximum escape
 direction error was `7.5981e-8 rad`; maximum disk physical difference was
 `1.0455e-6`. During development the probe found that invalid disk interpolation
@@ -225,23 +240,28 @@ Run the three-slot prefetch path at display-relevant cubemap sizes:
 ```powershell
 $env:PYTHONPATH='src'
 python validation/bbh_transfer_keyframes/scripts/benchmark_native_playback_residency.py `
-  --out-dir outputs/task11/native_prefetch_residency_benchmark `
+  --out-dir outputs/task11/native_face_sliced_residency_benchmark `
   --face-sizes 256 512 1024 --iterations 3
 ```
 
 The accepted RTX 5080 Laptop GPU result was:
 
-| Face size | Frame bytes | Peak three-slot residency | Prefetched I/O+hash p95 | Render-thread upload p95 |
-| ---: | ---: | ---: | ---: | ---: |
-| 256 | 20,447,232 | 58.5 MiB | 19.49 ms | 5.23 ms |
-| 512 | 81,788,928 | 234 MiB | 89.70 ms | 12.09 ms |
-| 1024 | 327,155,712 | 936 MiB | 348.26 ms | 38.79 ms |
+| Face size | Frame bytes | Three-slot capacity | Prefetched I/O+hash p95 | Total 36-slice upload p95 | Max one-face slice p95 | 72/90 Hz isolated slice gate |
+| ---: | ---: | ---: | ---: | ---: | ---: | :---: |
+| 256 | 20,447,232 | 58.5 MiB | 25.25 ms | 8.93 ms | 0.68 ms | pass/pass |
+| 512 | 81,788,928 | 234 MiB | 96.77 ms | 15.40 ms | 1.26 ms | pass/pass |
+| 1024 | 327,155,712 | 936 MiB | 471.15 ms | 48.54 ms | 3.87 ms | pass/pass |
 
-The old combined 256/512/1024 replacement p95 values were
-`33.34/113.50/442.02 ms`. CPU prefetch removes the dominant disk/hash work from
-the transition and fence-safe per-frame descriptors remove device-wide idle.
-The remaining Vulkan upload passes the 9/11 ms budgets only at face 256; face
-512 narrowly fails and face 1024 fails decisively. These are render-thread
-resource-upload timings, not render GPU timestamps or OpenXR frame rates.
-Production display-resolution playback therefore still requires incremental
-or asynchronous GPU staging; this commit does not claim hitch-free XR swaps.
+For historical comparison, the combined synchronous replacement p95 values
+were `33.34/113.50/442.02 ms`, and CPU-prefetched but unsliced upload measured
+`5.23/12.09/38.79 ms`. CPU prefetch now hides disk/hash work during continuing
+playback, fence-safe per-frame descriptors remove device-wide idle, and face
+slicing bounds each render-thread interruption below the isolated 9/11 ms
+budgets at all three tested sizes. The largest observed 1024/face slice was
+`4.02 ms`. The total work still spans 36 display frames,
+and the first two bracket frames still incur synchronous startup upload.
+
+These are CPU wall timings around synchronous Vulkan transfer submissions, not
+GPU timestamps, complete render-frame measurements, or OpenXR frame rates. The
+result qualifies bounded incremental resource replacement; it does not claim
+that a production merger sequence or headset playback is hitch-free.

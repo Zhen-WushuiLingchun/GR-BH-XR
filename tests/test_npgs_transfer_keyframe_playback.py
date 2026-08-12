@@ -47,8 +47,15 @@ def test_native_playback_prefetch_is_fence_safe_and_wired_to_dedicated_shader() 
     assert "WaitIdle" not in load_slot
     assert "SlotIsReferenced" in load_slot
     assert "std::async(std::launch::async" in implementation
+    assert "PumpIncrementalUpload" in implementation
+    assert "NPGS_TRANSFER_UPLOAD" in implementation
+    assert "MaxSliceUploadMilliseconds" in header
+    assert "NextFace" in header
+    assert "UploadFace" in implementation
+    assert "AppliedMetricTimeM" in application
+    assert "NPGS_TRANSFER_STALL" in implementation
     assert "ReadFrame(FrameIndex)" in implementation
-    assert "ResidentResourceChanged" in implementation
+    assert "ActivateBracket" in implementation
     assert "ReadVerifiedTransferAsset" in implementation
     for role in (
         "event",
@@ -66,7 +73,7 @@ def test_native_playback_prefetch_is_fence_safe_and_wired_to_dedicated_shader() 
     assert "WriteDynamicDescriptors" in application
     playback_clock = application[
         application.index("double RequestedMetricTime"):
-        application.index("TransferPlayback->Update(MetricTime);")
+        application.index("TransferPlayback->Update(RequestedMetricTime);")
     ]
     assert "std::clamp" not in playback_clock
     assert "BlackHole_transfer_prepass.frag.spv" in config
@@ -200,7 +207,13 @@ def test_native_residency_output_parser_preserves_swap_measurements() -> None:
                 "NPGS_TRANSFER_RESIDENT slot=1 frame=1 metric_time_M=1 bytes=4992 io_hash_ms=0.3 upload_ms=1.5 total_ms=1.8",
                 "NPGS_TRANSFER_PLAYBACK_READY face_size=4 resident_frames=2 resident_bytes=9984",
                 "NPGS_TRANSFER_PREFETCH frame=2 bytes=4992 io_hash_ms=0.35",
-                "NPGS_TRANSFER_RESIDENT slot=2 frame=2 metric_time_M=2 bytes=4992 io_hash_ms=0.35 upload_ms=1.75 total_ms=2.1",
+                "NPGS_TRANSFER_UPLOAD slot=2 frame=2 role=event role_index=0 face=0 bytes=384 upload_ms=0.25",
+                "NPGS_TRANSFER_UPLOAD slot=2 frame=2 role=escape_direction role_index=1 face=0 bytes=1536 upload_ms=0.75",
+                "NPGS_TRANSFER_UPLOAD slot=2 frame=2 role=disk_order0_transfer role_index=2 face=0 bytes=768 upload_ms=0.2",
+                "NPGS_TRANSFER_UPLOAD slot=2 frame=2 role=disk_order0_redshift role_index=3 face=0 bytes=768 upload_ms=0.2",
+                "NPGS_TRANSFER_UPLOAD slot=2 frame=2 role=disk_order1_transfer role_index=4 face=0 bytes=768 upload_ms=0.15",
+                "NPGS_TRANSFER_UPLOAD slot=2 frame=2 role=disk_order1_redshift role_index=5 face=0 bytes=768 upload_ms=0.2",
+                "NPGS_TRANSFER_RESIDENT slot=2 frame=2 metric_time_M=2 bytes=4992 io_hash_ms=0.35 upload_ms=1.75 max_slice_upload_ms=0.75 total_ms=2.1",
                 "NPGS_TRANSFER_PLAYBACK_OK left=1 right=2 alpha=0.5 resident_frames=3 resident_bytes=14976",
             )
         )
@@ -211,10 +224,13 @@ def test_native_residency_output_parser_preserves_swap_measurements() -> None:
         (2, 2),
     ]
     assert parsed["uploads"][2]["upload_ms"] == 1.75
+    assert parsed["uploads"][2]["max_slice_upload_ms"] == 0.75
     assert parsed["uploads"][2]["io_hash_ms"] == 0.35
     assert parsed["prefetches"] == [
         {"frame": 2, "bytes": 4992, "io_hash_ms": 0.35}
     ]
+    assert [entry["role_index"] for entry in parsed["role_uploads"]] == list(range(6))
+    assert [entry["face"] for entry in parsed["role_uploads"]] == [0] * 6
     assert parsed["ready"]["resident_bytes"] == 9984
     assert parsed["final"] == {
         "left": 1,
