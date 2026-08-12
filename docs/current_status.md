@@ -32,7 +32,7 @@ The selected future runtime is a native fork of NPGS rather than a Unity port
 of its GPL shader. The public upstream baseline reviewed for this decision is
 `baopinshui/NPGS@a039e6417b28d53cbd413ee8f6d64543e755aa3e`.
 The current pinned integration revision is
-`Zhen-WushuiLingchun/NPGS@3d643343bc7bf59f4cd5142ddfa6ef9113ee8cec`.
+`Zhen-WushuiLingchun/NPGS@4e9dfa43779fa954ace1cbb59153ab21610ca250`.
 The complete public ref set was refreshed on 2026-08-10; no public BBH/GW
 source was found.
 
@@ -122,3 +122,7 @@ Current status should therefore be read by capability, not by number:
   defines fail-closed direction/event/disk interpolation. This closes the
   playback data-contract gap, not the production-asset gate: no complete
   inspiral-merger-ringdown sequence has yet earned `runtimeAssetReady=true`.
+- Native NPGS now repeats the runtime-critical manifest, gate, layout, byte,
+  SHA-256, and bounded-bracket checks through
+  `--validate-transfer-keyframes`. It is a pre-upload integrity boundary; no
+  production BBH Vulkan keyframe player or complete merger asset is claimed.

@@ -104,3 +104,31 @@ The bounded `ET_2026_05` `0..1M` pilot remains pipeline evidence only.  It
 does not yet satisfy a complete inspiral-merger-ringdown keyframe asset, so the
 runtime-ready claim remains open until a production source specification and
 its gates pass this contract.
+
+## Native NPGS Preflight
+
+NPGS repeats the security- and runtime-critical subset of this validation before
+any frame is eligible for Vulkan upload.  The native loader checks the manifest
+schema, `runtimeAssetReady`, source provenance, independent gate schemas and
+pass state, cubemap layout, strict time coverage, exact byte counts, and every
+SHA-256 digest.  Python remains the schema authority and additionally rebuilds
+the buffer inventory from each v3 metadata file; the native check is a second
+fail-closed boundary, not an independent physics certification.
+
+From the NPGS data-root working directory (`runtime/NPGS/NPGS` in a source
+checkout), run:
+
+```powershell
+NPGS.exe --validate-transfer-keyframes <manifest.json>
+```
+
+The 2026-08-12 Release smoke used a two-frame synthetic v3 fixture.  It selected
+the midpoint bracket `(left=0, right=1, alpha=0.5)` and exited `0`.  Flipping one
+byte in the first event buffer made the same executable exit `3` with
+`frame buffer event SHA-256 changed`.  The fixture proves native contract
+enforcement only; it is not a production BBH transfer sequence.
+
+NPGS currently performs pre-main data initialization, so validation commands
+must use the NPGS data root as their working directory.  Launching from an
+arbitrary directory can fail before command-line dispatch because unrelated
+stellar catalog assets are then unresolved.

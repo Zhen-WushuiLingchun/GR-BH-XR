@@ -1,5 +1,23 @@
 # Development Log
 
+### 2026-08-12 - Task 11 native NPGS transfer preflight
+
+- Goal: enforce the accepted Python time-indexed transfer contract again at
+  the native runtime boundary before Vulkan resources can be uploaded.
+- Changes: added `FTransferKeyframeSequence`, native JSON and SHA-256 loading,
+  independent frame/sequence gate validation, strict time bracketing, and the
+  `--validate-transfer-keyframes` one-shot NPGS CLI.
+- Physical correspondence: this layer selects two accepted transfer states at
+  a bounded metric coordinate time; it does not synthesize missing ray classes,
+  extrapolate beyond NR coverage, or promote an approximate source metric.
+- Validation: the Release build completed; a two-frame v3 fixture selected
+  `(0,1,0.5)` and exited zero. A one-byte event-buffer mutation was rejected
+  with exit code `3` due to a SHA-256 mismatch. Three source-contract tests
+  pin project inclusion, content/gate validation, and fail-closed bracketing.
+- Open issue: decoded Vulkan resource residency and physical per-texel temporal
+  interpolation remain intentionally deferred until a production merger
+  sequence earns `runtimeAssetReady=true`.
+
 ### 2026-08-12 - Task 11 time-indexed BBH transfer asset contract
 
 - Goal: turn the measured BBH runtime decision (offline time-indexed NR
